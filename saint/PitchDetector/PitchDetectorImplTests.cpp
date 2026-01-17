@@ -56,7 +56,6 @@ TEST(PitchDetectorImpl, stuff) {
     constexpr auto logTimeInSeconds = 2.474;
     auto logger = std::make_unique<FormantShifterLogger>(
         sampleRate, logTimeInSeconds * sampleRate);
-    constexpr auto E2Frequency = 82.41f;
     constexpr auto A1Frequency = 55.0f;
     PitchDetectorImpl sut(sampleRate, A1Frequency, {}, std::move(logger));
     std::ofstream resultFile(testUtils::getOutDir() + filenameStem + ".txt");

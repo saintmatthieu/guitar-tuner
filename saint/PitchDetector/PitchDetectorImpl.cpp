@@ -14,18 +14,17 @@
 
 namespace saint {
 
-std::unique_ptr<PitchDetector> PitchDetector::createInstance(
-    int sampleRate, const std::optional<float> &leastFrequencyToDetect) {
+std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate) {
   const auto debug =
       utils::getEnvironmentVariableAsBool("SAINT_DEBUG_PITCHDETECTOR");
+  constexpr auto A1Frequency = 55.0f;
   if (debug && utils::isDebugBuild()) {
     return std::make_unique<PitchDetectorImpl>(
-        sampleRate, leastFrequencyToDetect,
-        std::nullopt,
+        sampleRate, A1Frequency, std::nullopt,
         std::make_unique<FormantShifterLogger>(sampleRate, 0.2 * sampleRate));
   } else {
     return std::make_unique<PitchDetectorImpl>(
-        sampleRate, leastFrequencyToDetect, std::nullopt,
+        sampleRate, A1Frequency, std::nullopt,
         std::make_unique<DummyFormantShifterLogger>());
   }
 }
