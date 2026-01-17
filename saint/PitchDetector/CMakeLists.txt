@@ -12,7 +12,6 @@ target_sources(PitchDetector
 target_link_libraries(PitchDetector
   PUBLIC
     PFFFT
-    TestUtils
     Utils
 )
 

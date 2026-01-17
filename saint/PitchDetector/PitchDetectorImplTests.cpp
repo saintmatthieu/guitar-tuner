@@ -57,7 +57,7 @@ TEST(PitchDetectorImpl, stuff) {
     auto logger = std::make_unique<FormantShifterLogger>(
         sampleRate, logTimeInSeconds * sampleRate);
     constexpr auto A1Frequency = 55.0f;
-    PitchDetectorImpl sut(sampleRate, A1Frequency, {}, std::move(logger));
+    PitchDetectorImpl sut(sampleRate, A1Frequency, std::move(logger));
     std::ofstream resultFile(testUtils::getOutDir() + filenameStem + ".txt");
     for (auto n = 0; n + blockSize < src.data.size(); n += blockSize) {
       std::vector<float> buffer(blockSize);
