@@ -5,12 +5,11 @@
 namespace saint {
 class FormantShifterLoggerInterface;
 
+constexpr auto cepstrumDecimationFactor = 8;
+
 class CepstrumData {
 public:
-  CepstrumData(RealFft fft, std::vector<float> halfWindow)
-      : fft(std::move(fft)), halfWindow(std::move(halfWindow)) {
-    _cepstrum.value.resize(this->fft.size);
-  }
+  CepstrumData(int fftSize);
 
   RealFft fft;
   const std::vector<float> halfWindow;

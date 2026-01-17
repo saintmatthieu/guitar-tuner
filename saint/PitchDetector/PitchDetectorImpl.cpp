@@ -28,7 +28,6 @@ std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate) {
 }
 
 namespace {
-constexpr auto twoPi = 6.283185307179586f;
 constexpr auto cutoffFreq = 1500;
 
 constexpr float log2ToDb = 20 / 3.321928094887362f;
@@ -52,22 +51,6 @@ int getWindowSizeSamples(int sampleRate,
   // window, against 1 for a spectrum reading.
   const auto windowSizeMs = 1000 * 5 / freq;
   return static_cast<int>(windowSizeMs * sampleRate / 1000);
-}
-
-std::vector<float> getAnalysisWindow(int windowSize) {
-  std::vector<float> window((size_t)windowSize);
-  const auto freq = twoPi / (float)windowSize;
-  // TODO: make sure a rectangular window is tried.
-  for (auto i = 0u; i < windowSize; ++i) {
-    // A Hanning window.
-    // For this use case and if there is not need for overlapping windows,
-    // a flat-top might work as well.
-    // window[i] = 1.f / fftSize;
-    // i + 1 so that the tip of the window is at windowSize / 2, which is
-    // convenient when taking the second half of it.
-    window[i] = (1 - cosf((i + 1) * freq)) / 2;
-  }
-  return window;
 }
 
 void applyWindow(const std::vector<float> &window, std::vector<float> &input) {
@@ -129,38 +112,16 @@ std::vector<float> getWindowXCorr(RealFft &fft,
   getXCorr(fft, xcorr, lpWindow, logger);
   return xcorr;
 }
-
-constexpr auto decimationFactor = 8;
-
-constexpr auto getCepstrumSize(int fftSize) {
-  return fftSize / decimationFactor;
-}
-
-constexpr auto getCopiedSize(int fftSize) {
-  return fftSize / decimationFactor / 2 + 1;
-}
-
-std::vector<float> getHalfWindow(int fftSize) {
-  std::vector<float> window = getAnalysisWindow(getCepstrumSize(fftSize));
-  const auto copiedSize = getCopiedSize(fftSize);
-  window.erase(window.begin(), window.begin() + window.size() - copiedSize);
-  return window;
-}
-
-CepstrumData makeCepstrumData(int fftSize) {
-  return CepstrumData{RealFft(getCepstrumSize(fftSize)),
-                      getHalfWindow(fftSize)};
-}
 } // namespace
 
 PitchDetectorImpl::PitchDetectorImpl(
     int sampleRate, const std::optional<float> &leastFrequencyToDetect,
     std::unique_ptr<FormantShifterLoggerInterface> logger)
     : _sampleRate(sampleRate), _logger(std::move(logger)),
-      _window(getAnalysisWindow(
+      _window(utils::getAnalysisWindow(
           getWindowSizeSamples(sampleRate, leastFrequencyToDetect))),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
-      _fwdFft(_fftSize), _cepstrumData(makeCepstrumData(_fftSize)),
+      _fwdFft(_fftSize), _cepstrumData(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _lastSearchIndex(
           std::min(_fftSize / 2, static_cast<int>(sampleRate / 70))),
@@ -196,7 +157,7 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     constexpr auto maxPeriod = 1 / 60.f;
     constexpr auto minPeriod = 1 / 500.f;
     const auto cepstrumSamplePeriod =
-        decimationFactor / static_cast<float>(_sampleRate);
+        cepstrumDecimationFactor / static_cast<float>(_sampleRate);
     const auto firstCepstrumSample =
         static_cast<int>(minPeriod / cepstrumSamplePeriod);
     const auto lastCepstrumSample = std::min<int>(

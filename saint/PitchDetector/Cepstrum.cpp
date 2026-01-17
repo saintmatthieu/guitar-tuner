@@ -1,5 +1,6 @@
 #include "Cepstrum.h"
 #include "FormantShifterLoggerInterface.h"
+#include "Utils.h"
 
 #include <algorithm>
 
@@ -47,14 +48,45 @@ void saint::takeCepstrum(const std::complex<float> *spectrum, int N,
   logger.Log(logMag.value.data(), logMag.value.size(), "logMagSpectrum");
 
   cepstrumData.fft.forward(logMag.value.data(), cepstrumData.ptr());
+
   // PFFFT wrote cepstrumData.vec.size() / 2 complex values in cepstrumData.
   // Since logMag is symmetric, the imaginary parts will be (approximately)
   // zero. We collapse the data into real values.
+
+  // For convenience, we reinterpret the cepstrum data as complex.
   const auto complexCepstrum =
       reinterpret_cast<std::complex<float> *>(cepstrumData.ptr());
+  // Now we collapse.
   for (auto i = 1; i < cepstrumData.fft.size; ++i) {
     cepstrumData.vec()[i] = complexCepstrum[i].real();
   }
 
   logger.Log(cepstrumData.ptr(), cepstrumData.vec().size() / 2, "cepstrum");
 }
+
+namespace saint {
+namespace {
+constexpr auto getCepstrumSize(int fftSize) {
+  return fftSize / cepstrumDecimationFactor;
+}
+
+constexpr auto getCopiedSize(int fftSize) {
+  return fftSize / cepstrumDecimationFactor / 2 + 1;
+}
+
+std::vector<float> getHalfWindow(int fftSize) {
+  std::vector<float> window =
+      utils::getAnalysisWindow(getCepstrumSize(fftSize));
+  const auto copiedSize = getCopiedSize(fftSize);
+  window.erase(window.begin(), window.begin() + window.size() - copiedSize);
+  return window;
+}
+
+} // namespace
+
+CepstrumData::CepstrumData(int fftSize)
+    : fft(RealFft(fftSize / cepstrumDecimationFactor)),
+      halfWindow(getHalfWindow(fftSize)) {
+  _cepstrum.value.resize(this->fft.size);
+}
+} // namespace saint
