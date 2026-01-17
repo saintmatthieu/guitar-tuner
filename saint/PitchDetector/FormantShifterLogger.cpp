@@ -13,6 +13,7 @@
 #include <cmath>
 #include <vector>
 
+namespace saint {
 namespace {
 template <typename Iterator>
 void PrintPythonVector(std::ofstream &ofs, Iterator begin, Iterator end,
@@ -75,3 +76,4 @@ void FormantShifterLogger::ProcessFinished(std::complex<float> *spectrum,
   // std::fill(spectrum, spectrum + fftSize / 2 + 1, 1.f);
   mOfs.reset();
 }
+} // namespace saint

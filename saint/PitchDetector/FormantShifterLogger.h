@@ -17,6 +17,7 @@
 #include <fstream>
 #include <memory>
 
+namespace saint {
 class FormantShifterLogger : public FormantShifterLoggerInterface {
 public:
   FormantShifterLogger(int sampleRate, int logTimeInSamples);
@@ -45,3 +46,4 @@ private:
   std::unique_ptr<std::ofstream> mOfs;
   int mSampleCount = 0;
 };
+} // namespace saint

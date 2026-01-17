@@ -12,6 +12,7 @@
 **********************************************************************/
 #include "DummyFormantShifterLogger.h"
 
+namespace saint {
 DummyFormantShifterLogger::~DummyFormantShifterLogger() {}
 
 void DummyFormantShifterLogger::NewSamplesComing(int sampleCount) {}
@@ -27,3 +28,4 @@ void DummyFormantShifterLogger::Log(
 
 void DummyFormantShifterLogger::ProcessFinished(std::complex<float> *spectrum,
                                                 size_t fftSize) {}
+} // namespace saint

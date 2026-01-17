@@ -15,6 +15,7 @@
 #include <complex>
 #include <functional>
 
+namespace saint {
 class FormantShifterLoggerInterface {
 public:
   virtual ~FormantShifterLoggerInterface() = default;
@@ -39,3 +40,4 @@ public:
   virtual void ProcessFinished(std::complex<float> *spectrum,
                                size_t fftSize) = 0;
 };
+} // namespace saint

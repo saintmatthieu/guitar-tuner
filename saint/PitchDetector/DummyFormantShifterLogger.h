@@ -14,6 +14,7 @@
 
 #include "FormantShifterLoggerInterface.h"
 
+namespace saint {
 class DummyFormantShifterLogger : public FormantShifterLoggerInterface {
 public:
   ~DummyFormantShifterLogger() override;
@@ -25,3 +26,4 @@ public:
       const override;
   void ProcessFinished(std::complex<float> *spectrum, size_t fftSize) override;
 };
+} // namespace saint
