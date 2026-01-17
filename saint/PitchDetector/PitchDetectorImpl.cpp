@@ -156,19 +156,15 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     // We're using this for a tuner, so look between 60Hz and 500Hz.
     constexpr auto maxPeriod = 1 / 60.f;
     constexpr auto minPeriod = 1 / 500.f;
-    const auto cepstrumSamplePeriod =
-        cepstrumDecimationFactor / static_cast<float>(_sampleRate);
-    const auto firstCepstrumSample =
-        static_cast<int>(minPeriod / cepstrumSamplePeriod);
-    const auto lastCepstrumSample = std::min<int>(
-        maxPeriod / cepstrumSamplePeriod, _cepstrumData.vec().size() / 2);
+    const auto firstCepstrumSample = static_cast<int>(minPeriod * _sampleRate);
+    const auto lastCepstrumSample =
+        std::min<int>(maxPeriod * _sampleRate, _cepstrumData.vec().size() / 2);
     const auto it =
         std::max_element(_cepstrumData.vec().begin() + firstCepstrumSample,
                          _cepstrumData.vec().begin() + lastCepstrumSample);
     const auto maxCepstrumIndex =
         std::distance(_cepstrumData.vec().begin(), it);
-    const auto cepstrumEstimateHz =
-        1 / (maxCepstrumIndex * cepstrumSamplePeriod);
+    const auto cepstrumEstimateHz = _sampleRate / maxCepstrumIndex;
 
     auto &max = _maxima[_ringBufferIndex] = 0;
     auto maxIndex = 0;

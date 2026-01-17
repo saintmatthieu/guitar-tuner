@@ -5,8 +5,6 @@
 namespace saint {
 class FormantShifterLoggerInterface;
 
-constexpr auto cepstrumDecimationFactor = 8;
-
 class CepstrumData {
 public:
   CepstrumData(int fftSize);

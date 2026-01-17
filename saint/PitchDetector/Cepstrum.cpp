@@ -22,32 +22,29 @@ constexpr float FastLog2(float x) {
 void saint::takeCepstrum(const std::complex<float> *spectrum, int N,
                          CepstrumData &cepstrumData,
                          FormantShifterLoggerInterface &logger) {
-  Aligned<std::vector<float>> logMag;
-  // The information we're interested is doesn't exceed 3kHz. Assuming 44.1k,
-  // it means we can divide the fft size by about 16. But we will mirror it to
-  // enhance the periodicity, so only by 8.
-  const int copiedBins = cepstrumData.halfWindow.size();
-
-  logMag.value.resize(cepstrumData.fft.size);
+  Aligned<std::vector<float>> alignedLogMag;
+  auto &logMag = alignedLogMag.value;
+  logMag.resize(cepstrumData.fft.size);
 
   // First bin is DC only.
-  logMag.value[0] = FastLog2(spectrum[0].real() * spectrum[0].real());
+  logMag[0] = FastLog2(spectrum[0].real() * spectrum[0].real());
   auto k = 1;
-  std::transform(spectrum + 1, spectrum + copiedBins, logMag.value.begin(),
-                 [&](const std::complex<float> &X) {
+  std::transform(spectrum + 1, spectrum + cepstrumData.halfWindow.size(),
+                 logMag.begin(), [&](const std::complex<float> &X) {
                    const auto power = X.real() * X.real() + X.imag() * X.imag();
                    const auto w = cepstrumData.halfWindow[k++];
                    return w * FastLog2(power);
                  });
 
-  // Mirror about the half
-  std::reverse_copy(logMag.value.begin() + 1,
-                    logMag.value.begin() + copiedBins - 1,
-                    logMag.value.begin() + copiedBins);
+  // No need to set the middle values to zero, `resize` already did that.
 
-  logger.Log(logMag.value.data(), logMag.value.size(), "logMagSpectrum");
+  // Now we mirror about the half
+  std::reverse_copy(logMag.begin() + 1, logMag.begin() + k - 1,
+                    logMag.end() - (k - 2));
 
-  cepstrumData.fft.forward(logMag.value.data(), cepstrumData.ptr());
+  logger.Log(logMag.data(), logMag.size(), "logMagSpectrum");
+
+  cepstrumData.fft.forward(logMag.data(), cepstrumData.ptr());
 
   // PFFFT wrote cepstrumData.vec.size() / 2 complex values in cepstrumData.
   // Since logMag is symmetric, the imaginary parts will be (approximately)
@@ -57,7 +54,7 @@ void saint::takeCepstrum(const std::complex<float> *spectrum, int N,
   const auto complexCepstrum =
       reinterpret_cast<std::complex<float> *>(cepstrumData.ptr());
   // Now we collapse.
-  for (auto i = 1; i < cepstrumData.fft.size; ++i) {
+  for (auto i = 1; i < cepstrumData.fft.size / 2; ++i) {
     cepstrumData.vec()[i] = complexCepstrum[i].real();
   }
 
@@ -66,27 +63,18 @@ void saint::takeCepstrum(const std::complex<float> *spectrum, int N,
 
 namespace saint {
 namespace {
-constexpr auto getCepstrumSize(int fftSize) {
-  return fftSize / cepstrumDecimationFactor;
-}
-
-constexpr auto getCopiedSize(int fftSize) {
-  return fftSize / cepstrumDecimationFactor / 2 + 1;
-}
-
 std::vector<float> getHalfWindow(int fftSize) {
-  std::vector<float> window =
-      utils::getAnalysisWindow(getCepstrumSize(fftSize));
-  const auto copiedSize = getCopiedSize(fftSize);
-  window.erase(window.begin(), window.begin() + window.size() - copiedSize);
+  // We'll only be keeping the lower part of the spectrum - the rest is just too
+  // noisy. The rest will be zeroed and it will act as zero-padding.
+  std::vector<float> window = utils::getAnalysisWindow(fftSize / 8);
+  window.erase(window.begin(), window.begin() + window.size() / 2 - 1);
   return window;
 }
 
 } // namespace
 
 CepstrumData::CepstrumData(int fftSize)
-    : fft(RealFft(fftSize / cepstrumDecimationFactor)),
-      halfWindow(getHalfWindow(fftSize)) {
+    : fft(RealFft(fftSize)), halfWindow(getHalfWindow(fftSize)) {
   _cepstrum.value.resize(this->fft.size);
 }
 } // namespace saint
