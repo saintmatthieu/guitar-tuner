@@ -1,0 +1,6 @@
+{
+  "cmake.configureArgs": [
+    // "-DPFFFT_DISABLE_LINK_WITH_M=ON",
+  ],
+  "cmake.generator": "Ninja"
+}

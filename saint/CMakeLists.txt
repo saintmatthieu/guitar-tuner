@@ -1,0 +1,4 @@
+add_subdirectory(PitchDetector)
+add_subdirectory(SoloHarmonizerEditorTestApp)
+add_subdirectory(TestUtils)
+add_subdirectory(Utils)
