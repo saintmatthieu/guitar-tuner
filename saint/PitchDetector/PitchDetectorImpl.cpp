@@ -76,7 +76,9 @@ std::vector<float> getAnalysisWindow(int windowSize) {
     // For this use case and if there is not need for overlapping windows,
     // a flat-top might work as well.
     // window[i] = 1.f / fftSize;
-    window[i] = (1 - cosf(i * freq)) / 2;
+    // i + 1 so that the tip of the window is at windowSize / 2, which is
+    // convenient when taking the second half of it.
+    window[i] = (1 - cosf((i + 1) * freq)) / 2;
   }
   return window;
 }
