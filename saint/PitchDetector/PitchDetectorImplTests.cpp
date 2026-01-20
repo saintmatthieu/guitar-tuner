@@ -26,9 +26,8 @@ TEST(PitchDetectorImpl, testOnFiles) {
     const auto filenameStem = testFile.stem().string();
     constexpr auto blockSize = 512;
     const testUtils::Audio src = testUtils::fromWavFile(testFile);
-    constexpr auto logTimeInSeconds = 1.0;
-    auto logger = std::make_unique<FormantShifterLogger>(
-        src.sampleRate, logTimeInSeconds * src.sampleRate);
+    constexpr auto logTimeInSeconds = 1.876;
+    auto logger = std::make_unique<FormantShifterLogger>(src.sampleRate, 82432);
     PitchDetectorImpl sut(src.sampleRate, std::move(logger));
     std::vector<float> results;
     for (auto n = 0; n + blockSize < src.data.size(); n += blockSize) {
@@ -36,6 +35,7 @@ TEST(PitchDetectorImpl, testOnFiles) {
       std::vector<float *> channels(1);
       channels[0] = buffer.data();
       const auto result = sut.process(src.data.data() + n, blockSize);
+      // If there is no update, we log 0.
       results.push_back(result.has_value() ? *result : 0.f);
     }
 

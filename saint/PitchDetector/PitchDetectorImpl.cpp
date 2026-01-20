@@ -187,12 +187,13 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     max /= _windowXcor[maxIndex];
     if (max > 0.9) {
       // _detectedPitch = _sampleRate / maxIndex;
-      _detectedPitch = getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
+      return getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
     } else {
-      _detectedPitch.reset();
+      return 0.f;
     }
     _ringBufferIndex = (_ringBufferIndex + 1) % _ringBuffers.size();
   }
-  return _detectedPitch;
+  // No update
+  return std::nullopt;
 }
 } // namespace saint
