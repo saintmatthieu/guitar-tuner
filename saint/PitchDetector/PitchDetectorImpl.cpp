@@ -16,14 +16,13 @@ namespace saint {
 std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate) {
   const auto debug =
       utils::getEnvironmentVariableAsBool("SAINT_DEBUG_PITCHDETECTOR");
-  constexpr auto A1Frequency = 55.0f;
   if (debug && utils::isDebugBuild()) {
     return std::make_unique<PitchDetectorImpl>(
-        sampleRate, A1Frequency,
+        sampleRate,
         std::make_unique<FormantShifterLogger>(sampleRate, 0.2 * sampleRate));
   } else {
     return std::make_unique<PitchDetectorImpl>(
-        sampleRate, A1Frequency, std::make_unique<DummyFormantShifterLogger>());
+        sampleRate, std::make_unique<DummyFormantShifterLogger>());
   }
 }
 
@@ -31,6 +30,7 @@ namespace {
 constexpr auto cutoffFreq = 1500;
 
 constexpr float log2ToDb = 20 / 3.321928094887362f;
+constexpr float leastFrequencyToDetect = /* A0 */ 27.5f;
 
 int getFftOrder(int windowSize) {
   return static_cast<int>(ceilf(log2f((float)windowSize)));
@@ -38,18 +38,13 @@ int getFftOrder(int windowSize) {
 
 int getFftSizeSamples(int windowSize) { return 1 << getFftOrder(windowSize); }
 
-int getWindowSizeSamples(int sampleRate,
-                         const std::optional<float> &leastFrequencyToDetect) {
-  // If not provided, use the lower open-E of a guitar.
-  const auto freq =
-      leastFrequencyToDetect.has_value() ? *leastFrequencyToDetect : 83.f;
-
+int getWindowSizeSamples(int sampleRate) {
   // 3.3 times the fundamental period. More and that's unnecessary delay, less
   // and the detection becomes inaccurate - at least with this autocorrelation
   // method. A spectral-domain method might need less than this, since
   // autocorrelation requires there to be at least two periods within the
   // window, against 1 for a spectrum reading.
-  const auto windowSizeMs = 1000 * 5 / freq;
+  const auto windowSizeMs = 1000 * 3.3 / leastFrequencyToDetect;
   return static_cast<int>(windowSizeMs * sampleRate / 1000);
 }
 
@@ -112,19 +107,44 @@ std::vector<float> getWindowXCorr(RealFft &fft,
   getXCorr(fft, xcorr, lpWindow, logger);
   return xcorr;
 }
+
+double getCepstrumPeakFrequency(const CepstrumData &cepstrumData,
+                                int sampleRate) {
+  // We're using this for a tuner, so look between 30Hz (a detuned E0 on a bass
+  // guitar) and 500Hz (Ukulele high A is 440Hz)
+  constexpr auto maxPeriod = 1 / 30.f;
+  constexpr auto minPeriod = 1 / 500.f;
+  const auto firstCepstrumSample = static_cast<int>(minPeriod * sampleRate);
+  const auto &vec = cepstrumData.vec();
+  const auto lastCepstrumSample =
+      std::min<int>(maxPeriod * sampleRate, vec.size() / 2);
+  const auto it = std::max_element(vec.begin() + firstCepstrumSample,
+                                   vec.begin() + lastCepstrumSample);
+  const auto maxCepstrumIndex = std::distance(vec.begin(), it);
+  if (maxCepstrumIndex == 0)
+    return 0;
+  else if (maxCepstrumIndex == vec.size())
+    return sampleRate / maxCepstrumIndex;
+
+  // Parabolic interpolation
+  const auto prev = vec[maxCepstrumIndex - 1];
+  const auto max = vec[maxCepstrumIndex];
+  const auto next = vec[maxCepstrumIndex + 1];
+  const auto p = 0.5f * (prev - next) / (prev + next - 2 * max);
+  const auto peakIndex = maxCepstrumIndex + p;
+  return sampleRate / peakIndex;
+}
 } // namespace
 
 PitchDetectorImpl::PitchDetectorImpl(
-    int sampleRate, const std::optional<float> &leastFrequencyToDetect,
-    std::unique_ptr<FormantShifterLoggerInterface> logger)
+    int sampleRate, std::unique_ptr<FormantShifterLoggerInterface> logger)
     : _sampleRate(sampleRate), _logger(std::move(logger)),
-      _window(utils::getAnalysisWindow(
-          getWindowSizeSamples(sampleRate, leastFrequencyToDetect))),
+      _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate))),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
       _fwdFft(_fftSize), _cepstrumData(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
-      _lastSearchIndex(
-          std::min(_fftSize / 2, static_cast<int>(sampleRate / 70))),
+      _lastSearchIndex(std::min(
+          _fftSize / 2, static_cast<int>(sampleRate / leastFrequencyToDetect))),
       _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {
 
   // Fill the first ring buffer with half the window size of zeros.
@@ -151,20 +171,8 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     applyWindow(_window, time);
     _logger->Log(time.data(), time.size(), "windowedAudio");
     getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData);
+    _logger->Log(time.data(), time.size(), "xcorr");
     _logger->ProcessFinished(nullptr, 0);
-
-    // We're using this for a tuner, so look between 60Hz and 500Hz.
-    constexpr auto maxPeriod = 1 / 60.f;
-    constexpr auto minPeriod = 1 / 500.f;
-    const auto firstCepstrumSample = static_cast<int>(minPeriod * _sampleRate);
-    const auto lastCepstrumSample =
-        std::min<int>(maxPeriod * _sampleRate, _cepstrumData.vec().size() / 2);
-    const auto it =
-        std::max_element(_cepstrumData.vec().begin() + firstCepstrumSample,
-                         _cepstrumData.vec().begin() + lastCepstrumSample);
-    const auto maxCepstrumIndex =
-        std::distance(_cepstrumData.vec().begin(), it);
-    const auto cepstrumEstimateHz = _sampleRate / maxCepstrumIndex;
 
     auto &max = _maxima[_ringBufferIndex] = 0;
     auto maxIndex = 0;
@@ -179,7 +187,7 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     max /= _windowXcor[maxIndex];
     if (max > 0.9) {
       // _detectedPitch = _sampleRate / maxIndex;
-      _detectedPitch = cepstrumEstimateHz;
+      _detectedPitch = getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
     } else {
       _detectedPitch.reset();
     }

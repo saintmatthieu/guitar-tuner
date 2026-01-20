@@ -13,6 +13,7 @@ public:
   const std::vector<float> halfWindow;
 
   std::vector<float> &vec() { return _cepstrum.value; }
+  const std::vector<float> &vec() const { return _cepstrum.value; }
   float *ptr() { return _cepstrum.value.data(); }
 
 private:
