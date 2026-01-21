@@ -163,6 +163,8 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
   _logger->Log(_fftSize, "fftSize");
   _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
 
+  std::optional<float> result;
+
   while (_ringBuffers[_ringBufferIndex].readAvailable() >= _window.size()) {
     std::vector<float> time(_fftSize);
     _ringBuffers[_ringBufferIndex].readBuff(time.data(), _window.size());
@@ -184,16 +186,17 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
         maxIndex = i;
       }
     }
+    _ringBufferIndex = (_ringBufferIndex + 1) % _ringBuffers.size();
+
     max /= _windowXcor[maxIndex];
     if (max > 0.9) {
       // _detectedPitch = _sampleRate / maxIndex;
-      return getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
-    } else {
-      return 0.f;
+      result = getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
+    } else if (!result.has_value()) {
+      result = 0.f;
     }
-    _ringBufferIndex = (_ringBufferIndex + 1) % _ringBuffers.size();
   }
-  // No update
-  return std::nullopt;
+
+  return result;
 }
 } // namespace saint
