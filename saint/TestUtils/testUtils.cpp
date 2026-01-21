@@ -9,8 +9,6 @@
 namespace saint {
 namespace fs = std::filesystem;
 
-static const std::string rootDir = "C:/Users/saint/Downloads/pitch/";
-
 testUtils::Audio testUtils::fromWavFile(fs::path path) {
   // read all the file in one go using libsndfile:
   SF_INFO sfinfo;
@@ -28,6 +26,12 @@ testUtils::Audio testUtils::fromWavFile(fs::path path) {
   return {std::move(audio), sfinfo.samplerate};
 }
 
-std::string testUtils::getRootDir() { return rootDir; }
-std::string testUtils::getOutDir() { return rootDir + "out/"; }
+std::string testUtils::getRootDir() {
+  if (const char *env_dir = std::getenv("SAINT_DOWNLOADS")) {
+    return std::string(env_dir) + "/pitch/";
+  }
+  return "C:/Users/saint/Downloads/pitch/";
+}
+
+std::string testUtils::getOutDir() { return getRootDir() + "out/"; }
 } // namespace saint
