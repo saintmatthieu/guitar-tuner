@@ -7,7 +7,11 @@ set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
 
 project(guitar-tuner VERSION 0.0.1)
 
-set(PFFFT_DISABLE_LINK_WITH_M ON CACHE BOOL "" FORCE)
+if(WIN32)
+  set(PFFFT_DISABLE_LINK_WITH_M ON CACHE BOOL "" FORCE)
+else()
+  set(PFFFT_DISABLE_LINK_WITH_M OFF CACHE BOOL "" FORCE)
+endif()
 
 add_subdirectory(googletest)
 add_subdirectory(pffft)

@@ -2,17 +2,25 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 
 namespace saint {
 std::string utils::getEnvironmentVariable(const char *var) {
+#ifdef _WIN32
   char *buffer = nullptr;
   size_t size = 0;
   _dupenv_s(&buffer, &size, var);
   if (!buffer) {
     return "";
   } else {
-    return std::string{buffer};
+    std::string result{buffer};
+    free(buffer);
+    return result;
   }
+#else
+  const char *value = std::getenv(var);
+  return value ? std::string{value} : "";
+#endif
 }
 
 bool utils::getEnvironmentVariableAsBool(const char *var) {
@@ -32,7 +40,7 @@ bool utils::isDebugBuild() {
 }
 
 float utils::getPitch(int noteNumber) {
-  return 440 * std::powf(2, (noteNumber - 69) / 12.f);
+  return 440 * std::pow(2.f, (noteNumber - 69) / 12.f);
 }
 
 float utils::getCrotchetsPerSample(float crotchetsPerSecond,

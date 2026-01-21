@@ -5,14 +5,22 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch Program",
+      "name": "Launch (Linux)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Launch (Windows)",
       "type": "cppvsdbg",
       "request": "launch",
       "program": "${command:cmake.launchTargetPath}",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
-      "environment": [],
+      "environment": []
     }
   ]
 }
