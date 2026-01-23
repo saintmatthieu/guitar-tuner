@@ -10,19 +10,19 @@
 #include <functional>
 #include <optional>
 
-class FormantShifterLoggerInterface;
+class PitchDetectorLoggerInterface;
 
 namespace saint {
 class PitchDetectorImpl : public PitchDetector {
 public:
   // Don't even try instantiating me if the block size exceeds this.
   PitchDetectorImpl(int sampleRate,
-                    std::unique_ptr<FormantShifterLoggerInterface> logger);
+                    std::unique_ptr<PitchDetectorLoggerInterface> logger);
   std::optional<float> process(const float *, int) override;
 
 private:
   const float _sampleRate;
-  const std::unique_ptr<FormantShifterLoggerInterface> _logger;
+  const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
   const std::vector<float> _window;
   const int _fftSize;
   RealFft _fwdFft;

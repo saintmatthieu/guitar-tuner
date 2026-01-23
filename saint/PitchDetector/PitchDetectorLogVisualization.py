@@ -23,11 +23,11 @@ import os, sys
 appdata_path = os.path.join(os.getenv('APPDATA'), 'audacity', 'TimeAndPitchTuning')
 sys.path.append(appdata_path)
 
-import FormantShifterLog as FSL
+import PitchDetectorLog as PDL
 import numpy as np
 
-sampleRate = FSL.sampleRate
-fftSize = FSL.fftSize
+sampleRate = PDL.sampleRate
+fftSize = PDL.fftSize
 numBins = fftSize // 2 + 1
 # Calculate `freqs` array using linspace
 f = np.linspace(0, sampleRate / 2, numBins)
@@ -40,7 +40,7 @@ xlim = sampleRate/2
 
 plt.figure()
 plt.yscale(yscale)
-plt.plot(f, FSL.weights)
+plt.plot(f, PDL.weights)
 plt.xlim(0, sampleRate/2)
 plt.title('weights')
 plt.grid()
@@ -50,8 +50,8 @@ plt.title('fftSize:' + str(fftSize))
 
 plt.subplot(2, 1, 1)
 plt.yscale(yscale)
-plt.plot(f, FSL.magnitude, marker='x', markersize=markersize)
-plt.plot(f, FSL.envelope, linestyle='dotted', marker='o', markersize=markersize, fillstyle='none')
+plt.plot(f, PDL.magnitude, marker='x', markersize=markersize)
+plt.plot(f, PDL.envelope, linestyle='dotted', marker='o', markersize=markersize, fillstyle='none')
 plt.legend(['mag', 'env'])
 plt.xlim(0, xlim)
 plt.ylabel('input')
@@ -59,16 +59,16 @@ plt.grid()
 
 plt.subplot(2, 1, 2)
 plt.yscale(yscale)
-plt.plot(f, FSL.weightedMagnitude, marker='x', markersize=markersize)
-plt.plot(f, FSL.envelopeResampled, linestyle='dotted', marker='o', markersize=markersize, fillstyle='none')
+plt.plot(f, PDL.weightedMagnitude, marker='x', markersize=markersize)
+plt.plot(f, PDL.envelopeResampled, linestyle='dotted', marker='o', markersize=markersize, fillstyle='none')
 plt.legend(['mag', 'env'])
 plt.xlim(0, xlim)
 plt.ylabel('output')
 plt.grid()
 
 plt.figure()
-plt.plot(q, FSL.cepstrum)
-plt.plot(q, FSL.cepstrumLiftered, linestyle='dotted')
+plt.plot(q, PDL.cepstrum)
+plt.plot(q, PDL.cepstrumLiftered, linestyle='dotted')
 plt.title('cepstrum')
 plt.grid()
 plt.xlim(0, 1000*fftSize/sampleRate/2)

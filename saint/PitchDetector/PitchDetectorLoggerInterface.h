@@ -3,7 +3,7 @@
 
   Audacity: A Digital Audio Editor
 
-  FormantShifterLoggerInterface.h
+  PitchDetectorLoggerInterface.h
 
   A visualization helper for the development of the formant shifter.
 
@@ -16,9 +16,9 @@
 #include <functional>
 
 namespace saint {
-class FormantShifterLoggerInterface {
+class PitchDetectorLoggerInterface {
 public:
-  virtual ~FormantShifterLoggerInterface() = default;
+  virtual ~PitchDetectorLoggerInterface() = default;
 
   virtual void NewSamplesComing(int sampleCount) = 0;
 

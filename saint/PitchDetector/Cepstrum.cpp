@@ -1,5 +1,5 @@
 #include "Cepstrum.h"
-#include "FormantShifterLoggerInterface.h"
+#include "PitchDetectorLoggerInterface.h"
 #include "Utils.h"
 
 #include <algorithm>
@@ -21,7 +21,7 @@ constexpr float FastLog2(float x) {
 
 void saint::takeCepstrum(const std::complex<float> *spectrum, int N,
                          CepstrumData &cepstrumData,
-                         FormantShifterLoggerInterface &logger) {
+                         PitchDetectorLoggerInterface &logger) {
   Aligned<std::vector<float>> alignedLogMag;
   auto &logMag = alignedLogMag.value;
   logMag.resize(cepstrumData.fft.size);

@@ -3,7 +3,7 @@
 #include "RealFft.h"
 
 namespace saint {
-class FormantShifterLoggerInterface;
+class PitchDetectorLoggerInterface;
 
 class CepstrumData {
 public:
@@ -25,5 +25,5 @@ private:
  */
 void takeCepstrum(const std::complex<float> *spectrum, int N,
                   CepstrumData &cepstrumData,
-                  FormantShifterLoggerInterface &logger);
+                  PitchDetectorLoggerInterface &logger);
 } // namespace saint

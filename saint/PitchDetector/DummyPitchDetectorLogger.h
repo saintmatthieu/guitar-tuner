@@ -3,7 +3,7 @@
 
   Audacity: A Digital Audio Editor
 
-  DummyFormantShifterLogger.h
+  DummyPitchDetectorLogger.h
 
   A class for shifting the formants of a voice signal.
 
@@ -12,12 +12,12 @@
 **********************************************************************/
 #pragma once
 
-#include "FormantShifterLoggerInterface.h"
+#include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
-class DummyFormantShifterLogger : public FormantShifterLoggerInterface {
+class DummyPitchDetectorLogger : public PitchDetectorLoggerInterface {
 public:
-  ~DummyFormantShifterLogger() override;
+  ~DummyPitchDetectorLogger() override;
   void NewSamplesComing(int sampleCount) override;
   void Log(int value, const char *name) const override;
   void Log(const float *samples, size_t size, const char *name) const override;

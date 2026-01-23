@@ -3,9 +3,9 @@
 
   Audacity: A Digital Audio Editor
 
-  FormantShifterLogger.h
+  PitchDetectorLogger.h
 
-  Implements FormantShifterLoggerInterface, and also provides tuning utilities
+  Implements PitchDetectorLoggerInterface, and also provides tuning utilities
   to override algorithm parameters.
 
   Matthieu Hodgkinson
@@ -13,15 +13,15 @@
 **********************************************************************/
 #pragma once
 
-#include "PitchDetector/FormantShifterLoggerInterface.h"
+#include "PitchDetector/PitchDetectorLoggerInterface.h"
 #include <fstream>
 #include <memory>
 
 namespace saint {
-class FormantShifterLogger : public FormantShifterLoggerInterface {
+class PitchDetectorLogger : public PitchDetectorLoggerInterface {
 public:
-  FormantShifterLogger(int sampleRate, int logTimeInSamples);
-  ~FormantShifterLogger() override;
+  PitchDetectorLogger(int sampleRate, int logTimeInSamples);
+  ~PitchDetectorLogger() override;
 
   void NewSamplesComing(int sampleCount) override;
 

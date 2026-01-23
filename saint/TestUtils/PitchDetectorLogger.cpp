@@ -3,12 +3,12 @@
 
   Audacity: A Digital Audio Editor
 
-  FormantShifterLogger.cpp
+  PitchDetectorLogger.cpp
 
   Matthieu Hodgkinson
 
 **********************************************************************/
-#include "FormantShifterLogger.h"
+#include "PitchDetectorLogger.h"
 #include "testUtils.h"
 #include <algorithm>
 #include <cmath>
@@ -25,30 +25,30 @@ void PrintPythonVector(std::ofstream &ofs, Iterator begin, Iterator end,
 }
 } // namespace
 
-FormantShifterLogger::FormantShifterLogger(int sampleRate, int logSample)
+PitchDetectorLogger::PitchDetectorLogger(int sampleRate, int logSample)
     : mSampleRate{sampleRate}, mLogSample{logSample} {}
 
-FormantShifterLogger::~FormantShifterLogger() {}
+PitchDetectorLogger::~PitchDetectorLogger() {}
 
-void FormantShifterLogger::NewSamplesComing(int sampleCount) {
+void PitchDetectorLogger::NewSamplesComing(int sampleCount) {
   mSampleCount += sampleCount;
   if (!mWasLogged && mLogSample <= mSampleCount) {
     // Ready for logging.
     mOfs = std::make_unique<std::ofstream>(testUtils::getOutDir() /
-                                           "FormantShifterLog.py");
+                                           "PitchDetectorLog.py");
     *mOfs << "sampleRate = " << mSampleRate << "\n";
     mWasLogged = true;
   }
 }
 
-void FormantShifterLogger::Log(int value, const char *name) const {
+void PitchDetectorLogger::Log(int value, const char *name) const {
   if (mOfs) {
     *mOfs << name << " = " << value << "\n";
   }
 }
 
-void FormantShifterLogger::Log(const float *samples, size_t size,
-                               const char *name) const {
+void PitchDetectorLogger::Log(const float *samples, size_t size,
+                              const char *name) const {
   if (!mOfs) {
     // Keep it lightweight if we're not logging.
     return;
@@ -56,7 +56,7 @@ void FormantShifterLogger::Log(const float *samples, size_t size,
   PrintPythonVector(*mOfs, samples, samples + size, name);
 }
 
-void FormantShifterLogger::Log(
+void PitchDetectorLogger::Log(
     const std::complex<float> *cv, size_t cvSize, const char *name,
     const std::function<float(const std::complex<float> &)> &transform) const {
   if (!mOfs) {
@@ -67,8 +67,8 @@ void FormantShifterLogger::Log(
   PrintPythonVector(*mOfs, v.begin(), v.end(), name);
 }
 
-void FormantShifterLogger::ProcessFinished(std::complex<float> *spectrum,
-                                           size_t fftSize) {
+void PitchDetectorLogger::ProcessFinished(std::complex<float> *spectrum,
+                                          size_t fftSize) {
   if (!mOfs) {
     return;
   }

@@ -6,7 +6,7 @@ target_sources(PitchDetector
   PUBLIC
     Cepstrum.cpp
     PitchDetectorImpl.cpp
-    DummyFormantShifterLogger.cpp
+    DummyPitchDetectorLogger.cpp
 )
 
 target_link_libraries(PitchDetector

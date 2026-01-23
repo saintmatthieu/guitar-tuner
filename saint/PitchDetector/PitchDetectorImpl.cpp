@@ -1,5 +1,5 @@
 #include "PitchDetectorImpl.h"
-#include "DummyFormantShifterLogger.h"
+#include "DummyPitchDetectorLogger.h"
 #include "Utils.h"
 
 #include <algorithm>
@@ -12,7 +12,7 @@ namespace saint {
 
 std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate) {
   return std::make_unique<PitchDetectorImpl>(
-      sampleRate, std::make_unique<DummyFormantShifterLogger>());
+      sampleRate, std::make_unique<DummyPitchDetectorLogger>());
 }
 
 namespace {
@@ -45,7 +45,7 @@ void applyWindow(const std::vector<float> &window, std::vector<float> &input) {
 
 void getXCorr(RealFft &fft, std::vector<float> &time,
               const std::vector<float> &lpWindow,
-              FormantShifterLoggerInterface &logger,
+              PitchDetectorLoggerInterface &logger,
               CepstrumData *cepstrumData = nullptr) {
   Aligned<std::vector<std::complex<float>>> freq;
   freq.value.resize(fft.size / 2);
@@ -92,7 +92,7 @@ std::vector<float> getWindowXCorr(RealFft &fft,
   xcorr.resize(fft.size);
   std::copy(window.begin(), window.end(), xcorr.begin());
   std::fill(xcorr.begin() + window.size(), xcorr.end(), 0.f);
-  DummyFormantShifterLogger logger;
+  DummyPitchDetectorLogger logger;
   getXCorr(fft, xcorr, lpWindow, logger);
   return xcorr;
 }
@@ -126,7 +126,7 @@ double getCepstrumPeakFrequency(const CepstrumData &cepstrumData,
 } // namespace
 
 PitchDetectorImpl::PitchDetectorImpl(
-    int sampleRate, std::unique_ptr<FormantShifterLoggerInterface> logger)
+    int sampleRate, std::unique_ptr<PitchDetectorLoggerInterface> logger)
     : _sampleRate(sampleRate), _logger(std::move(logger)),
       _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate))),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),

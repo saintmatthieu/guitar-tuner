@@ -1,6 +1,6 @@
 #include "PitchDetectorImpl.h"
 
-#include "FormantShifterLogger.h"
+#include "PitchDetectorLogger.h"
 #include "testUtils.h"
 
 #include <gtest/gtest.h>
@@ -27,7 +27,7 @@ TEST(PitchDetectorImpl, testOnFiles) {
     constexpr auto blockSize = 512;
     const testUtils::Audio src = testUtils::fromWavFile(testFile);
     constexpr auto logTimeInSeconds = 1.876;
-    auto logger = std::make_unique<FormantShifterLogger>(src.sampleRate, 53248);
+    auto logger = std::make_unique<PitchDetectorLogger>(src.sampleRate, 53248);
     PitchDetectorImpl sut(src.sampleRate, std::move(logger));
     std::vector<std::optional<float>> results;
     for (auto n = 0; n + blockSize < src.data.size(); n += blockSize) {
