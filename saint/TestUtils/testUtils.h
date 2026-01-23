@@ -12,6 +12,7 @@ struct Audio {
 };
 
 Audio fromWavFile(std::filesystem::path path);
+bool toWavFile(std::filesystem::path path, const Audio &audio);
 
 std::filesystem::path getEvalDir();
 std::filesystem::path getOutDir();

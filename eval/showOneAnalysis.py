@@ -7,7 +7,8 @@ import PitchDetectorLog as pdl
 import matplotlib.pyplot as plt
 
 fig = 1
-t = [i / pdl.sampleRate for i in range(len(pdl.inputAudio))]
+t0 = pdl.audioIndex / pdl.sampleRate
+t = [t0 + i / pdl.sampleRate for i in range(len(pdl.inputAudio))]
 cepstrumT = [i / pdl.sampleRate for i in range(len(pdl.cepstrum))]
 
 plt.figure(fig)

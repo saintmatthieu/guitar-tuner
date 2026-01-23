@@ -27,9 +27,8 @@ private:
   const int _fftSize;
   RealFft _fwdFft;
   CepstrumData _cepstrumData;
-  std::array<jnk0le::Ringbuffer<float, maxBlockSize>, 2> _ringBuffers;
-  std::array<float, 2> _maxima;
-  int _ringBufferIndex = 0;
+  jnk0le::Ringbuffer<float, maxBlockSize> _ringBuffer;
+  float _maximum = 0.f;
   const std::vector<float> _lpWindow;
   const std::vector<float> _windowXcor;
   const int _lastSearchIndex;

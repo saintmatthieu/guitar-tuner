@@ -18,12 +18,13 @@ namespace saint {
 class DummyPitchDetectorLogger : public PitchDetectorLoggerInterface {
 public:
   ~DummyPitchDetectorLogger() override;
-  void NewSamplesComing(int sampleCount) override;
+  void SamplesRead(int) override {}
+  bool StartNewEstimate() override { return false; }
   void Log(int value, const char *name) const override;
   void Log(const float *samples, size_t size, const char *name) const override;
   void Log(const std::complex<float> *samples, size_t size, const char *name,
            const std::function<float(const std::complex<float> &)> &transform)
       const override;
-  void ProcessFinished(std::complex<float> *spectrum, size_t fftSize) override;
+  void EndNewEstimate(std::complex<float> *spectrum, size_t fftSize) override;
 };
 } // namespace saint

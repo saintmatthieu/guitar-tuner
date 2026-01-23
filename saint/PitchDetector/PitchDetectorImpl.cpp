@@ -134,51 +134,42 @@ PitchDetectorImpl::PitchDetectorImpl(
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _lastSearchIndex(std::min(
           _fftSize / 2, static_cast<int>(sampleRate / leastFrequencyToDetect))),
-      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {
-
-  // Fill the first ring buffer with half the window size of zeros.
-  std::vector<float> zeros(_window.size() / 2);
-  std::fill(zeros.begin(), zeros.end(), 0.f);
-  _ringBuffers[0].writeBuff(zeros.data(), zeros.size());
-}
+      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {}
 
 std::optional<float> PitchDetectorImpl::process(const float *audio,
                                                 int audioSize) {
-  _ringBuffers[0].writeBuff(audio, audioSize);
-  _ringBuffers[1].writeBuff(audio, audioSize);
-  _logger->NewSamplesComing(audioSize);
-  static auto count = 0;
-  _logger->Log(_sampleRate, "sampleRate");
-  _logger->Log(_fftSize, "fftSize");
-  _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
+  _ringBuffer.writeBuff(audio, audioSize);
 
   std::optional<float> result;
 
-  while (_ringBuffers[_ringBufferIndex].readAvailable() >= _window.size()) {
+  while (_ringBuffer.readAvailable() >= _window.size()) {
     std::vector<float> time(_fftSize);
-    _ringBuffers[_ringBufferIndex].readBuff(time.data(), _window.size());
+    _ringBuffer.readBuff(time.data(), _window.size());
     std::fill(time.begin() + _window.size(), time.begin() + _fftSize, 0.f);
+    _logger->SamplesRead(_window.size());
+    _logger->StartNewEstimate();
+    _logger->Log(_sampleRate, "sampleRate");
+    _logger->Log(_fftSize, "fftSize");
+    _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
     _logger->Log(time.data(), time.size(), "inputAudio");
     applyWindow(_window, time);
     _logger->Log(time.data(), time.size(), "windowedAudio");
     getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData);
     _logger->Log(time.data(), time.size(), "xcorr");
-    _logger->ProcessFinished(nullptr, 0);
+    _logger->EndNewEstimate(nullptr, 0);
 
-    auto &max = _maxima[_ringBufferIndex] = 0;
     auto maxIndex = 0;
     auto wentNegative = false;
     for (auto i = 0; i < _lastSearchIndex; ++i) {
       wentNegative |= time[i] < 0;
-      if (wentNegative && time[i] > max) {
-        max = time[i];
+      if (wentNegative && time[i] > _maximum) {
+        _maximum = time[i];
         maxIndex = i;
       }
     }
-    _ringBufferIndex = (_ringBufferIndex + 1) % _ringBuffers.size();
 
-    max /= _windowXcor[maxIndex];
-    if (max > 0.9) {
+    _maximum /= _windowXcor[maxIndex];
+    if (_maximum > 0.9) {
       // _detectedPitch = _sampleRate / maxIndex;
       result = getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
     } else if (!result.has_value()) {

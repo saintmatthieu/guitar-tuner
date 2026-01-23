@@ -15,8 +15,6 @@
 namespace saint {
 DummyPitchDetectorLogger::~DummyPitchDetectorLogger() {}
 
-void DummyPitchDetectorLogger::NewSamplesComing(int sampleCount) {}
-
 void DummyPitchDetectorLogger::Log(int value, const char *name) const {}
 
 void DummyPitchDetectorLogger::Log(const float *samples, size_t size,
@@ -26,6 +24,6 @@ void DummyPitchDetectorLogger::Log(
     const std::complex<float> *samples, size_t size, const char *name,
     const std::function<float(const std::complex<float> &)> &transform) const {}
 
-void DummyPitchDetectorLogger::ProcessFinished(std::complex<float> *spectrum,
-                                               size_t fftSize) {}
+void DummyPitchDetectorLogger::EndNewEstimate(std::complex<float> *spectrum,
+                                              size_t fftSize) {}
 } // namespace saint

@@ -25,20 +25,24 @@ void PrintPythonVector(std::ofstream &ofs, Iterator begin, Iterator end,
 }
 } // namespace
 
-PitchDetectorLogger::PitchDetectorLogger(int sampleRate, int logSample)
-    : mSampleRate{sampleRate}, mLogSample{logSample} {}
+PitchDetectorLogger::PitchDetectorLogger(int sampleRate, int estimateIndex)
+    : mSampleRate{sampleRate}, mEstimateIndex{estimateIndex} {}
 
 PitchDetectorLogger::~PitchDetectorLogger() {}
 
-void PitchDetectorLogger::NewSamplesComing(int sampleCount) {
-  mSampleCount += sampleCount;
-  if (!mWasLogged && mLogSample <= mSampleCount) {
+void PitchDetectorLogger::SamplesRead(int count) { mRingBufferCount += count; }
+
+bool PitchDetectorLogger::StartNewEstimate() {
+  const auto ok = mEstimateCount++ == mEstimateIndex;
+  if (ok) {
     // Ready for logging.
+    mAnalysisSampleIndex = mRingBufferCount;
     mOfs = std::make_unique<std::ofstream>(testUtils::getOutDir() /
                                            "PitchDetectorLog.py");
     *mOfs << "sampleRate = " << mSampleRate << "\n";
-    mWasLogged = true;
+    *mOfs << "audioIndex = " << *mAnalysisSampleIndex << "\n";
   }
+  return ok;
 }
 
 void PitchDetectorLogger::Log(int value, const char *name) const {
@@ -67,8 +71,8 @@ void PitchDetectorLogger::Log(
   PrintPythonVector(*mOfs, v.begin(), v.end(), name);
 }
 
-void PitchDetectorLogger::ProcessFinished(std::complex<float> *spectrum,
-                                          size_t fftSize) {
+void PitchDetectorLogger::EndNewEstimate(std::complex<float> *spectrum,
+                                         size_t fftSize) {
   if (!mOfs) {
     return;
   }

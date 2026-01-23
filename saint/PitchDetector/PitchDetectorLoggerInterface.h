@@ -20,7 +20,9 @@ class PitchDetectorLoggerInterface {
 public:
   virtual ~PitchDetectorLoggerInterface() = default;
 
-  virtual void NewSamplesComing(int sampleCount) = 0;
+  virtual void SamplesRead(int count) = 0;
+
+  virtual bool StartNewEstimate() = 0;
 
   virtual void Log(int value, const char *name) const = 0;
 
@@ -37,7 +39,7 @@ public:
    * audible event to make clear where in the signal the logging took place.
    * (Of course not for use in production :D)
    */
-  virtual void ProcessFinished(std::complex<float> *spectrum,
-                               size_t fftSize) = 0;
+  virtual void EndNewEstimate(std::complex<float> *spectrum,
+                              size_t fftSize) = 0;
 };
 } // namespace saint

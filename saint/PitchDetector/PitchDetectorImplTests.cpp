@@ -12,6 +12,34 @@ namespace saint {
 
 namespace fs = std::filesystem;
 
+namespace {
+void writeResultFile(const fs::path &outDir,
+                     const std::filesystem::path &filenameStem,
+                     const std::vector<std::optional<float>> &results) {
+  std::ofstream resultFile(outDir / (filenameStem.string() + ".py"));
+  resultFile << "results = [";
+  auto separator = "";
+  for (const auto &r : results) {
+    if (r.has_value()) {
+      resultFile << separator << *r;
+    } else {
+      resultFile << separator << "None";
+    }
+    separator = ",\n";
+  }
+  resultFile << "]\n";
+}
+
+void writeMarkedWavFile(const std::filesystem::path &filenameStem,
+                        const testUtils::Audio &src, int markSample) {
+  auto cpy = src.data;
+  cpy[markSample] = 1.f;
+  testUtils::toWavFile(testUtils::getOutDir() /
+                           (filenameStem.string() + "_marked.wav"),
+                       {cpy, src.sampleRate});
+}
+} // namespace
+
 TEST(PitchDetectorImpl, testOnFiles) {
   const fs::path testFileDir = testUtils::getEvalDir() / "testFiles";
   std::vector<fs::path> testFiles;
@@ -26,8 +54,10 @@ TEST(PitchDetectorImpl, testOnFiles) {
     const std::filesystem::path filenameStem = testFile.stem();
     constexpr auto blockSize = 512;
     const testUtils::Audio src = testUtils::fromWavFile(testFile);
-    constexpr auto logTimeInSeconds = 1.876;
-    auto logger = std::make_unique<PitchDetectorLogger>(src.sampleRate, 53248);
+    constexpr auto estimateIndex = 9;
+    auto logger =
+        std::make_unique<PitchDetectorLogger>(src.sampleRate, estimateIndex);
+    const auto *loggerPtr = logger.get();
     PitchDetectorImpl sut(src.sampleRate, std::move(logger));
     std::vector<std::optional<float>> results;
     for (auto n = 0; n + blockSize < src.data.size(); n += blockSize) {
@@ -39,21 +69,9 @@ TEST(PitchDetectorImpl, testOnFiles) {
       results.push_back(result);
     }
 
-    std::ofstream resultFile(testUtils::getOutDir() /
-                             (filenameStem.string() + ".py"));
-    resultFile << "results = [";
-    auto separator = "";
-    for (const auto &r : results) {
-      if (r.has_value()) {
-        resultFile << separator << *r;
-      } else {
-        resultFile << separator << "None";
-      }
-      separator = ",\n";
-    }
-    resultFile << "]\n";
-    // break; // Only one file while debugging
+    writeResultFile(testUtils::getOutDir(), filenameStem, results);
+    if (const auto index = loggerPtr->analysisAudioIndex())
+      writeMarkedWavFile(filenameStem, src, *index);
   }
 }
-
 } // namespace saint

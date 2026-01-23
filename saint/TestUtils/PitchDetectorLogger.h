@@ -15,18 +15,18 @@
 
 #include "PitchDetector/PitchDetectorLoggerInterface.h"
 #include <fstream>
+#include <map>
 #include <memory>
+#include <optional>
 
 namespace saint {
 class PitchDetectorLogger : public PitchDetectorLoggerInterface {
 public:
-  PitchDetectorLogger(int sampleRate, int logTimeInSamples);
+  PitchDetectorLogger(int sampleRate, int estimateIndex);
   ~PitchDetectorLogger() override;
 
-  void NewSamplesComing(int sampleCount) override;
-
-  // Methods intended to be called from FormantShifter
-public:
+  void SamplesRead(int count) override;
+  bool StartNewEstimate() override;
   void Log(int value, const char *name) const override;
   void Log(const float *samples, size_t size, const char *name) const override;
   void Log(const std::complex<float> *samples, size_t size, const char *name,
@@ -37,13 +37,16 @@ public:
    * audible event to make clear where in the signal the logging took place.
    * (Of course not for use in production :D)
    */
-  void ProcessFinished(std::complex<float> *spectrum, size_t fftSize) override;
+  void EndNewEstimate(std::complex<float> *spectrum, size_t fftSize) override;
+
+  std::optional<int> analysisAudioIndex() const { return mAnalysisSampleIndex; }
 
 private:
   const int mSampleRate;
-  const int mLogSample;
-  bool mWasLogged = false;
+  const int mEstimateIndex;
   std::unique_ptr<std::ofstream> mOfs;
-  int mSampleCount = 0;
+  int mEstimateCount = 0;
+  int mRingBufferCount = 0;
+  std::optional<int> mAnalysisSampleIndex;
 };
 } // namespace saint
