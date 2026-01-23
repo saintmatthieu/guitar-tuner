@@ -7,7 +7,6 @@ target_sources(PitchDetector
     Cepstrum.cpp
     PitchDetectorImpl.cpp
     DummyFormantShifterLogger.cpp
-    FormantShifterLogger.cpp
 )
 
 target_link_libraries(PitchDetector
@@ -18,6 +17,7 @@ target_link_libraries(PitchDetector
 
 target_include_directories(PitchDetector
   PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_SOURCE_DIR}/Ring-Buffer
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

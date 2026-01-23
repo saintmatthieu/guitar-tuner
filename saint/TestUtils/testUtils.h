@@ -1,8 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <optional>
-#include <string>
 #include <vector>
 
 namespace saint {
@@ -15,8 +13,7 @@ struct Audio {
 
 Audio fromWavFile(std::filesystem::path path);
 
-std::string getInputFilePath();
-std::string getRootDir();
-std::string getOutDir();
+std::filesystem::path getEvalDir();
+std::filesystem::path getOutDir();
 } // namespace testUtils
 } // namespace saint

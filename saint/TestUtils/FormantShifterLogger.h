@@ -13,7 +13,7 @@
 **********************************************************************/
 #pragma once
 
-#include "FormantShifterLoggerInterface.h"
+#include "PitchDetector/FormantShifterLoggerInterface.h"
 #include <fstream>
 #include <memory>
 

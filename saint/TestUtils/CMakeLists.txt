@@ -14,6 +14,7 @@ FetchContent_MakeAvailable(sndfile)
 target_sources(TestUtils
   PUBLIC
     testUtils.cpp
+    FormantShifterLogger.cpp
 )
 
 target_include_directories(TestUtils
@@ -24,4 +25,5 @@ target_include_directories(TestUtils
 target_link_libraries(TestUtils
   PUBLIC
     sndfile
+    PitchDetector
 )

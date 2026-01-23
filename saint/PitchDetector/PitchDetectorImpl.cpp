@@ -1,29 +1,18 @@
 #include "PitchDetectorImpl.h"
 #include "DummyFormantShifterLogger.h"
-#include "FormantShifterLogger.h"
 #include "Utils.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <limits>
 #include <math.h>
-#include <numeric>
 #include <optional>
 
 namespace saint {
 
 std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate) {
-  const auto debug =
-      utils::getEnvironmentVariableAsBool("SAINT_DEBUG_PITCHDETECTOR");
-  if (debug && utils::isDebugBuild()) {
-    return std::make_unique<PitchDetectorImpl>(
-        sampleRate,
-        std::make_unique<FormantShifterLogger>(sampleRate, 0.2 * sampleRate));
-  } else {
-    return std::make_unique<PitchDetectorImpl>(
-        sampleRate, std::make_unique<DummyFormantShifterLogger>());
-  }
+  return std::make_unique<PitchDetectorImpl>(
+      sampleRate, std::make_unique<DummyFormantShifterLogger>());
 }
 
 namespace {

@@ -9,6 +9,7 @@
 
 **********************************************************************/
 #include "FormantShifterLogger.h"
+#include "testUtils.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -33,8 +34,8 @@ void FormantShifterLogger::NewSamplesComing(int sampleCount) {
   mSampleCount += sampleCount;
   if (!mWasLogged && mLogSample <= mSampleCount) {
     // Ready for logging.
-    mOfs = std::make_unique<std::ofstream>(
-        "C:/Users/saint/Downloads/pitch/FormantShifterLog.py");
+    mOfs = std::make_unique<std::ofstream>(testUtils::getOutDir() /
+                                           "FormantShifterLog.py");
     *mOfs << "sampleRate = " << mSampleRate << "\n";
     mWasLogged = true;
   }

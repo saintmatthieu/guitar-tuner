@@ -26,12 +26,9 @@ testUtils::Audio testUtils::fromWavFile(fs::path path) {
   return {std::move(audio), sfinfo.samplerate};
 }
 
-std::string testUtils::getRootDir() {
-  if (const char *env_dir = std::getenv("SAINT_DOWNLOADS")) {
-    return std::string(env_dir) + "/pitch/";
-  }
-  return "C:/Users/saint/Downloads/pitch/";
+fs::path testUtils::getEvalDir() {
+  return fs::path(__FILE__).parent_path() / ".." / ".." / "eval";
 }
 
-std::string testUtils::getOutDir() { return getRootDir() + "out/"; }
+fs::path testUtils::getOutDir() { return getEvalDir() / "out"; }
 } // namespace saint

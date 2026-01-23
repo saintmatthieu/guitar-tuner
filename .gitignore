@@ -2,3 +2,5 @@ build/*
 build_vs/*
 .cache/*
 _thirdParty/asiosdk/common/*
+eval/out/
+eval/FormantShifterLog.py
