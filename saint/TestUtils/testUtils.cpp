@@ -9,21 +9,20 @@
 namespace saint {
 namespace fs = std::filesystem;
 
-testUtils::Audio testUtils::fromWavFile(fs::path path) {
+std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path) {
   // read all the file in one go using libsndfile:
   SF_INFO sfinfo;
   SNDFILE *sndfile = sf_open(path.string().c_str(), SFM_READ, &sfinfo);
   if (sndfile == nullptr) {
-    throw std::runtime_error("Could not open file: " + path.string());
+    return std::nullopt;
   }
   std::vector<float> audio(sfinfo.frames * sfinfo.channels);
   sf_count_t numRead = sf_readf_float(sndfile, audio.data(), sfinfo.frames);
   sf_close(sndfile);
   if (numRead != sfinfo.frames) {
-    throw std::runtime_error("Could not read all samples from file: " +
-                             path.string());
+    return std::nullopt;
   }
-  return {std::move(audio), sfinfo.samplerate};
+  return Audio{std::move(audio), sfinfo.samplerate};
 }
 
 bool testUtils::toWavFile(fs::path path, const Audio &audio) {

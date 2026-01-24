@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 namespace saint {
@@ -11,7 +12,7 @@ struct Audio {
   const int sampleRate;
 };
 
-Audio fromWavFile(std::filesystem::path path);
+std::optional<Audio> fromWavFile(std::filesystem::path path);
 bool toWavFile(std::filesystem::path path, const Audio &audio);
 
 std::filesystem::path getEvalDir();

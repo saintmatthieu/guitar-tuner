@@ -62,4 +62,17 @@ plt.plot(pdl.cepstrum)
 plt.xlabel("Cepstrum Bin")
 plt.grid(True)
 plt.suptitle("Cepstrum")
+
+fig += 1
+plt.figure(fig)
+plt.subplot(2, 1, 1)
+plt.plot(cepstrumT, pdl.cepstrumFiltered)
+plt.xlabel("Time (s)")
+plt.grid(True)
+plt.subplot(2, 1, 2)
+plt.plot(pdl.cepstrumFiltered)
+plt.xlabel("Cepstrum Bin")
+plt.grid(True)
+plt.suptitle("Filtered Cepstrum")
+
 plt.show()

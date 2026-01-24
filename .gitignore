@@ -4,3 +4,4 @@ build_vs/*
 _thirdParty/asiosdk/common/*
 eval/out/
 eval/PitchDetectorLog.py
+eval/testFiles/
