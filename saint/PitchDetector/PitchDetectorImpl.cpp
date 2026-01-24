@@ -155,7 +155,7 @@ double getHarmonicProductSpectrumPeakFrequency(
 
   // Initialize HPS product with the fundamental spectrum
   std::vector<float> hpsProduct(maxBin + 1);
-  std::fill(hpsProduct.begin(), hpsProduct.end(), 1.f);
+  std::fill(hpsProduct.begin(), hpsProduct.end(), 0.f);
 
   logger.Log(numHarmonics, "hpsNumHarmonics");
   // Multiply by downsampled harmonics
@@ -165,7 +165,7 @@ double getHarmonicProductSpectrumPeakFrequency(
       const int harmonicBin = i * harmonic;
       if (harmonicBin < spectrum.size()) {
         downsampledSpectrum[i] = power[harmonicBin];
-        hpsProduct[i] *= power[harmonicBin];
+        hpsProduct[i] += power[harmonicBin];
       } else {
         hpsProduct[i] = 0.f;
       }
