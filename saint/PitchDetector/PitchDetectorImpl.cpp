@@ -25,7 +25,10 @@ int getFftOrder(int windowSize) {
   return static_cast<int>(ceilf(log2f((float)windowSize)));
 }
 
-int getFftSizeSamples(int windowSize) { return 1 << getFftOrder(windowSize); }
+int getFftSizeSamples(int windowSize) {
+  constexpr auto zeroPadding = 2;
+  return 1 << (getFftOrder(windowSize) + zeroPadding);
+}
 
 int getWindowSizeSamples(int sampleRate) {
   // 3.3 times the fundamental period. More and that's unnecessary delay, less
@@ -46,13 +49,18 @@ void applyWindow(const std::vector<float> &window, std::vector<float> &input) {
 void getXCorr(RealFft &fft, std::vector<float> &time,
               const std::vector<float> &lpWindow,
               PitchDetectorLoggerInterface &logger,
-              CepstrumData *cepstrumData = nullptr) {
+              CepstrumData *cepstrumData = nullptr,
+              std::vector<std::complex<float>> *outSpectrum = nullptr) {
   Aligned<std::vector<std::complex<float>>> freq;
   freq.value.resize(fft.size / 2);
   auto freqData = freq.value.data();
   auto timeData = time.data();
 
   fft.forward(timeData, freqData);
+
+  if (outSpectrum) {
+    *outSpectrum = freq.value;
+  }
 
   if (cepstrumData) {
     takeCepstrum(freq.value.data(), freq.value.size(), *cepstrumData, logger);
@@ -113,7 +121,7 @@ double getCepstrumPeakFrequency(const CepstrumData &cepstrumData,
   if (maxCepstrumIndex == 0)
     return 0;
   else if (maxCepstrumIndex == vec.size())
-    return sampleRate / maxCepstrumIndex;
+    return static_cast<float>(sampleRate) / maxCepstrumIndex;
 
   // Parabolic interpolation
   const auto prev = vec[maxCepstrumIndex - 1];
@@ -122,6 +130,68 @@ double getCepstrumPeakFrequency(const CepstrumData &cepstrumData,
   const auto p = 0.5f * (prev - next) / (prev + next - 2 * max);
   const auto peakIndex = maxCepstrumIndex + p;
   return sampleRate / peakIndex;
+}
+
+double getHarmonicProductSpectrumPeakFrequency(
+    const std::vector<std::complex<float>> &spectrum, int fftSize,
+    int sampleRate, PitchDetectorLoggerInterface &logger) {
+  // Harmonic Product Spectrum: downsample and multiply harmonics
+  constexpr int numHarmonics = 5;
+  constexpr auto minFreq = 30.f;  // E0 on bass guitar
+  constexpr auto maxFreq = 500.f; // Ukulele high A is 440Hz
+
+  const auto minBin = static_cast<int>(minFreq * fftSize / sampleRate);
+  const auto maxBin = static_cast<int>(maxFreq * fftSize / sampleRate);
+
+  // Compute magnitude spectrum
+  std::vector<float> power(spectrum.size());
+  power[0] = std::abs(spectrum[0].real());
+  for (int i = 1; i < spectrum.size(); ++i) {
+    power[i] = std::sqrt(spectrum[i].real() * spectrum[i].real() +
+                         spectrum[i].imag() * spectrum[i].imag());
+  }
+
+  logger.Log(power.data(), power.size(), "hpsMagnitude");
+
+  // Initialize HPS product with the fundamental spectrum
+  std::vector<float> hpsProduct(maxBin + 1);
+  std::fill(hpsProduct.begin(), hpsProduct.end(), 1.f);
+
+  logger.Log(numHarmonics, "hpsNumHarmonics");
+  // Multiply by downsampled harmonics
+  for (int harmonic = 1; harmonic <= numHarmonics; ++harmonic) {
+    std::vector<float> downsampledSpectrum(maxBin + 1);
+    for (int i = 0; i <= maxBin; ++i) {
+      const int harmonicBin = i * harmonic;
+      if (harmonicBin < spectrum.size()) {
+        downsampledSpectrum[i] = power[harmonicBin];
+        hpsProduct[i] *= power[harmonicBin];
+      } else {
+        hpsProduct[i] = 0.f;
+      }
+    }
+    logger.Log(downsampledSpectrum.data(), downsampledSpectrum.size(),
+               ("hpsDownsampledHarmonic" + std::to_string(harmonic)).c_str());
+    logger.Log(hpsProduct.data(), hpsProduct.size(),
+               ("hpsAfterHarmonic" + std::to_string(harmonic)).c_str());
+  }
+
+  // Find peak in HPS product
+  const auto it = std::max_element(hpsProduct.begin() + minBin,
+                                   hpsProduct.begin() + maxBin + 1);
+  const auto maxBinIndex = std::distance(hpsProduct.begin(), it);
+
+  if (maxBinIndex == 0 || maxBinIndex >= maxBin)
+    return 0;
+
+  // Parabolic interpolation for sub-bin accuracy
+  const auto prev = hpsProduct[maxBinIndex - 1];
+  const auto max = hpsProduct[maxBinIndex];
+  const auto next = hpsProduct[maxBinIndex + 1];
+  const auto p = 0.5f * (prev - next) / (prev + next - 2 * max);
+  const auto peakBin = maxBinIndex + p;
+
+  return peakBin * sampleRate / fftSize;
 }
 } // namespace
 
@@ -154,8 +224,18 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     _logger->Log(time.data(), time.size(), "inputAudio");
     applyWindow(_window, time);
     _logger->Log(time.data(), time.size(), "windowedAudio");
-    getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData);
+
+    // Capture spectrum for HPS analysis
+    std::vector<std::complex<float>> spectrum;
+    getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
     _logger->Log(time.data(), time.size(), "xcorr");
+
+    // Compute HPS estimate
+    const auto hpsFreq = getHarmonicProductSpectrumPeakFrequency(
+        spectrum, _fftSize, _sampleRate, *_logger);
+    const float hpsFreqFloat = static_cast<float>(hpsFreq);
+    _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
+
     _logger->EndNewEstimate(nullptr, 0);
 
     auto maxIndex = 0;
@@ -171,7 +251,7 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     _maximum /= _windowXcor[maxIndex];
     if (_maximum > 0.9) {
       // _detectedPitch = _sampleRate / maxIndex;
-      result = getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
+      result = hpsFreq; // getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
     } else if (!result.has_value()) {
       result = 0.f;
     }

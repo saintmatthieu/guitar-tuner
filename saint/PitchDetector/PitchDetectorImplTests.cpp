@@ -25,11 +25,13 @@ void writeResultFile(const fs::path &outDir,
   resultFile << "results = [";
   auto separator = "";
   for (const auto &r : results) {
+    constexpr auto logNoneAsZero = false;
     if (r.has_value()) {
       resultFile << separator << *r;
       separator = ",\n";
-    } else {
-      continue;
+    } else if (logNoneAsZero) {
+      resultFile << separator << "0";
+      separator = ",\n";
     }
   }
   resultFile << "]\n";
@@ -46,11 +48,24 @@ void writeMarkedWavFile(const std::filesystem::path &filenameStem,
 } // namespace
 
 TEST(PitchDetectorImpl, testOnFiles) {
-  const fs::path testFileDir = testUtils::getEvalDir() / "testFiles";
+
+  // Check if a specific test file is provided as argument
   std::vector<fs::path> testFiles;
-  for (const auto &entry : fs::recursive_directory_iterator(testFileDir)) {
-    if (entry.path().extension() == ".wav") {
-      testFiles.push_back(entry.path());
+  const auto &argv = ::testing::internal::GetArgvs();
+  for (size_t i = 1; i < argv.size(); ++i) {
+    fs::path testFile(argv[i]);
+    if (fs::exists(testFile) && testFile.extension() == ".wav") {
+      testFiles.push_back(testFile);
+    }
+  }
+
+  // If no specific file was provided, scan the test directory
+  if (testFiles.empty()) {
+    const fs::path testFileDir = testUtils::getEvalDir() / "testFiles";
+    for (const auto &entry : fs::recursive_directory_iterator(testFileDir)) {
+      if (entry.path().extension() == ".wav") {
+        testFiles.push_back(entry.path());
+      }
     }
   }
 
@@ -65,7 +80,7 @@ TEST(PitchDetectorImpl, testOnFiles) {
       std::cerr << "Could not read file: " << testFile << "\n";
       continue;
     }
-    constexpr auto estimateIndex = 9;
+    constexpr auto estimateIndex = 6;
     auto logger =
         std::make_unique<PitchDetectorLogger>(src->sampleRate, estimateIndex);
     const auto *loggerPtr = logger.get();

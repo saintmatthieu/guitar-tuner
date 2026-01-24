@@ -4,21 +4,6 @@
 
 #include <algorithm>
 
-namespace {
-constexpr float FastLog2(float x) {
-  static_assert(sizeof(float) == sizeof(int32_t));
-  union {
-    float val;
-    int32_t x;
-  } u = {x};
-  auto log_2 = (float)(((u.x >> 23) & 255) - 128);
-  u.x &= ~(255 << 23);
-  u.x += 127 << 23;
-  log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val - 0.65871759316667f;
-  return log_2;
-}
-} // namespace
-
 void saint::takeCepstrum(const std::complex<float> *spectrum, int N,
                          CepstrumData &cepstrumData,
                          PitchDetectorLoggerInterface &logger) {
@@ -27,13 +12,13 @@ void saint::takeCepstrum(const std::complex<float> *spectrum, int N,
   logMag.resize(cepstrumData.fft.size);
 
   // First bin is DC only.
-  logMag[0] = FastLog2(spectrum[0].real() * spectrum[0].real());
+  logMag[0] = utils::FastLog2(spectrum[0].real() * spectrum[0].real());
   auto k = 1;
   std::transform(spectrum + 1, spectrum + cepstrumData.halfWindow.size(),
                  logMag.begin(), [&](const std::complex<float> &X) {
                    const auto power = X.real() * X.real() + X.imag() * X.imag();
                    const auto w = cepstrumData.halfWindow[k++];
-                   return w * FastLog2(power);
+                   return w * utils::FastLog2(power);
                  });
 
   // No need to set the middle values to zero, `resize` already did that.
