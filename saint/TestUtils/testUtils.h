@@ -8,7 +8,7 @@ namespace saint {
 namespace testUtils {
 
 struct Audio {
-  const std::vector<float> data;
+  std::vector<float> data;
   const int sampleRate;
 };
 

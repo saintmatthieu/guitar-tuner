@@ -31,6 +31,10 @@ bool testUtils::toWavFile(fs::path path, const Audio &audio) {
   sfinfo.samplerate = audio.sampleRate;
   sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
 
+  if (!std::filesystem::exists(path.parent_path())) {
+    std::filesystem::create_directories(path.parent_path());
+  }
+
   SNDFILE *sndfile = sf_open(path.string().c_str(), SFM_WRITE, &sfinfo);
   if (sndfile == nullptr) {
     return false;
