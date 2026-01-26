@@ -1,20 +1,22 @@
-## Benchmarking
+# Benchmarking
 
-### Metrics
+## Metrics
 
 Two metrics. CI could assess that neither of these has regressed.
 
-#### Pitch detected yes/no
+### Pitch detected yes/no
 
 Accuracy of the algorithm in that respect can be evaluated objectively with a ROC score. The Area Under the Curve would be the first quality metric.
 
-#### Accuracy of estimate
+### Accuracy of estimate
 
 Easiest would be to have each file contain only one accurately tuned note. The ground truth for that file could then be a note number (e.g. E2). The RMS of the error could be the score assigned to each file. The average of all RMSs would then be the second quality metric.
 
-### Test samples
+## Test recordings
 
-At least 100 files. If CI is run on this repo, they will have to be redistributable. In https://github.com/saintmatthieu/loop-tempo-estimator, a script downloads a selection of files from https://freesound.org. Private forks of this repo would not have this constraint.
+### Guitar samples
+
+In `./eval/testFiles/notes/`
 
 #### What each file must be
 
@@ -35,7 +37,25 @@ Things to think of (please let me know or edit if I missed something):
 - noise conditions
 - microphone
 
-### CI
+### Noise
+
+In `./eval/testFiles/noise/`
+
+Noise profiles are recorded separately and are mixed automatically by the benchmarking code before running the algorithm.
+
+- Aim between 15 and 20 seconds (they are looped if the note recording is longer)
+- no need to aim for a certain loudness - the benchmarking will calibrate loudness before mixing. Just make sure it doesn't clip
+
+Types of noise:
+
+- Air conditioner
+- Fan of a computer
+- Kitchen / cooking background noises
+- Kids in the background
+- TV / Radio behind doors
+- ...
+
+## CI
 
 The benchmarking can take the form of a "unit" test, with a pass or fail.
 
