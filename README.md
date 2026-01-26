@@ -18,7 +18,9 @@ At least 100 files. If CI is run on this repo, they will have to be redistributa
 
 #### What each file must be
 
-Each must be the recording of a single note, plucked once, so that the metrics described above apply.
+- one note plucked once
+- don't mute the other strings
+- background as clean as possible (noise is added artificially by the benchmarking code)
 
 While the user typically will adjust the pitch while using the tuner, the modulation in pitch that this causes is typically slow and is not believed to confuse the algorithm. On the other hand, accounting for this in the benchmarking would add lots of complexity. Hence we just rely on manual QA testing for this aspect.
 
