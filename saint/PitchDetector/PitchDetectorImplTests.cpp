@@ -61,7 +61,8 @@ TEST(PitchDetectorImpl, testOnFiles) {
 
   // If no specific file was provided, scan the test directory
   if (testFiles.empty()) {
-    const fs::path testFileDir = testUtils::getEvalDir() / "testFiles";
+    const fs::path testFileDir =
+        testUtils::getEvalDir() / "testFiles" / "notes";
     for (const auto &entry : fs::recursive_directory_iterator(testFileDir)) {
       if (entry.path().extension() == ".wav") {
         testFiles.push_back(entry.path());
