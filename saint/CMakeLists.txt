@@ -1,3 +1,7 @@
 add_subdirectory(PitchDetector)
-add_subdirectory(TestUtils)
+
+if(NOT NO_GTEST)
+  add_subdirectory(TestUtils)
+endif()
+
 add_subdirectory(Utils)
