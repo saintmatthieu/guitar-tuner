@@ -26,8 +26,14 @@ add_subdirectory(saint)
 target_compile_options(pf_conv_dispatcher PRIVATE -w)
 target_compile_options(pf_conv_arch_none PRIVATE -w)
 target_compile_options(pf_conv_arch_dflt PRIVATE -w)
-target_compile_options(pf_conv_arch_avx2 PRIVATE -w)
-target_compile_options(pf_conv_arch_avx PRIVATE -w)
+
+if(TARGET pf_conv_arch_avx2)
+  target_compile_options(pf_conv_arch_avx2 PRIVATE -w)
+endif()
+
+if(TARGET pf_conv_arch_avx)
+  target_compile_options(pf_conv_arch_avx PRIVATE -w)
+endif()
 
 if(NOT NO_GTEST)
   target_compile_options(gmock_main PRIVATE -w)
