@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iomanip>
 #include <optional>
 #include <vector>
 
@@ -16,11 +18,53 @@ struct Audio {
   const int sampleRate;
 };
 
+struct Truth {
+  double startTime;
+  double endTime;
+  float frequency;
+};
+
+struct Sample {
+  std::filesystem::path file;
+  Truth truth;
+};
+
 std::optional<Audio> fromWavFile(std::filesystem::path path);
 bool toWavFile(std::filesystem::path path, const Audio &audio);
 
 std::filesystem::path getEvalDir();
 std::filesystem::path getOutDir();
+
+// Audio processing utilities
+void scaleToRms(std::vector<float> &data, float targetRmsDb);
+void mixNoise(std::vector<float> &signal, const std::vector<float> &noise);
+
+// Music theory utilities
+float midiNoteToFrequency(int midiNote);
+float getTrueFrequency(const std::filesystem::path &filePath);
+
+// File utilities
+std::filesystem::path getFileShortName(const std::filesystem::path &filePath);
+std::optional<Sample> getSampleFromFile(const std::filesystem::path &filePath);
+
+// Output utilities
+void writeMarkedWavFile(const std::filesystem::path &filenameStem,
+                        const Audio &src, int markSample);
+double writeResultFile(const Sample &sample, const std::vector<float> &results,
+                       const std::filesystem::path &outputPath);
+
+// Value comparison utility
+template <typename T>
+bool valueIsUnchanged(const std::filesystem::path &filePath, T previousValue,
+                      T newValue, T tolerance = 0) {
+  constexpr auto precision = std::numeric_limits<double>::digits10 + 1;
+  const auto hasChanged = std::abs(newValue - previousValue) > tolerance;
+  if (hasChanged) {
+    std::ofstream file{filePath};
+    file << std::setprecision(precision) << newValue;
+  }
+  return !hasChanged;
+}
 
 struct RocInfo {
   const double areaUnderCurve;
