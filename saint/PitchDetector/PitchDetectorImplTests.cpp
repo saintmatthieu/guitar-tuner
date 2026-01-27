@@ -24,6 +24,31 @@ struct Sample {
   const Truth truth;
 };
 
+enum class ActivityResult {
+  TruePositive,
+  TrueNegative,
+  FalsePositive,
+  FalseNegative,
+};
+
+struct ActivityRates {
+  double tp = 0;
+  double tn = 0;
+  double fp = 0;
+  double fn = 0;
+};
+
+struct DetectionResult {
+  ActivityResult activity = static_cast<ActivityResult>(0);
+  std::optional<float> frequency;
+};
+
+struct RocResult {
+  RocResult(bool t, double s) : truth(t), score(s) {}
+  bool truth = false;
+  double score = 0.0;
+};
+
 float getTrueFrequency(const std::filesystem::path &filePath) {
   const auto filename = filePath.stem().string();
   // File name in the form of <note name><note octave>:
@@ -56,7 +81,7 @@ fs::path getFileShortName(const fs::path &filePath) {
 }
 
 void writeResultFile(const Sample &sample,
-                     const std::vector<std::optional<float>> &results,
+                     const std::vector<DetectionResult> &results,
                      float &rmsErrorCents) {
 
   const auto filenameStem = getFileShortName(sample.file);
@@ -72,8 +97,9 @@ void writeResultFile(const Sample &sample,
   rmsErrorCents = 0.f;
   std::vector<float> errorCents;
   for (const auto &r : results) {
-    if (r.has_value() && *r > 0.f) {
-      const auto e = 1200.f * std::log2((*r) / sample.truth.frequency);
+    if (r.frequency.has_value() && *r.frequency > 0.f) {
+      const auto e =
+          1200.f * std::log2((*r.frequency) / sample.truth.frequency);
       rmsErrorCents += e * e;
       errorCents.push_back(e);
     }
@@ -151,6 +177,21 @@ std::optional<Sample> getSampleFromFile(const fs::path &filePath) {
 
   return Sample{filePath, Truth{startTime, endTime, trueFreq}};
 }
+
+constexpr auto precision = std::numeric_limits<double>::digits10 + 1;
+
+template <typename T>
+bool ValueIsUnchanged(const std::filesystem::path &filePath, T previousValue,
+                      T newValue, T tolerance = 0) {
+  std::cout << "Checking value in " << filePath << "\n";
+  assert(std::filesystem::exists(filePath));
+  const auto hasChanged = std::abs(newValue - previousValue) > tolerance;
+  if (hasChanged) {
+    std::ofstream file{filePath};
+    file << std::setprecision(precision) << newValue;
+  }
+  return !hasChanged;
+}
 } // namespace
 
 TEST(PitchDetectorImpl, benchmarking) {
@@ -213,6 +254,7 @@ TEST(PitchDetectorImpl, benchmarking) {
   }
 
   std::vector<float> rmsErrors;
+  std::vector<RocResult> rocResults;
 
   for (const auto &sample : samples) {
     const auto &testFile = sample.file;
@@ -244,13 +286,35 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                           estimateIndex);
       const auto *loggerPtr = logger.get();
       PitchDetectorImpl sut(clean->sampleRate, std::move(logger));
-      std::vector<std::optional<float>> results;
+      std::vector<DetectionResult> results;
+      std::optional<float> currentEstimate;
       for (auto n = 0; n + blockSize < noisy.size(); n += blockSize) {
         std::vector<float> buffer(blockSize);
         std::vector<float *> channels(1);
         channels[0] = buffer.data();
-        const auto result = sut.process(noisy.data() + n, blockSize);
-        results.push_back(result);
+        auto presenceScore = 0.f;
+        auto result = sut.process(noisy.data() + n, blockSize, &presenceScore);
+        const auto currentTime =
+            static_cast<double>(n + blockSize) / clean->sampleRate;
+        const auto actual =
+            (result.has_value() && *result > 0) ||
+            (currentEstimate.has_value() && *currentEstimate > 0);
+        const auto expected = (currentTime >= sample.truth.startTime) &&
+                              (currentTime <= sample.truth.endTime);
+        ActivityResult activity;
+        if (actual && expected) {
+          activity = ActivityResult::TruePositive;
+        } else if (!actual && !expected) {
+          activity = ActivityResult::TrueNegative;
+        } else if (actual && !expected) {
+          activity = ActivityResult::FalsePositive;
+        } else {
+          activity = ActivityResult::FalseNegative;
+        }
+        results.push_back({activity, result});
+        if (result.has_value()) {
+          rocResults.emplace_back(expected, presenceScore);
+        }
       }
 
       const auto filename = cleanFile.string() + "_with_" +
@@ -280,5 +344,31 @@ TEST(PitchDetectorImpl, benchmarking) {
     rmsAvg /= static_cast<float>(rmsErrors.size());
   }
   std::cout << "Average RMS error across all tests: " << rmsAvg << " cents\n";
+
+  constexpr auto allowedFalsePositiveRate = 0.05;
+  const testUtils::RocInfo rocInfo =
+      testUtils::GetRocInfo<RocResult>(rocResults, allowedFalsePositiveRate);
+
+  std::ofstream rocFile(testUtils::getOutDir() / "roc_curve.py");
+  rocFile << "AUC = " << rocInfo.areaUnderCurve << "\n";
+  rocFile << "threshold = " << rocInfo.threshold << "\n";
+  rocFile << "allowedFalsePositiveRate = " << allowedFalsePositiveRate << "\n";
+  testUtils::PrintPythonVector(rocFile, rocInfo.falsePositiveRates,
+                               "falsePositiveRates");
+  testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates,
+                               "truePositiveRates");
+
+  constexpr auto previousAuc = 0.84327520718232096;
+  constexpr auto comparisonTolerance = 0.01;
+  const auto classifierQualityIsUnchanged = ValueIsUnchanged(
+      testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt", previousAuc,
+      rocInfo.areaUnderCurve, comparisonTolerance);
+
+  // If it changes and it's for the better, then it's probably a good thing, but
+  // let's keep an eye on it anyway. If it's for the worse, then either there is
+  // a good reason or we have a regression.
+  EXPECT_TRUE(classifierQualityIsUnchanged)
+      << "Classifier quality has changed! Previous AUC: " << previousAuc
+      << ", new AUC: " << rocInfo.areaUnderCurve;
 }
 } // namespace saint

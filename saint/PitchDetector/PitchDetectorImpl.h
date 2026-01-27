@@ -18,7 +18,8 @@ public:
   // Don't even try instantiating me if the block size exceeds this.
   PitchDetectorImpl(int sampleRate,
                     std::unique_ptr<PitchDetectorLoggerInterface> logger);
-  std::optional<float> process(const float *, int) override;
+  std::optional<float> process(const float *, int,
+                               float *presenceScore) override;
 
 private:
   const float _sampleRate;
@@ -28,7 +29,6 @@ private:
   RealFft _fwdFft;
   CepstrumData _cepstrumData;
   jnk0le::Ringbuffer<float, maxBlockSize> _ringBuffer;
-  float _maximum = 0.f;
   const std::vector<float> _lpWindow;
   const std::vector<float> _windowXcor;
   const int _lastSearchIndex;

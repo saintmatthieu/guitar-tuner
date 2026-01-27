@@ -207,7 +207,8 @@ PitchDetectorImpl::PitchDetectorImpl(
       _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {}
 
 std::optional<float> PitchDetectorImpl::process(const float *audio,
-                                                int audioSize) {
+                                                int audioSize,
+                                                float *presenceScore) {
   _ringBuffer.writeBuff(audio, audioSize);
 
   std::optional<float> result;
@@ -240,18 +241,22 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
 
     auto maxIndex = 0;
     auto wentNegative = false;
+    auto maximum = 0.f;
     for (auto i = 0; i < _lastSearchIndex; ++i) {
       wentNegative |= time[i] < 0;
-      if (wentNegative && time[i] > _maximum) {
-        _maximum = time[i];
+      if (wentNegative && time[i] > maximum) {
+        maximum = time[i];
         maxIndex = i;
       }
     }
 
-    _maximum /= _windowXcor[maxIndex];
-    if (_maximum > 0.9) {
+    maximum /= _windowXcor[maxIndex];
+    if (presenceScore) {
+      *presenceScore = maximum;
+    }
+    if (maximum > 0.9) {
       // _detectedPitch = _sampleRate / maxIndex;
-      result = hpsFreq; // getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
+      result = getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
     } else if (!result.has_value()) {
       result = 0.f;
     }
