@@ -10,16 +10,18 @@
 
 namespace saint {
 
-std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate) {
+std::unique_ptr<PitchDetector>
+PitchDetector::createInstance(int sampleRate,
+                              const std::optional<Config> &config) {
   return std::make_unique<PitchDetectorImpl>(
-      sampleRate, std::make_unique<DummyPitchDetectorLogger>());
+      sampleRate, config, std::make_unique<DummyPitchDetectorLogger>());
 }
 
 namespace {
 constexpr auto cutoffFreq = 1500;
 
 constexpr float log2ToDb = 20 / 3.321928094887362f;
-constexpr float leastFrequencyToDetect = /* A0 */ 27.5f;
+constexpr float defaultLeastFrequencyToDetect = /* A0 */ 27.5f;
 
 int getFftOrder(int windowSize) {
   return static_cast<int>(ceilf(log2f((float)windowSize)));
@@ -30,13 +32,39 @@ int getFftSizeSamples(int windowSize) {
   return 1 << (getFftOrder(windowSize) + zeroPadding);
 }
 
-int getWindowSizeSamples(int sampleRate) {
+float pitchToFrequency(const Pitch &pitch) {
+  const std::unordered_map<PitchClass, int> semitonesFromA{
+      {PitchClass::C, -9},  {PitchClass::Db, -8}, {PitchClass::D, -7},
+      {PitchClass::Eb, -6}, {PitchClass::E, -5},  {PitchClass::F, -4},
+      {PitchClass::Gb, -3}, {PitchClass::G, -2},  {PitchClass::Ab, -1},
+      {PitchClass::A, 0},   {PitchClass::Bb, 1},  {PitchClass::B, 2},
+  };
+  const int semitonesFromA4 =
+      semitonesFromA.at(pitch.pitchClass) + (pitch.octave - 4) * 12;
+  return 440.f * std::pow(2.f, semitonesFromA4 / 12.f);
+}
+
+float getMinFreq(const std::optional<PitchDetector::Config> &config) {
+  return config && config->lowestPitch.has_value()
+             ? pitchToFrequency(*config->lowestPitch)
+             : defaultLeastFrequencyToDetect;
+}
+
+float getMaxFreq(const std::optional<PitchDetector::Config> &config) {
+  return config && config->highestPitch.has_value()
+             ? pitchToFrequency(*config->highestPitch)
+             : 2000.f;
+}
+
+int getWindowSizeSamples(int sampleRate,
+                         const std::optional<PitchDetector::Config> &config) {
   // 3.3 times the fundamental period. More and that's unnecessary delay, less
   // and the detection becomes inaccurate - at least with this autocorrelation
   // method. A spectral-domain method might need less than this, since
   // autocorrelation requires there to be at least two periods within the
   // window, against 1 for a spectrum reading.
-  const auto windowSizeMs = 1000 * 3.3 / leastFrequencyToDetect;
+  const auto minFreq = getMinFreq(config);
+  const auto windowSizeMs = 1000 * 3.3 / minFreq;
   return static_cast<int>(windowSizeMs * sampleRate / 1000);
 }
 
@@ -106,11 +134,11 @@ std::vector<float> getWindowXCorr(RealFft &fft,
 }
 
 double getCepstrumPeakFrequency(const CepstrumData &cepstrumData,
-                                int sampleRate) {
+                                int sampleRate, float minFreq, float maxFreq) {
   // We're using this for a tuner, so look between 30Hz (a detuned E0 on a bass
   // guitar) and 500Hz (Ukulele high A is 440Hz)
-  constexpr auto maxPeriod = 1 / 30.f;
-  constexpr auto minPeriod = 1 / 500.f;
+  const auto maxPeriod = 1. / minFreq;
+  const auto minPeriod = 1. / maxFreq;
   const auto firstCepstrumSample = static_cast<int>(minPeriod * sampleRate);
   const auto &vec = cepstrumData.vec();
   const auto lastCepstrumSample =
@@ -196,14 +224,17 @@ double getHarmonicProductSpectrumPeakFrequency(
 } // namespace
 
 PitchDetectorImpl::PitchDetectorImpl(
-    int sampleRate, std::unique_ptr<PitchDetectorLoggerInterface> logger)
+    int sampleRate, const std::optional<Config> &config,
+    std::unique_ptr<PitchDetectorLoggerInterface> logger)
     : _sampleRate(sampleRate), _logger(std::move(logger)),
-      _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate))),
+      _window(
+          utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, config))),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
       _fwdFft(_fftSize), _cepstrumData(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
-      _lastSearchIndex(std::min(
-          _fftSize / 2, static_cast<int>(sampleRate / leastFrequencyToDetect))),
+      _minFreq(getMinFreq(config)), _maxFreq(getMaxFreq(config)),
+      _lastSearchIndex(
+          std::min(_fftSize / 2, static_cast<int>(sampleRate / _minFreq))),
       _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {}
 
 std::optional<float> PitchDetectorImpl::process(const float *audio,
@@ -256,7 +287,8 @@ std::optional<float> PitchDetectorImpl::process(const float *audio,
     }
     if (maximum > 0.9) {
       // _detectedPitch = _sampleRate / maxIndex;
-      result = getCepstrumPeakFrequency(_cepstrumData, _sampleRate);
+      result = getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq,
+                                        _maxFreq);
     } else if (!result.has_value()) {
       result = 0.f;
     }

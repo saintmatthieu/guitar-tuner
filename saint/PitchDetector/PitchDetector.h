@@ -4,9 +4,23 @@
 #include <optional>
 
 namespace saint {
+enum class PitchClass { C, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B };
+
+struct Pitch {
+  const PitchClass pitchClass;
+  const int octave;
+};
+
 class PitchDetector {
 public:
-  static std::unique_ptr<PitchDetector> createInstance(int sampleRate);
+  struct Config {
+    const std::optional<Pitch> lowestPitch;
+    const std::optional<Pitch> highestPitch;
+  };
+
+  static std::unique_ptr<PitchDetector>
+  createInstance(int sampleRate,
+                 const std::optional<Config> &config = std::nullopt);
 
   static constexpr auto maxBlockSize = 8192;
   /**

@@ -24,25 +24,6 @@ struct Sample {
   const Truth truth;
 };
 
-enum class ActivityResult {
-  TruePositive,
-  TrueNegative,
-  FalsePositive,
-  FalseNegative,
-};
-
-struct ActivityRates {
-  double tp = 0;
-  double tn = 0;
-  double fp = 0;
-  double fn = 0;
-};
-
-struct DetectionResult {
-  ActivityResult activity = static_cast<ActivityResult>(0);
-  std::optional<float> frequency;
-};
-
 struct RocResult {
   RocResult(bool t, double s) : truth(t), score(s) {}
   bool truth = false;
@@ -80,9 +61,8 @@ fs::path getFileShortName(const fs::path &filePath) {
   return filePath.parent_path().stem() / filePath.stem();
 }
 
-void writeResultFile(const Sample &sample,
-                     const std::vector<DetectionResult> &results,
-                     float &rmsErrorCents) {
+void writeResultFile(const Sample &sample, const std::vector<float> &results,
+                     double &rmsErrorCents) {
 
   const auto filenameStem = getFileShortName(sample.file);
   const auto filename =
@@ -94,19 +74,17 @@ void writeResultFile(const Sample &sample,
 
   std::ofstream resultFile(filename);
 
-  rmsErrorCents = 0.f;
-  std::vector<float> errorCents;
+  rmsErrorCents = 0.;
+  std::vector<double> errorCents;
   for (const auto &r : results) {
-    if (r.frequency.has_value() && *r.frequency > 0.f) {
-      const auto e =
-          1200.f * std::log2((*r.frequency) / sample.truth.frequency);
+    if (r > 0.) {
+      const auto e = 1200. * std::log2(r / sample.truth.frequency);
       rmsErrorCents += e * e;
       errorCents.push_back(e);
     }
   }
   if (!errorCents.empty()) {
-    rmsErrorCents =
-        std::sqrt(rmsErrorCents / static_cast<float>(errorCents.size()));
+    rmsErrorCents = std::sqrt(rmsErrorCents / errorCents.size());
   }
   resultFile << "rmsErrorCents = " << rmsErrorCents << "\n";
 
@@ -253,7 +231,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     }
   }
 
-  std::vector<float> rmsErrors;
+  std::vector<double> rmsErrors;
   std::vector<RocResult> rocResults;
 
   for (const auto &sample : samples) {
@@ -285,8 +263,17 @@ TEST(PitchDetectorImpl, benchmarking) {
       auto logger = std::make_unique<PitchDetectorLogger>(clean->sampleRate,
                                                           estimateIndex);
       const auto *loggerPtr = logger.get();
-      PitchDetectorImpl sut(clean->sampleRate, std::move(logger));
-      std::vector<DetectionResult> results;
+
+      // Targeting tuning of acoustic guitar:
+      // - min note accounts for a drop-D tuning and an additional tone to
+      // account for pitch changes while tuning
+      // - max note is the high E on the first string, adding a tone for margin
+      const PitchDetector::Config config{
+          Pitch{PitchClass::C, 2},
+          Pitch{PitchClass::Gb, 4},
+      };
+      PitchDetectorImpl sut(clean->sampleRate, config, std::move(logger));
+      std::vector<float> results;
       std::optional<float> currentEstimate;
       for (auto n = 0; n + blockSize < noisy.size(); n += blockSize) {
         std::vector<float> buffer(blockSize);
@@ -296,24 +283,11 @@ TEST(PitchDetectorImpl, benchmarking) {
         auto result = sut.process(noisy.data() + n, blockSize, &presenceScore);
         const auto currentTime =
             static_cast<double>(n + blockSize) / clean->sampleRate;
-        const auto actual =
-            (result.has_value() && *result > 0) ||
-            (currentEstimate.has_value() && *currentEstimate > 0);
-        const auto expected = (currentTime >= sample.truth.startTime) &&
-                              (currentTime <= sample.truth.endTime);
-        ActivityResult activity;
-        if (actual && expected) {
-          activity = ActivityResult::TruePositive;
-        } else if (!actual && !expected) {
-          activity = ActivityResult::TrueNegative;
-        } else if (actual && !expected) {
-          activity = ActivityResult::FalsePositive;
-        } else {
-          activity = ActivityResult::FalseNegative;
-        }
-        results.push_back({activity, result});
+        const auto truth = (currentTime >= sample.truth.startTime) &&
+                           (currentTime <= sample.truth.endTime);
         if (result.has_value()) {
-          rocResults.emplace_back(expected, presenceScore);
+          results.push_back(*result);
+          rocResults.emplace_back(truth, presenceScore);
         }
       }
 
@@ -324,8 +298,9 @@ TEST(PitchDetectorImpl, benchmarking) {
           testUtils::getOutDir() / "wav" / (filename + ".wav");
       testUtils::toWavFile(outWavName, {noisy, clean->sampleRate});
 
-      rmsErrors.push_back(0.f);
-      writeResultFile(sample, results, rmsErrors.back());
+      auto rmsError = 0.;
+      writeResultFile(sample, results, rmsError);
+      rmsErrors.push_back(rmsError);
 
       std::cout << "RMS error for " << getFileShortName(testFile)
                 << " with noise " << getFileShortName(noise.file) << " at "
@@ -336,14 +311,23 @@ TEST(PitchDetectorImpl, benchmarking) {
     }
   }
 
-  auto rmsAvg = 0.f;
+  auto rmsAvg = 0.;
   for (const auto e : rmsErrors) {
     rmsAvg += e;
   }
   if (!rmsErrors.empty()) {
-    rmsAvg /= static_cast<float>(rmsErrors.size());
+    rmsAvg /= static_cast<double>(rmsErrors.size());
   }
   std::cout << "Average RMS error across all tests: " << rmsAvg << " cents\n";
+
+  constexpr auto previousRmsError = 178.02243990022137;
+  constexpr auto comparisonTolerance = 0.01;
+  const auto rmsErrorIsUnchanged = ValueIsUnchanged(
+      testUtils::getEvalDir() / "BenchmarkingOutput" / "RMS_error.txt",
+      previousRmsError, rmsAvg, comparisonTolerance);
+  EXPECT_TRUE(rmsErrorIsUnchanged)
+      << "RMS error has changed! Previous RMS error: " << previousRmsError
+      << ", new RMS error: " << rmsAvg;
 
   constexpr auto allowedFalsePositiveRate = 0.05;
   const testUtils::RocInfo rocInfo =
@@ -358,8 +342,7 @@ TEST(PitchDetectorImpl, benchmarking) {
   testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates,
                                "truePositiveRates");
 
-  constexpr auto previousAuc = 0.84327520718232096;
-  constexpr auto comparisonTolerance = 0.01;
+  constexpr auto previousAuc = 0.89471154289243526;
   const auto classifierQualityIsUnchanged = ValueIsUnchanged(
       testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt", previousAuc,
       rocInfo.areaUnderCurve, comparisonTolerance);
