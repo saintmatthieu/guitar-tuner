@@ -1,193 +1,186 @@
 #include "testUtils.h"
 
-#include "sndfile.h"
-
 #include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 
+#include "sndfile.h"
+
 namespace saint {
 namespace fs = std::filesystem;
 
 std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path) {
-  // read all the file in one go using libsndfile:
-  SF_INFO sfinfo;
-  SNDFILE *sndfile = sf_open(path.string().c_str(), SFM_READ, &sfinfo);
-  if (sndfile == nullptr) {
-    return std::nullopt;
-  }
-  std::vector<float> audio(sfinfo.frames * sfinfo.channels);
-  sf_count_t numRead = sf_readf_float(sndfile, audio.data(), sfinfo.frames);
-  sf_close(sndfile);
-  if (numRead != sfinfo.frames) {
-    return std::nullopt;
-  }
-  return Audio{std::move(audio), sfinfo.samplerate};
+    // read all the file in one go using libsndfile:
+    SF_INFO sfinfo;
+    SNDFILE* sndfile = sf_open(path.string().c_str(), SFM_READ, &sfinfo);
+    if (sndfile == nullptr) {
+        return std::nullopt;
+    }
+    std::vector<float> audio(sfinfo.frames * sfinfo.channels);
+    sf_count_t numRead = sf_readf_float(sndfile, audio.data(), sfinfo.frames);
+    sf_close(sndfile);
+    if (numRead != sfinfo.frames) {
+        return std::nullopt;
+    }
+    return Audio{std::move(audio), sfinfo.samplerate};
 }
 
-bool testUtils::toWavFile(fs::path path, const Audio &audio) {
-  SF_INFO sfinfo;
-  sfinfo.channels = 1;
-  sfinfo.samplerate = audio.sampleRate;
-  sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+bool testUtils::toWavFile(fs::path path, const Audio& audio) {
+    SF_INFO sfinfo;
+    sfinfo.channels = 1;
+    sfinfo.samplerate = audio.sampleRate;
+    sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
 
-  if (!std::filesystem::exists(path.parent_path())) {
-    std::filesystem::create_directories(path.parent_path());
-  }
+    if (!std::filesystem::exists(path.parent_path())) {
+        std::filesystem::create_directories(path.parent_path());
+    }
 
-  SNDFILE *sndfile = sf_open(path.string().c_str(), SFM_WRITE, &sfinfo);
-  if (sndfile == nullptr) {
-    return false;
-  }
-  sf_count_t numWritten =
-      sf_writef_float(sndfile, audio.data.data(), audio.data.size());
-  sf_close(sndfile);
-  return numWritten == static_cast<sf_count_t>(audio.data.size());
+    SNDFILE* sndfile = sf_open(path.string().c_str(), SFM_WRITE, &sfinfo);
+    if (sndfile == nullptr) {
+        return false;
+    }
+    sf_count_t numWritten = sf_writef_float(sndfile, audio.data.data(), audio.data.size());
+    sf_close(sndfile);
+    return numWritten == static_cast<sf_count_t>(audio.data.size());
 }
 
 fs::path testUtils::getEvalDir() {
-  return fs::path(__FILE__).parent_path() / ".." / ".." / "eval";
+    return fs::path(__FILE__).parent_path() / ".." / ".." / "eval";
 }
 
-fs::path testUtils::getOutDir() { return getEvalDir() / "out"; }
-
-void testUtils::scaleToRms(std::vector<float> &data, float targetRmsDb) {
-  float sumSquares = 0.f;
-  for (const auto sample : data) {
-    sumSquares += sample * sample;
-  }
-  const float currentRms =
-      std::sqrt(sumSquares / static_cast<float>(data.size()));
-  const float targetRms = std::pow(10.f, targetRmsDb / 20.f);
-  const float scale = targetRms / currentRms;
-  for (auto &sample : data) {
-    sample *= scale;
-  }
+fs::path testUtils::getOutDir() {
+    return getEvalDir() / "out";
 }
 
-void testUtils::mixNoise(std::vector<float> &signal,
-                         const std::vector<float> &noise) {
-  const auto noiseSize = noise.size();
-  size_t n = 0;
-  for (auto &sample : signal) {
-    sample += noise[n];
-    n = (n + 1) % noiseSize;
-  }
+void testUtils::scaleToRms(std::vector<float>& data, float targetRmsDb) {
+    float sumSquares = 0.f;
+    for (const auto sample : data) {
+        sumSquares += sample * sample;
+    }
+    const float currentRms = std::sqrt(sumSquares / static_cast<float>(data.size()));
+    const float targetRms = std::pow(10.f, targetRmsDb / 20.f);
+    const float scale = targetRms / currentRms;
+    for (auto& sample : data) {
+        sample *= scale;
+    }
+}
+
+void testUtils::mixNoise(std::vector<float>& signal, const std::vector<float>& noise) {
+    const auto noiseSize = noise.size();
+    size_t n = 0;
+    for (auto& sample : signal) {
+        sample += noise[n];
+        n = (n + 1) % noiseSize;
+    }
 }
 
 float testUtils::midiNoteToFrequency(int midiNote) {
-  return 440.f * std::pow(2.f, (midiNote - 69) / 12.f);
+    return 440.f * std::pow(2.f, (midiNote - 69) / 12.f);
 }
 
-float testUtils::getTrueFrequency(const std::filesystem::path &filePath) {
-  const auto filename = filePath.stem().string();
-  // File name in the form of <note name><note octave>:
-  const auto noteName = filename.substr(0, filename.size() - 1);
-  const auto noteOctave = filename.back() - '0';
-  const std::vector<std::string> noteNames{
-      "C", "D", "E", "F", "G", "A", "B",
-  };
-  const std::vector<int> noteOffsets{
-      0, 2, 4, 5, 7, 9, 11,
-  };
-  const auto it = std::find_if(
-      noteNames.begin(), noteNames.end(), [&noteName](const std::string &name) {
-        return std::equal(
-            name.begin(), name.end(), noteName.begin(), noteName.end(),
-            [](char a, char b) { return std::tolower(a) == std::tolower(b); });
-      });
+float testUtils::getTrueFrequency(const std::filesystem::path& filePath) {
+    const auto filename = filePath.stem().string();
+    // File name in the form of <note name><note octave>:
+    const auto noteName = filename.substr(0, filename.size() - 1);
+    const auto noteOctave = filename.back() - '0';
+    const std::vector<std::string> noteNames{
+        "C", "D", "E", "F", "G", "A", "B",
+    };
+    const std::vector<int> noteOffsets{
+        0, 2, 4, 5, 7, 9, 11,
+    };
+    const auto it =
+        std::find_if(noteNames.begin(), noteNames.end(), [&noteName](const std::string& name) {
+            return std::equal(name.begin(), name.end(), noteName.begin(), noteName.end(),
+                              [](char a, char b) { return std::tolower(a) == std::tolower(b); });
+        });
 
-  if (it == noteNames.end()) {
-    return 0.f;
-  }
-
-  const int noteOffset = noteOffsets[std::distance(noteNames.begin(), it)];
-  const int midiNote = (noteOctave + 1) * 12 + noteOffset;
-  return midiNoteToFrequency(midiNote);
-}
-
-fs::path testUtils::getFileShortName(const fs::path &filePath) {
-  return filePath.parent_path().stem() / filePath.stem();
-}
-
-std::optional<testUtils::Sample>
-testUtils::getSampleFromFile(const fs::path &filePath) {
-  std::cout << "Reading sample from " << filePath << "\n";
-
-  const auto trueFreq = getTrueFrequency(filePath);
-  if (trueFreq == 0.f) {
-    std::cerr << "Could not determine true frequency for " << filePath << "\n";
-    return std::nullopt;
-  }
-
-  const auto labelPath =
-      filePath.parent_path() / (filePath.stem().string() + ".txt");
-  if (!fs::exists(labelPath)) {
-    std::cerr << "Could not find label file: " << labelPath << "\n";
-    return std::nullopt;
-  }
-
-  // Formatted in Audacity label format: <start time>tab<end time> (ignore
-  // possible label text)
-  std::ifstream labelFile(labelPath);
-  std::string line;
-  if (!std::getline(labelFile, line)) {
-    std::cerr << "Could not read label file: " << labelPath << "\n";
-    return std::nullopt;
-  }
-
-  const auto tabPos = line.find('\t');
-  if (tabPos == std::string::npos) {
-    std::cerr << "Could not parse label file: " << labelPath << "\n";
-    return std::nullopt;
-  }
-  const auto startTime = std::stof(line.substr(0, tabPos));
-  const auto endTime = std::stof(line.substr(tabPos + 1));
-
-  return Sample{filePath, Truth{startTime, endTime, trueFreq}};
-}
-
-void testUtils::writeMarkedWavFile(const fs::path &filenameStem,
-                                   const Audio &src, int markSample) {
-  auto cpy = src.data;
-  cpy[markSample] = 1.f;
-  toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"),
-            {cpy, src.sampleRate});
-}
-
-double testUtils::writeResultFile(const Sample &sample,
-                                  const std::vector<float> &results,
-                                  const fs::path &outputPath) {
-  if (!fs::exists(outputPath.parent_path())) {
-    fs::create_directories(outputPath.parent_path());
-  }
-
-  std::ofstream resultFile(outputPath);
-
-  double rmsErrorCents = 0.;
-  std::vector<double> errorCents;
-  for (const auto &r : results) {
-    if (r > 0.) {
-      const auto e = 1200. * std::log2(r / sample.truth.frequency);
-      rmsErrorCents += e * e;
-      errorCents.push_back(e);
+    if (it == noteNames.end()) {
+        return 0.f;
     }
-  }
-  if (!errorCents.empty()) {
-    rmsErrorCents = std::sqrt(rmsErrorCents / errorCents.size());
-  }
-  resultFile << "rmsErrorCents = " << rmsErrorCents << "\n";
 
-  resultFile << "results = [";
-  auto separator = "";
-  for (const auto &e : errorCents) {
-    resultFile << separator << e;
-    separator = ",\n";
-  }
-  resultFile << "]\n";
-
-  return rmsErrorCents;
+    const int noteOffset = noteOffsets[std::distance(noteNames.begin(), it)];
+    const int midiNote = (noteOctave + 1) * 12 + noteOffset;
+    return midiNoteToFrequency(midiNote);
 }
 
-} // namespace saint
+fs::path testUtils::getFileShortName(const fs::path& filePath) {
+    return filePath.parent_path().stem() / filePath.stem();
+}
+
+std::optional<testUtils::Sample> testUtils::getSampleFromFile(const fs::path& filePath) {
+    std::cout << "Reading sample from " << filePath << "\n";
+
+    const auto trueFreq = getTrueFrequency(filePath);
+    if (trueFreq == 0.f) {
+        std::cerr << "Could not determine true frequency for " << filePath << "\n";
+        return std::nullopt;
+    }
+
+    const auto labelPath = filePath.parent_path() / (filePath.stem().string() + ".txt");
+    if (!fs::exists(labelPath)) {
+        std::cerr << "Could not find label file: " << labelPath << "\n";
+        return std::nullopt;
+    }
+
+    // Formatted in Audacity label format: <start time>tab<end time> (ignore
+    // possible label text)
+    std::ifstream labelFile(labelPath);
+    std::string line;
+    if (!std::getline(labelFile, line)) {
+        std::cerr << "Could not read label file: " << labelPath << "\n";
+        return std::nullopt;
+    }
+
+    const auto tabPos = line.find('\t');
+    if (tabPos == std::string::npos) {
+        std::cerr << "Could not parse label file: " << labelPath << "\n";
+        return std::nullopt;
+    }
+    const auto startTime = std::stof(line.substr(0, tabPos));
+    const auto endTime = std::stof(line.substr(tabPos + 1));
+
+    return Sample{filePath, Truth{startTime, endTime, trueFreq}};
+}
+
+void testUtils::writeMarkedWavFile(const fs::path& filenameStem, const Audio& src, int markSample) {
+    auto cpy = src.data;
+    cpy[markSample] = 1.f;
+    toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"), {cpy, src.sampleRate});
+}
+
+double testUtils::writeResultFile(const Sample& sample, const std::vector<float>& results,
+                                  const fs::path& outputPath) {
+    if (!fs::exists(outputPath.parent_path())) {
+        fs::create_directories(outputPath.parent_path());
+    }
+
+    std::ofstream resultFile(outputPath);
+
+    double rmsErrorCents = 0.;
+    std::vector<double> errorCents;
+    for (const auto& r : results) {
+        if (r > 0.) {
+            const auto e = 1200. * std::log2(r / sample.truth.frequency);
+            rmsErrorCents += e * e;
+            errorCents.push_back(e);
+        }
+    }
+    if (!errorCents.empty()) {
+        rmsErrorCents = std::sqrt(rmsErrorCents / errorCents.size());
+    }
+    resultFile << "rmsErrorCents = " << rmsErrorCents << "\n";
+
+    resultFile << "results = [";
+    auto separator = "";
+    for (const auto& e : errorCents) {
+        resultFile << separator << e;
+        separator = ",\n";
+    }
+    resultFile << "]\n";
+
+    return rmsErrorCents;
+}
+
+}  // namespace saint
