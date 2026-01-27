@@ -81,6 +81,14 @@ std::vector<Noise> loadNoiseData() {
   return noiseData;
 }
 
+// Targeting tuning of acoustic guitar:
+// - min note accounts for a drop-D tuning and an additional tone to account for
+// pitch changes while tuning
+// - max note is the high E on the first string, adding a tone for margin
+constexpr PitchDetector::Config config{
+    Pitch{PitchClass::C, 2},
+    Pitch{PitchClass::Gb, 4},
+};
 } // namespace
 
 TEST(PitchDetectorImpl, benchmarking) {
@@ -91,7 +99,8 @@ TEST(PitchDetectorImpl, benchmarking) {
   std::vector<double> rmsErrors;
   std::vector<RocResult> rocResults;
 
-  for (const auto &sample : samples) {
+  for (auto s = 0; s < samples.size(); ++s) {
+    const auto &sample = samples[s];
     const auto &testFile = sample.file;
     std::cout << "Processing " << testFile << "\n";
 
@@ -105,7 +114,8 @@ TEST(PitchDetectorImpl, benchmarking) {
       continue;
     }
 
-    for (const auto &noise : noiseData) {
+    for (auto n = 0; n < noiseData.size(); ++n) {
+      const auto &noise = noiseData[n];
       auto noisy = clean->data;
       testUtils::mixNoise(noisy, noise.data);
 
@@ -114,14 +124,6 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                           estimateIndex);
       const auto *loggerPtr = logger.get();
 
-      // Targeting tuning of acoustic guitar:
-      // - min note accounts for a drop-D tuning and an additional tone to
-      // account for pitch changes while tuning
-      // - max note is the high E on the first string, adding a tone for margin
-      const PitchDetector::Config config{
-          Pitch{PitchClass::C, 2},
-          Pitch{PitchClass::Gb, 4},
-      };
       PitchDetectorImpl sut(clean->sampleRate, config, std::move(logger));
       std::vector<float> results;
       for (auto n = 0u; n + blockSize < noisy.size(); n += blockSize) {
@@ -132,6 +134,8 @@ TEST(PitchDetectorImpl, benchmarking) {
         const auto truth = (currentTime >= sample.truth.startTime) &&
                            (currentTime <= sample.truth.endTime);
         if (result.has_value()) {
+          static auto resultCount = 0;
+          resultCount++;
           results.push_back(*result);
           rocResults.emplace_back(truth, presenceScore);
         }
