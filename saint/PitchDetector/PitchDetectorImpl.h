@@ -19,6 +19,10 @@ class PitchDetectorImpl : public PitchDetector {
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
     std::optional<float> process(const float*, int, float* presenceScore) override;
 
+    int windowSizeSamples() {
+        return static_cast<int>(_window.size());
+    }
+
    private:
     const float _sampleRate;
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;

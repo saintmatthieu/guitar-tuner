@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <vector>
 
 #include "testUtils.h"
@@ -40,7 +41,9 @@ bool PitchDetectorLogger::StartNewEstimate() {
     if (ok) {
         // Ready for logging.
         mAnalysisSampleIndex = mRingBufferCount;
-        mOfs = std::make_unique<std::ofstream>(testUtils::getOutDir() / "PitchDetectorLog.py");
+        const auto file = testUtils::getOutDir() / "PitchDetectorLog.py";
+        std::cout << "Logging PitchDetector analysis to " << file << "\n";
+        mOfs = std::make_unique<std::ofstream>(file);
         *mOfs << "sampleRate = " << mSampleRate << "\n";
         *mOfs << "audioIndex = " << *mAnalysisSampleIndex << "\n";
     }

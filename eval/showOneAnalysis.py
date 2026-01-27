@@ -23,12 +23,14 @@ plt.figure(fig)
 plt.plot(t + t0, pdl.inputAudio)
 plt.grid(False)
 plt.title("Input Audio Signal")
+plt.gcf().canvas.manager.set_window_title("Input Audio Signal")
 
 fig += 1
 plt.figure(fig)
 plt.plot(t + t0, pdl.windowedAudio)
 plt.grid(False)
 plt.title("Windowed Audio Signal")
+plt.gcf().canvas.manager.set_window_title("Windowed Audio Signal")
 
 fig += 1
 plt.figure(fig)
@@ -39,6 +41,7 @@ plt.subplot(2, 1, 2)
 plt.plot(pdl.xcorr)
 plt.grid(False)
 plt.suptitle("Autocorrelation")
+plt.gcf().canvas.manager.set_window_title("Autocorrelation")
 
 fig += 1
 plt.figure(fig)
@@ -55,6 +58,7 @@ plt.ylabel("Log Magnitude")
 plt.grid(False)
 # plt.xlim(0, 2000 / hzPerBin)
 plt.suptitle("Log Magnitude Spectrum")
+plt.gcf().canvas.manager.set_window_title("Log Magnitude Spectrum")
 
 fig += 1
 plt.figure(fig)
@@ -67,6 +71,7 @@ plt.plot(pdl.cepstrum)
 plt.xlabel("Cepstrum Bin")
 plt.grid(False)
 plt.suptitle("Cepstrum")
+plt.gcf().canvas.manager.set_window_title("Cepstrum")
 
 fig += 1
 plt.figure(fig)
@@ -79,6 +84,7 @@ plt.plot(pdl.cepstrumFiltered)
 plt.xlabel("Cepstrum Bin")
 plt.grid(False)
 plt.suptitle("Filtered Cepstrum")
+plt.gcf().canvas.manager.set_window_title("Filtered Cepstrum")
 
 fig += 1
 plt.figure(fig)
@@ -97,5 +103,6 @@ for harmonic in range(pdl.hpsNumHarmonics):
   plt.ylabel("HPS Product")
 plt.grid(False)
 plt.suptitle("Harmonic Product Spectrum")
+plt.gcf().canvas.manager.set_window_title("Harmonic Product Spectrum")
 
 plt.show()

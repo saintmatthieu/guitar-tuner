@@ -110,8 +110,6 @@ fs::path testUtils::getFileShortName(const fs::path& filePath) {
 }
 
 std::optional<testUtils::Sample> testUtils::getSampleFromFile(const fs::path& filePath) {
-    std::cout << "Reading sample from " << filePath << "\n";
-
     const auto trueFreq = getTrueFrequency(filePath);
     if (trueFreq == 0.f) {
         std::cerr << "Could not determine true frequency for " << filePath << "\n";
@@ -144,10 +142,11 @@ std::optional<testUtils::Sample> testUtils::getSampleFromFile(const fs::path& fi
     return Sample{filePath, Truth{startTime, endTime, trueFreq}};
 }
 
-void testUtils::writeMarkedWavFile(const fs::path& filenameStem, const Audio& src, int markSample) {
-    auto cpy = src.data;
-    cpy[markSample] = 1.f;
-    toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"), {cpy, src.sampleRate});
+void testUtils::writeMarkedWavFile(const fs::path& filenameStem, std::vector<float> src,
+                                   int sampleRate, Marking marking) {
+    src[marking.startSample] = 1.f;
+    src[marking.endSample] = 1.f;
+    toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"), {src, sampleRate});
 }
 
 double testUtils::writeResultFile(const Sample& sample, const std::vector<float>& results,

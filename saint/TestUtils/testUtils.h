@@ -48,8 +48,12 @@ std::filesystem::path getFileShortName(const std::filesystem::path& filePath);
 std::optional<Sample> getSampleFromFile(const std::filesystem::path& filePath);
 
 // Output utilities
-void writeMarkedWavFile(const std::filesystem::path& filenameStem, const Audio& src,
-                        int markSample);
+struct Marking {
+    const int startSample;
+    const int endSample;
+};
+void writeMarkedWavFile(const std::filesystem::path& filenameStem, std::vector<float> src,
+                        int sampleRate, Marking marking);
 double writeResultFile(const Sample& sample, const std::vector<float>& results,
                        const std::filesystem::path& outputPath);
 
@@ -164,6 +168,15 @@ void PrintPythonVector(std::ofstream& ofs, const std::vector<T>& v, const char* 
     std::for_each(v.begin(), v.end(), [&](T x) { ofs << x << ","; });
     ofs << "]\n";
 }
+
+template <typename F>
+struct Finally {
+    Finally(F f) : func(std::move(f)) {}
+    ~Finally() {
+        func();
+    }
+    F func;
+};
 
 }  // namespace testUtils
 }  // namespace saint

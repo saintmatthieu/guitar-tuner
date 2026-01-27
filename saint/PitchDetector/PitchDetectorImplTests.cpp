@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorLogger.h"
 #include "testUtils.h"
@@ -96,6 +97,17 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::vector<double> rmsErrors;
     std::vector<RocResult> rocResults;
 
+    auto instanceCount = 0;
+    std::optional<int> argInstanceCount;
+    const auto& argv = ::testing::internal::GetArgvs();
+    for (size_t i = 1; i < argv.size(); ++i) {
+        const std::string argStr(argv[i]);
+        const std::string prefix("instanceCount=");
+        if (argStr.find(prefix) == 0) {
+            argInstanceCount = std::stoi(argStr.substr(prefix.size()));
+        }
+    }
+
     for (auto s = 0; s < samples.size(); ++s) {
         const auto& sample = samples[s];
         const auto& testFile = sample.file;
@@ -111,25 +123,45 @@ TEST(PitchDetectorImpl, benchmarking) {
         }
 
         for (auto n = 0; n < noiseData.size(); ++n) {
+            testUtils::Finally incrementInstanceCount([&instanceCount]() { ++instanceCount; });
+
+            if (argInstanceCount.has_value() && instanceCount != *argInstanceCount) {
+                continue;
+            }
+
             const auto& noise = noiseData[n];
+            std::cout << "  Adding noise from " << noise.file << " at " << noise.rmsDb << " dB\n";
             auto noisy = clean->data;
             testUtils::mixNoise(noisy, noise.data);
 
-            constexpr auto estimateIndex = 721;
-            auto logger = std::make_unique<PitchDetectorLogger>(clean->sampleRate, estimateIndex);
+            auto estimateIndex = 0;
+            std::optional<int> logEstimateIndex;
+            const std::string logPrefix("logEstimateIndex=");
+            for (size_t i = 1; i < argv.size(); ++i) {
+                const std::string argStr(argv[i]);
+                if (argStr.find(logPrefix) == 0) {
+                    logEstimateIndex = std::stoi(argStr.substr(logPrefix.size()));
+                }
+            }
+            std::unique_ptr<PitchDetectorLoggerInterface> logger;
+            if (logEstimateIndex.has_value()) {
+                logger =
+                    std::make_unique<PitchDetectorLogger>(clean->sampleRate, *logEstimateIndex);
+            } else {
+                logger = std::make_unique<DummyPitchDetectorLogger>();
+            }
             const auto* loggerPtr = logger.get();
 
             PitchDetectorImpl sut(clean->sampleRate, config, std::move(logger));
             std::vector<float> results;
-            for (auto n = 0u; n + blockSize < noisy.size(); n += blockSize) {
+            for (auto i = 0u; i + blockSize < noisy.size(); i += blockSize) {
                 auto presenceScore = 0.f;
-                auto result = sut.process(noisy.data() + n, blockSize, &presenceScore);
-                const auto currentTime = static_cast<double>(n + blockSize) / clean->sampleRate;
+                auto result = sut.process(noisy.data() + i, blockSize, &presenceScore);
+                const auto currentTime = static_cast<double>(i + blockSize) / clean->sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
                 if (result.has_value()) {
-                    static auto resultCount = 0;
-                    resultCount++;
+                    ++estimateIndex;
                     results.push_back(*result);
                     rocResults.emplace_back(truth, presenceScore);
                 }
@@ -144,12 +176,16 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto rmsError = testUtils::writeResultFile(sample, results, resultPath);
             rmsErrors.push_back(rmsError);
 
-            std::cout << "RMS error for " << testUtils::getFileShortName(testFile) << " with noise "
-                      << testUtils::getFileShortName(noise.file) << " at " << noise.rmsDb
-                      << " dB: " << rmsErrors.back() << " cents\n";
+            if (auto realLogger = dynamic_cast<PitchDetectorLogger const*>(loggerPtr);
+                realLogger && realLogger->analysisAudioIndex()) {
+                const auto endIndex = *realLogger->analysisAudioIndex();
+                const auto startIndex = endIndex - sut.windowSizeSamples();
+                const testUtils::Marking marking{startIndex, endIndex};
+                testUtils::writeMarkedWavFile(filename, noisy, clean->sampleRate, marking);
+            }
 
-            if (const auto index = loggerPtr->analysisAudioIndex())
-                testUtils::writeMarkedWavFile(filename, *clean, *index);
+            std::cout << "    RMS error: " << rmsError << " cents, instanceCount: " << instanceCount
+                      << "\n";
         }
     }
 
