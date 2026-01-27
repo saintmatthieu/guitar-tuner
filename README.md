@@ -21,6 +21,7 @@ In `./eval/testFiles/notes/`
 #### What each file must be
 
 - one note plucked once
+- let ring until no pitch is heard
 - the note must be VERY well tuned
 - don't mute the other strings
 - background as clean as possible (noise is added artificially by the benchmarking code)
