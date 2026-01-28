@@ -176,16 +176,31 @@ TEST(PitchDetectorImpl, benchmarking) {
             PitchDetectorMedianFilter sut(clean->sampleRate, blockSize,
                                           std::move(internalAlgorithm));
             std::vector<float> results;
+            auto negativeCount = 0;
+            auto falseNegativeCount = 0;
+            auto positiveCount = 0;
+            auto falsePositiveCount = 0;
             for (auto i = 0u; i + blockSize < noisy.size(); i += blockSize) {
                 auto presenceScore = 0.f;
                 auto result = sut.process(noisy.data() + i, &presenceScore);
                 const auto currentTime = static_cast<double>(i + blockSize) / clean->sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
+                if (truth) {
+                    ++positiveCount;
+                    if (result == 0.f)
+                        ++falseNegativeCount;
+                } else {
+                    ++negativeCount;
+                    if (result != 0.f)
+                        ++falsePositiveCount;
+                }
                 ++estimateIndex;
                 results.push_back(result);
                 rocResults.emplace_back(truth, presenceScore);
             }
+            const auto FPR = 1. * falsePositiveCount / negativeCount;
+            const auto FNR = 1. * falseNegativeCount / positiveCount;
 
             const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
                                   "_at_" + noise.rmsDb + "dB";
@@ -205,7 +220,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             std::cout << "    RMS error: " << rmsError << " cents, instanceCount: " << instanceCount
-                      << "\n";
+                      << ", FPR: " << FPR << ", FNR: " << FNR << "\n";
         }
 
         if (somethingProcessed)
