@@ -171,7 +171,7 @@ void testUtils::writeMarkedWavFile(const fs::path& filenameStem, std::vector<flo
     toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"), {src, sampleRate});
 }
 
-double testUtils::writeResultFile(const Sample& sample, const std::vector<float>& results,
+double testUtils::writeResultFile(const Sample& sample, const std::vector<Result>& results,
                                   const fs::path& outputPath) {
     if (!fs::exists(outputPath.parent_path())) {
         fs::create_directories(outputPath.parent_path());
@@ -182,8 +182,8 @@ double testUtils::writeResultFile(const Sample& sample, const std::vector<float>
     double rmsErrorCents = 0.;
     std::vector<double> errorCents;
     for (const auto& r : results) {
-        if (r > 0.) {
-            const auto e = 1200. * std::log2(r / sample.truth.frequency);
+        if (r.detectedFrequency > 0.) {
+            const auto e = 1200. * std::log2(r.detectedFrequency / sample.truth.frequency);
             rmsErrorCents += e * e;
             errorCents.push_back(e);
         }

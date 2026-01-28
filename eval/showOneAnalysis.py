@@ -7,9 +7,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'out'))
 import PitchDetectorLog as pdl
 import matplotlib.pyplot as plt
 
-# configure matplotlib to dark mode
-plt.style.use('dark_background')
-
 t0 = pdl.audioIndex / pdl.sampleRate
 t = np.array([i / pdl.sampleRate for i in range(len(pdl.inputAudio))])
 cepstrumT = [i / pdl.sampleRate for i in range(len(pdl.cepstrum))]
@@ -86,23 +83,23 @@ plt.grid(False)
 plt.suptitle("Filtered Cepstrum")
 plt.gcf().canvas.manager.set_window_title("Filtered Cepstrum")
 
-fig += 1
-plt.figure(fig)
-for harmonic in range(pdl.hpsNumHarmonics):
-  plt.subplot(pdl.hpsNumHarmonics, 1, harmonic + 1)
-  varName = "hpsAfterHarmonic" + str(harmonic + 1)
-  hps = getattr(pdl, varName)
-  hps = [x / max(hps) for x in hps]
-  plt.plot(f[:len(hps)], hps)
-  if harmonic < pdl.hpsNumHarmonics - 1:
-    varName = "hpsDownsampledHarmonic" + str(harmonic + 2)
-    downsampled = getattr(pdl, varName)
-    downsampled = [x / max(downsampled) for x in downsampled]
-    plt.plot(f[:len(downsampled)], downsampled, linestyle='dashed')
-  plt.xlabel("Frequency (Hz)")
-  plt.ylabel("HPS Product")
-plt.grid(False)
-plt.suptitle("Harmonic Product Spectrum")
-plt.gcf().canvas.manager.set_window_title("Harmonic Product Spectrum")
+# fig += 1
+# plt.figure(fig)
+# for harmonic in range(pdl.hpsNumHarmonics):
+#   plt.subplot(pdl.hpsNumHarmonics, 1, harmonic + 1)
+#   varName = "hpsAfterHarmonic" + str(harmonic + 1)
+#   hps = getattr(pdl, varName)
+#   hps = [x / max(hps) for x in hps]
+#   plt.plot(f[:len(hps)], hps)
+#   if harmonic < pdl.hpsNumHarmonics - 1:
+#     varName = "hpsDownsampledHarmonic" + str(harmonic + 2)
+#     downsampled = getattr(pdl, varName)
+#     downsampled = [x / max(downsampled) for x in downsampled]
+#     plt.plot(f[:len(downsampled)], downsampled, linestyle='dashed')
+#   plt.xlabel("Frequency (Hz)")
+#   plt.ylabel("HPS Product")
+# plt.grid(False)
+# plt.suptitle("Harmonic Product Spectrum")
+# plt.gcf().canvas.manager.set_window_title("Harmonic Product Spectrum")
 
 plt.show()

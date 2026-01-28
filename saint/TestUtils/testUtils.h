@@ -29,6 +29,13 @@ struct Sample {
     Truth truth;
 };
 
+struct Result {
+    Result(bool t, double s, float f) : truth(t), score(s), detectedFrequency(f) {}
+    bool truth = false;
+    double score = 0.0;
+    float detectedFrequency = 0.f;
+};
+
 std::optional<Audio> fromWavFile(std::filesystem::path path, int numSamples = 0);
 bool toWavFile(std::filesystem::path path, const Audio& audio);
 
@@ -54,7 +61,7 @@ struct Marking {
 };
 void writeMarkedWavFile(const std::filesystem::path& filenameStem, std::vector<float> src,
                         int sampleRate, Marking marking);
-double writeResultFile(const Sample& sample, const std::vector<float>& results,
+double writeResultFile(const Sample& sample, const std::vector<Result>& results,
                        const std::filesystem::path& outputPath);
 
 // Value comparison utility
@@ -168,5 +175,27 @@ void PrintPythonVector(std::ofstream& ofs, const std::vector<T>& v, const char* 
     std::for_each(v.begin(), v.end(), [&](T x) { ofs << x << ","; });
     ofs << "]\n";
 }
+
+class TeeStream {
+   public:
+    TeeStream(std::ostream& console, std::ostream& file) : console_(console), file_(file) {}
+
+    template <typename T>
+    TeeStream& operator<<(const T& value) {
+        console_ << value;
+        file_ << value;
+        return *this;
+    }
+
+    TeeStream& operator<<(std::ostream& (*manip)(std::ostream&)) {
+        console_ << manip;
+        file_ << manip;
+        return *this;
+    }
+
+   private:
+    std::ostream& console_;
+    std::ostream& file_;
+};
 }  // namespace testUtils
 }  // namespace saint

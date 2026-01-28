@@ -247,6 +247,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     }
 
     std::vector<float> time(_fftSize);
+    _logger->StartNewEstimate();
 
     const float* buffer = _ringBuffer.peek();
     utils::Finally readRingBuffer([&]() { _ringBuffer.readBuff(time.data(), _blockSize); });
@@ -255,7 +256,6 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     std::fill(time.begin() + _window.size(), time.begin() + _fftSize, 0.f);
 
     _logger->SamplesRead(_blockSize);
-    _logger->StartNewEstimate();
     _logger->Log(_sampleRate, "sampleRate");
     _logger->Log(_fftSize, "fftSize");
     _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
@@ -268,11 +268,11 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
     _logger->Log(time.data(), time.size(), "xcorr");
 
-    // Compute HPS estimate
-    const auto hpsFreq =
-        getHarmonicProductSpectrumPeakFrequency(spectrum, _fftSize, _sampleRate, *_logger);
-    const float hpsFreqFloat = static_cast<float>(hpsFreq);
-    _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
+    // // Compute HPS estimate
+    // const auto hpsFreq =
+    //     getHarmonicProductSpectrumPeakFrequency(spectrum, _fftSize, _sampleRate, *_logger);
+    // const float hpsFreqFloat = static_cast<float>(hpsFreq);
+    // _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
 
     _logger->EndNewEstimate(nullptr, 0);
 
