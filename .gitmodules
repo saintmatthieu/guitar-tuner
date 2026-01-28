@@ -4,6 +4,3 @@
 [submodule "pffft"]
 	path = pffft
 	url = https://github.com/marton78/pffft.git
-[submodule "Ring-Buffer"]
-	path = Ring-Buffer
-	url = https://github.com/jnk0le/Ring-Buffer.git

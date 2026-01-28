@@ -55,14 +55,7 @@ int getWindowSizeSamples(int sampleRate, const std::optional<PitchDetector::Conf
     // window, against 1 for a spectrum reading.
     const auto minFreq = getMinFreq(config);
     const auto windowSizeMs = 1000 * 3.3 / minFreq;
-    const auto size = static_cast<int>(windowSizeMs * sampleRate / 1000);
-    assert(size <= PitchDetector::maxBlockSize);
-    if (size > PitchDetector::maxBlockSize) {
-        std::cerr << "Warning: requested window size " << size << " exceeds maximum allowed "
-                  << PitchDetector::maxBlockSize << ". Clamping to maximum.\n";
-        return PitchDetector::maxBlockSize;
-    }
-    return size;
+    return static_cast<int>(windowSizeMs * sampleRate / 1000);
 }
 
 void applyWindow(const std::vector<float>& window, std::vector<float>& input) {
@@ -213,11 +206,13 @@ double getHarmonicProductSpectrumPeakFrequency(const std::vector<std::complex<fl
 }
 }  // namespace
 
-PitchDetectorImpl::PitchDetectorImpl(int sampleRate, int blockSize,
+PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat,
+                                     int samplesPerBlockPerChannel,
                                      const std::optional<Config>& config,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger)
     : _sampleRate(sampleRate),
-      _blockSize(blockSize),
+      _channelFormat(channelFormat),
+      _blockSize(samplesPerBlockPerChannel),
       _logger(std::move(logger)),
       _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, config))),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
@@ -227,18 +222,26 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, int blockSize,
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / _minFreq))),
-      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {
+      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)),
+      _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f) {
     //
-    assert(blockSize <= PitchDetector::maxBlockSize);
-    std::vector<float> zeroes(std::max(static_cast<int>(_window.size()) - blockSize, 0), 0.f);
-    _ringBuffer.writeBuff(zeroes.data(), zeroes.size());
+    _audioBuffer.reserve(_window.size());
 }
 
 float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
-    //
-    _ringBuffer.writeBuff(audio, _blockSize);
-    assert(_ringBuffer.readAvailable() >= _window.size());
-    if (_ringBuffer.readAvailable() < _window.size()) {
+    // Append new audio samples to buffer
+    if (_channelFormat == ChannelFormat::Mono) {
+        _audioBuffer.insert(_audioBuffer.end(), audio, audio + _blockSize);
+    } else {
+        assert(_channelFormat == ChannelFormat::Stereo);
+        for (auto i = 0; i < _blockSize; ++i) {
+            const auto mix = 0.5f * (audio[i * 2] + audio[i * 2 + 1]);
+            _audioBuffer.push_back(mix);
+        }
+    }
+
+    assert(_audioBuffer.size() >= _window.size());
+    if (_audioBuffer.size() < _window.size()) {
         if (!_bufferErrorLoggedAlready) {
             _bufferErrorLoggedAlready = true;
             std::cerr << "PitchDetectorImpl::process called before enough samples were read\n";
@@ -247,19 +250,31 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     }
 
     std::vector<float> time(_fftSize);
+    _logger->StartNewEstimate();
 
-    const float* buffer = _ringBuffer.peek();
-    utils::Finally readRingBuffer([&]() { _ringBuffer.readBuff(time.data(), _blockSize); });
+    // Copy the most recent window of samples
+    const auto bufferStart = _audioBuffer.end() - _window.size();
+    std::copy(bufferStart, _audioBuffer.end(), time.begin());
 
-    time.insert(time.begin(), buffer, buffer + _window.size());
+    // Remove old samples, keeping only what's needed for the next window
+    const auto samplesToKeep = _window.size() - _blockSize;
+    _audioBuffer.erase(_audioBuffer.begin(), _audioBuffer.end() - samplesToKeep);
     std::fill(time.begin() + _window.size(), time.begin() + _fftSize, 0.f);
 
     _logger->SamplesRead(_blockSize);
-    _logger->StartNewEstimate();
     _logger->Log(_sampleRate, "sampleRate");
     _logger->Log(_fftSize, "fftSize");
     _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
     _logger->Log(time.data(), time.size(), "inputAudio");
+
+    // zero all samples below -60dB
+    std::for_each(time.begin(), time.end(), [](float& x) {
+        constexpr float threshold = 0.001f;
+        if (std::abs(x) < threshold) {
+            x = 0.f;
+        }
+    });
+
     applyWindow(_window, time);
     _logger->Log(time.data(), time.size(), "windowedAudio");
 
@@ -268,11 +283,11 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
     _logger->Log(time.data(), time.size(), "xcorr");
 
-    // Compute HPS estimate
-    const auto hpsFreq =
-        getHarmonicProductSpectrumPeakFrequency(spectrum, _fftSize, _sampleRate, *_logger);
-    const float hpsFreqFloat = static_cast<float>(hpsFreq);
-    _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
+    // // Compute HPS estimate
+    // const auto hpsFreq =
+    //     getHarmonicProductSpectrumPeakFrequency(spectrum, _fftSize, _sampleRate, *_logger);
+    // const float hpsFreqFloat = static_cast<float>(hpsFreq);
+    // _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
 
     _logger->EndNewEstimate(nullptr, 0);
 

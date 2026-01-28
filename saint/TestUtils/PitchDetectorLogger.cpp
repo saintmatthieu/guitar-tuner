@@ -61,6 +61,7 @@ void PitchDetectorLogger::Log(const float* samples, size_t size, const char* nam
         // Keep it lightweight if we're not logging.
         return;
     }
+    assert(std::all_of(samples, samples + size, [](float x) { return std::isfinite(x); }));
     PrintPythonVector(*mOfs, samples, samples + size, name);
 }
 
@@ -70,6 +71,9 @@ void PitchDetectorLogger::Log(
     if (!mOfs) {
         return;
     }
+    assert(std::all_of(cv, cv + cvSize, [](const std::complex<float>& x) {
+        return std::isfinite(x.real()) && std::isfinite(x.imag());
+    }));
     std::vector<float> v(cvSize);
     std::transform(cv, cv + cvSize, v.begin(), transform);
     PrintPythonVector(*mOfs, v.begin(), v.end(), name);

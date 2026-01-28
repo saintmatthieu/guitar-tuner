@@ -26,7 +26,9 @@ std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSam
     if (numRead != framesToRead) {
         return std::nullopt;
     }
-    return Audio{std::move(audio), sfinfo.samplerate};
+
+    const auto channelFormat = sfinfo.channels == 1 ? ChannelFormat::Mono : ChannelFormat::Stereo;
+    return Audio{std::move(audio), sfinfo.samplerate, channelFormat};
 }
 
 bool testUtils::toWavFile(fs::path path, const Audio& audio) {
@@ -35,7 +37,7 @@ bool testUtils::toWavFile(fs::path path, const Audio& audio) {
         return true;
     }
     SF_INFO sfinfo;
-    sfinfo.channels = 1;
+    sfinfo.channels = audio.channelFormat == ChannelFormat::Mono ? 1 : 2;
     sfinfo.samplerate = audio.sampleRate;
     sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
 
@@ -48,9 +50,10 @@ bool testUtils::toWavFile(fs::path path, const Audio& audio) {
         std::cerr << "Could not open file for writing: " << path << "\n";
         return false;
     }
-    sf_count_t numWritten = sf_writef_float(sndfile, audio.data.data(), audio.data.size());
+    sf_count_t numWritten =
+        sf_writef_float(sndfile, audio.interleaved.data(), audio.interleaved.size());
     sf_close(sndfile);
-    const auto success = numWritten == static_cast<sf_count_t>(audio.data.size());
+    const auto success = numWritten == static_cast<sf_count_t>(audio.interleaved.size());
     if (!success) {
         std::cerr << "Could not write all samples to file: " << path << "\n";
     } else {
@@ -88,11 +91,14 @@ void testUtils::scaleToRms(std::vector<float>& data, float targetRmsDb) {
     }
 }
 
-void testUtils::mixNoise(std::vector<float>& signal, const std::vector<float>& noise) {
+void testUtils::mixNoise(Audio& signal, const std::vector<float>& noise) {
     const auto noiseSize = noise.size();
     size_t n = 0;
-    for (auto& sample : signal) {
-        sample += noise[n];
+    const auto numChannels = signal.channelFormat == ChannelFormat::Mono ? 1 : 2;
+    for (auto i = 0; i < signal.interleaved.size() / numChannels; ++i) {
+        for (auto c = 0; c < numChannels; ++c) {
+            signal.interleaved[i * numChannels + c] += noise[n];
+        }
         n = (n + 1) % noiseSize;
     }
 }
@@ -164,14 +170,17 @@ std::optional<testUtils::Sample> testUtils::getSampleFromFile(const fs::path& fi
     return Sample{filePath, Truth{startTime, endTime, trueFreq}};
 }
 
-void testUtils::writeMarkedWavFile(const fs::path& filenameStem, std::vector<float> src,
-                                   int sampleRate, Marking marking) {
-    src[marking.startSample] = 1.f;
-    src[marking.endSample] = 1.f;
-    toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"), {src, sampleRate});
+void testUtils::writeMarkedWavFile(const fs::path& filenameStem, Audio audio, int sampleRate,
+                                   Marking marking) {
+    const auto numChannels = audio.channelFormat == ChannelFormat::Mono ? 1 : 2;
+    for (auto c = 0; c < numChannels; ++c) {
+        audio.interleaved[marking.startSample * numChannels + c] = 1.f;
+        audio.interleaved[marking.endSample * numChannels + c] = 1.f;
+    }
+    toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"), audio);
 }
 
-double testUtils::writeResultFile(const Sample& sample, const std::vector<float>& results,
+double testUtils::writeResultFile(const Sample& sample, const std::vector<Result>& results,
                                   const fs::path& outputPath) {
     if (!fs::exists(outputPath.parent_path())) {
         fs::create_directories(outputPath.parent_path());
@@ -182,8 +191,8 @@ double testUtils::writeResultFile(const Sample& sample, const std::vector<float>
     double rmsErrorCents = 0.;
     std::vector<double> errorCents;
     for (const auto& r : results) {
-        if (r > 0.) {
-            const auto e = 1200. * std::log2(r / sample.truth.frequency);
+        if (r.freq > 0.) {
+            const auto e = 1200. * std::log2(r.freq / sample.truth.frequency);
             rmsErrorCents += e * e;
             errorCents.push_back(e);
         }

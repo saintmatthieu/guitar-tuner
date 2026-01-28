@@ -1,7 +1,7 @@
 #pragma once
 
 #include <optional>
-#include <ringbuffer.hpp>
+#include <vector>
 
 #include "Cepstrum.h"
 #include "PitchDetector.h"
@@ -12,7 +12,8 @@ class PitchDetectorLoggerInterface;
 namespace saint {
 class PitchDetectorImpl : public PitchDetector {
    public:
-    PitchDetectorImpl(int sampleRate, int blockSize, const std::optional<Config>& config,
+    PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel,
+                      const std::optional<Config>& config,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
     float process(const float*, float* presenceScore) override;
 
@@ -22,13 +23,14 @@ class PitchDetectorImpl : public PitchDetector {
 
    private:
     const float _sampleRate;
+    const ChannelFormat _channelFormat;
     const int _blockSize;
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
     const std::vector<float> _window;
     const int _fftSize;
     RealFft _fwdFft;
     CepstrumData _cepstrumData;
-    jnk0le::Ringbuffer<float, maxBlockSize> _ringBuffer;
+    std::vector<float> _audioBuffer;
     const std::vector<float> _lpWindow;
     const std::vector<float> _windowXcor;
     const float _minFreq;
