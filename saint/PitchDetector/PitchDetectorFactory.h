@@ -8,7 +8,7 @@
 namespace saint {
 namespace PitchDetectorFactory {
 std::unique_ptr<PitchDetector> createInstance(
-    int sampleRate, int blockSize,
+    int sampleRate, ChannelFormat, int samplesPerBlockPerChannel,
     const std::optional<PitchDetector::Config>& config = std::nullopt);
-}
+}  // namespace PitchDetectorFactory
 }  // namespace saint

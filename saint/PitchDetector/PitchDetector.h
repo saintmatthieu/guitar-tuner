@@ -11,6 +11,8 @@ struct Pitch {
     const int octave;
 };
 
+enum class ChannelFormat { Mono, Stereo };
+
 class PitchDetector {
    public:
     struct Config {
@@ -18,15 +20,12 @@ class PitchDetector {
         const std::optional<Pitch> highestPitch;
     };
 
-    static std::unique_ptr<PitchDetector> createInstance(
-        int sampleRate, int blockSize, const std::optional<Config>& config = std::nullopt);
-
-    static constexpr auto maxBlockSize = 8192;
     /**
      * @brief Processes a block of audio samples and return the detected pitch in
      * Hz.
      *
-     * @param input pointer to exactly `blockSize` samples (as specified at construction)
+     * @param input pointer to exactly `samplesPerBlockPerChannel * numChannels` samples (as
+     * specified at construction), interleaved if stereo.
      * @param presenceScore if not null, on return contains a value between 0 and
      * 1 indicating the confidence that a pitch is present in the audio. Meant for
      * evaluation.

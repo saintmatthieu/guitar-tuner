@@ -15,13 +15,6 @@ namespace saint {
 namespace fs = std::filesystem;
 
 namespace {
-
-struct RocResult {
-    RocResult(bool t, double s) : truth(t), score(s) {}
-    bool truth = false;
-    double score = 0.0;
-};
-
 struct Noise {
     fs::path file;
     const char* rmsDb;
@@ -57,7 +50,7 @@ std::vector<testUtils::Sample> loadSamples() {
     return samples;
 }
 
-std::vector<Noise> loadNoiseData(int numSamples) {
+std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath) {
     std::vector<fs::path> noiseFiles;
     for (const auto& entry :
          fs::recursive_directory_iterator(testUtils::getEvalDir() / "testFiles" / "noise")) {
@@ -66,8 +59,12 @@ std::vector<Noise> loadNoiseData(int numSamples) {
         }
     }
 
-    const std::vector<const char*> noiseRmsDb{"-40", "-30"};
     std::vector<Noise> noiseData;
+
+    const auto silenceAudio = testUtils::fromWavFile(silenceFilePath, numSamples);
+    noiseData.push_back(Noise{silenceFilePath, "-inf", silenceAudio->interleaved});
+
+    const std::vector<const char*> noiseRmsDb{"-40", "-30"};
     for (const auto& noiseFile : noiseFiles) {
         auto noiseAudio = testUtils::fromWavFile(noiseFile, numSamples);
         if (!noiseAudio.has_value()) {
@@ -75,10 +72,11 @@ std::vector<Noise> loadNoiseData(int numSamples) {
         }
         for (const auto rmsDb : noiseRmsDb) {
             const float dB = std::stof(rmsDb);
-            testUtils::scaleToRms(noiseAudio->data, dB);
-            noiseData.push_back(Noise{noiseFile, rmsDb, noiseAudio->data});
+            testUtils::scaleToRms(noiseAudio->interleaved, dB);
+            noiseData.push_back(Noise{noiseFile, rmsDb, noiseAudio->interleaved});
         }
     }
+
     return noiseData;
 }
 
@@ -93,10 +91,14 @@ constexpr PitchDetector::Config config{
 }  // namespace
 
 TEST(PitchDetectorImpl, benchmarking) {
-    const auto samples = loadSamples();
-
+    std::vector<testUtils::Result> results;
     std::vector<double> rmsErrors;
-    std::vector<RocResult> rocResults;
+
+    const auto logFilePath = testUtils::getOutDir() / "benchmarking.log";
+    std::ofstream logFile(logFilePath);
+    testUtils::TeeStream tee(std::cout, logFile);
+
+    const auto samples = loadSamples();
 
     auto instanceCount = 0;
     std::optional<int> argInstanceCount;
@@ -109,29 +111,38 @@ TEST(PitchDetectorImpl, benchmarking) {
         }
     }
 
+    const std::vector<float> silence(44100, 0.f);
+    const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
+    testUtils::toWavFile(silenceFilePath, {silence, 44100});
+
+    const auto numSamples = samples.size();
+    const auto numNoises =
+        loadNoiseData(1000 /*arbitrary, small number of samples*/, silenceFilePath).size();
+    const auto numEvaluations = numSamples * numNoises;
+
     for (auto s = 0; s < samples.size(); ++s) {
         const testUtils::Sample& sample = samples[s];
         const auto& testFile = sample.file;
 
         const fs::path cleanFile = testUtils::getFileShortName(testFile);
-        constexpr auto blockSize = 512;
         const std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
+        const auto blockSize = clean->sampleRate / 100;  // To make debugging easier
 
         if (!clean.has_value()) {
             std::cerr << "Could not read file: " << testFile << "\n";
             continue;
         }
 
-        const auto noiseData = loadNoiseData(clean->data.size());
+        const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
 
         auto somethingProcessed = false;
         for (auto n = 0; n < noiseData.size(); ++n) {
             const auto takeTestCase =
                 !argInstanceCount.has_value() || instanceCount == *argInstanceCount;
-            utils::Finally incrementInstanceCount([&instanceCount, takeTestCase]() {
+            utils::Finally incrementInstanceCount([&instanceCount, takeTestCase, &tee]() {
                 ++instanceCount;
                 if (takeTestCase)
-                    std::cout << "\n";
+                    tee << "\n";
             });
 
             if (!takeTestCase) {
@@ -149,7 +160,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                 (shortFileName.string() + "_" + noise.rmsDb + "dB_" + ".wav");
             testUtils::toWavFile(noiseFileName, {noise.data, clean->sampleRate});
 
-            auto noisy = clean->data;
+            auto noisy = *clean;
             testUtils::mixNoise(noisy, noise.data);
 
             auto estimateIndex = 0;
@@ -171,18 +182,25 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto* loggerPtr = logger.get();
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                clean->sampleRate, blockSize, config, std::move(logger));
+                clean->sampleRate, clean->channelFormat, blockSize, config, std::move(logger));
             const auto windowSizeSamples = internalAlgorithm->windowSizeSamples();
             PitchDetectorMedianFilter sut(clean->sampleRate, blockSize,
                                           std::move(internalAlgorithm));
-            std::vector<float> results;
             auto negativeCount = 0;
             auto falseNegativeCount = 0;
             auto positiveCount = 0;
             auto falsePositiveCount = 0;
-            for (auto i = 0u; i + blockSize < noisy.size(); i += blockSize) {
+            const auto numChannels = clean->channelFormat == ChannelFormat::Mono ? 1 : 2;
+            const auto numFrames = noisy.interleaved.size() / numChannels;
+            const auto* noisyData = noisy.interleaved.data();
+
+            std::vector<testUtils::Result> sampleResults;
+
+            for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 auto presenceScore = 0.f;
-                auto result = sut.process(noisy.data() + i, &presenceScore);
+                std::vector<float> frame(noisyData + i * numChannels,
+                                         noisyData + (i + blockSize) * numChannels);
+                auto result = sut.process(noisyData + i * numChannels, &presenceScore);
                 const auto currentTime = static_cast<double>(i + blockSize) / clean->sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
@@ -196,8 +214,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                         ++falsePositiveCount;
                 }
                 ++estimateIndex;
-                results.push_back(result);
-                rocResults.emplace_back(truth, presenceScore);
+                sampleResults.emplace_back(truth, presenceScore, result);
             }
             const auto FPR = 1. * falsePositiveCount / negativeCount;
             const auto FNR = 1. * falseNegativeCount / positiveCount;
@@ -205,11 +222,13 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
                                   "_at_" + noise.rmsDb + "dB";
             const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
-            testUtils::toWavFile(outWavName, {noisy, clean->sampleRate});
+            testUtils::toWavFile(outWavName, {noisy.interleaved, clean->sampleRate});
 
             const auto resultPath = testUtils::getOutDir() / (cleanFile.string() + "_results.py");
-            const auto rmsError = testUtils::writeResultFile(sample, results, resultPath);
+            const auto rmsError = testUtils::writeResultFile(sample, sampleResults, resultPath);
+
             rmsErrors.push_back(rmsError);
+            results.insert(results.end(), sampleResults.begin(), sampleResults.end());
 
             if (auto realLogger = dynamic_cast<PitchDetectorLogger const*>(loggerPtr);
                 realLogger && realLogger->analysisAudioIndex()) {
@@ -219,12 +238,12 @@ TEST(PitchDetectorImpl, benchmarking) {
                 testUtils::writeMarkedWavFile(filename, noisy, clean->sampleRate, marking);
             }
 
-            std::cout << "    RMS error: " << rmsError << " cents, instanceCount: " << instanceCount
-                      << ", FPR: " << FPR << ", FNR: " << FNR << "\n";
+            tee << "    " << instanceCount << "/" << numEvaluations << ": RMS error: " << rmsError
+                << " cents, FPR: " << FPR << ", FNR: " << FNR << "\n";
         }
 
         if (somethingProcessed)
-            std::cout << "\nFinished with " << testFile << "\n\n";
+            tee << "\nFinished with " << testFile << "\n\n";
     }
 
     if (argInstanceCount.has_value()) {
@@ -239,12 +258,11 @@ TEST(PitchDetectorImpl, benchmarking) {
     rmsAvg /= static_cast<double>(rmsErrors.size());
     const auto worstRmsIt = std::max_element(rmsErrors.begin(), rmsErrors.end());
     const auto worstRmsIndex = std::distance(rmsErrors.begin(), worstRmsIt);
-    std::cout << "Average RMS error across all tests: " << rmsAvg
-              << " cents, worst RMS error: " << *worstRmsIt << " at index " << worstRmsIndex
-              << "\n";
+    tee << "Average RMS error across all tests: " << rmsAvg
+        << " cents, worst RMS error: " << *worstRmsIt << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 80.03728061699101;
-    constexpr auto previousAuc = 0.72537432090447673;
+    constexpr auto previousRmsError = 16.4205558099172;
+    constexpr auto previousAuc = 0.9211360705408158;
 
     constexpr auto comparisonTolerance = 0.01;
     const auto rmsErrorIsUnchanged = testUtils::valueIsUnchanged(
@@ -256,7 +274,7 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     constexpr auto allowedFalsePositiveRate = 0.01;  // 1%
     const testUtils::RocInfo rocInfo =
-        testUtils::GetRocInfo<RocResult>(rocResults, allowedFalsePositiveRate);
+        testUtils::GetRocInfo<testUtils::Result>(results, allowedFalsePositiveRate);
 
     std::ofstream rocFile(testUtils::getOutDir() / "roc_curve.py");
     rocFile << "AUC = " << rocInfo.areaUnderCurve << "\n";

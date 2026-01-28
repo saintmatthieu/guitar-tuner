@@ -10,12 +10,15 @@
 #include <optional>
 #include <vector>
 
+#include "PitchDetector.h"
+
 namespace saint {
 namespace testUtils {
 
 struct Audio {
-    std::vector<float> data;
+    std::vector<float> interleaved;
     const int sampleRate;
+    const ChannelFormat channelFormat;
 };
 
 struct Truth {
@@ -29,6 +32,13 @@ struct Sample {
     Truth truth;
 };
 
+struct Result {
+    Result(bool t, float s, float f) : truth(t), score(s), freq(f) {}
+    bool truth = false;
+    float score = 0.0;
+    float freq = 0.f;
+};
+
 std::optional<Audio> fromWavFile(std::filesystem::path path, int numSamples = 0);
 bool toWavFile(std::filesystem::path path, const Audio& audio);
 
@@ -37,7 +47,7 @@ std::filesystem::path getOutDir();
 
 // Audio processing utilities
 void scaleToRms(std::vector<float>& data, float targetRmsDb);
-void mixNoise(std::vector<float>& signal, const std::vector<float>& noise);
+void mixNoise(Audio& signal, const std::vector<float>& noise);
 
 // Music theory utilities
 float midiNoteToFrequency(int midiNote);
@@ -52,9 +62,9 @@ struct Marking {
     const int startSample;
     const int endSample;
 };
-void writeMarkedWavFile(const std::filesystem::path& filenameStem, std::vector<float> src,
-                        int sampleRate, Marking marking);
-double writeResultFile(const Sample& sample, const std::vector<float>& results,
+void writeMarkedWavFile(const std::filesystem::path& filenameStem, Audio src, int sampleRate,
+                        Marking marking);
+double writeResultFile(const Sample& sample, const std::vector<Result>& results,
                        const std::filesystem::path& outputPath);
 
 // Value comparison utility
@@ -168,5 +178,27 @@ void PrintPythonVector(std::ofstream& ofs, const std::vector<T>& v, const char* 
     std::for_each(v.begin(), v.end(), [&](T x) { ofs << x << ","; });
     ofs << "]\n";
 }
+
+class TeeStream {
+   public:
+    TeeStream(std::ostream& console, std::ostream& file) : console_(console), file_(file) {}
+
+    template <typename T>
+    TeeStream& operator<<(const T& value) {
+        console_ << value;
+        file_ << value;
+        return *this;
+    }
+
+    TeeStream& operator<<(std::ostream& (*manip)(std::ostream&)) {
+        console_ << manip;
+        file_ << manip;
+        return *this;
+    }
+
+   private:
+    std::ostream& console_;
+    std::ostream& file_;
+};
 }  // namespace testUtils
 }  // namespace saint
