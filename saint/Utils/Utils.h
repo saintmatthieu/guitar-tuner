@@ -24,5 +24,14 @@ constexpr float FastLog2(float x) {
     log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val - 0.65871759316667f;
     return log_2;
 }
+
+template <typename F>
+struct Finally {
+    Finally(F f) : func(std::move(f)) {}
+    ~Finally() {
+        func();
+    }
+    F func;
+};
 }  // namespace utils
 }  // namespace saint

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <iostream>
 #include <optional>
 
 #include "DummyPitchDetectorLogger.h"
@@ -12,9 +13,9 @@
 
 namespace saint {
 
-std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate,
+std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate, int blockSize,
                                                              const std::optional<Config>& config) {
-    return std::make_unique<PitchDetectorImpl>(sampleRate, config,
+    return std::make_unique<PitchDetectorImpl>(sampleRate, blockSize, config,
                                                std::make_unique<DummyPitchDetectorLogger>());
 }
 
@@ -61,7 +62,14 @@ int getWindowSizeSamples(int sampleRate, const std::optional<PitchDetector::Conf
     // window, against 1 for a spectrum reading.
     const auto minFreq = getMinFreq(config);
     const auto windowSizeMs = 1000 * 3.3 / minFreq;
-    return static_cast<int>(windowSizeMs * sampleRate / 1000);
+    const auto size = static_cast<int>(windowSizeMs * sampleRate / 1000);
+    assert(size <= PitchDetector::maxBlockSize);
+    if (size > PitchDetector::maxBlockSize) {
+        std::cerr << "Warning: requested window size " << size << " exceeds maximum allowed "
+                  << PitchDetector::maxBlockSize << ". Clamping to maximum.\n";
+        return PitchDetector::maxBlockSize;
+    }
+    return size;
 }
 
 void applyWindow(const std::vector<float>& window, std::vector<float>& input) {
@@ -212,9 +220,11 @@ double getHarmonicProductSpectrumPeakFrequency(const std::vector<std::complex<fl
 }
 }  // namespace
 
-PitchDetectorImpl::PitchDetectorImpl(int sampleRate, const std::optional<Config>& config,
+PitchDetectorImpl::PitchDetectorImpl(int sampleRate, int blockSize,
+                                     const std::optional<Config>& config,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger)
     : _sampleRate(sampleRate),
+      _blockSize(blockSize),
       _logger(std::move(logger)),
       _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, config))),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
@@ -224,63 +234,76 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, const std::optional<Config>
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / _minFreq))),
-      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {}
+      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {
+    //
+    assert(blockSize <= PitchDetector::maxBlockSize);
+    std::vector<float> zeroes(std::max(static_cast<int>(_window.size()) - blockSize, 0), 0.f);
+    _ringBuffer.writeBuff(zeroes.data(), zeroes.size());
+}
 
-std::optional<float> PitchDetectorImpl::process(const float* audio, int audioSize,
-                                                float* presenceScore) {
-    _ringBuffer.writeBuff(audio, audioSize);
-
-    std::optional<float> result;
-
-    while (_ringBuffer.readAvailable() >= _window.size()) {
-        std::vector<float> time(_fftSize);
-        _ringBuffer.readBuff(time.data(), _window.size());
-        std::fill(time.begin() + _window.size(), time.begin() + _fftSize, 0.f);
-        _logger->SamplesRead(_window.size());
-        _logger->StartNewEstimate();
-        _logger->Log(_sampleRate, "sampleRate");
-        _logger->Log(_fftSize, "fftSize");
-        _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
-        _logger->Log(time.data(), time.size(), "inputAudio");
-        applyWindow(_window, time);
-        _logger->Log(time.data(), time.size(), "windowedAudio");
-
-        // Capture spectrum for HPS analysis
-        std::vector<std::complex<float>> spectrum;
-        getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
-        _logger->Log(time.data(), time.size(), "xcorr");
-
-        // Compute HPS estimate
-        const auto hpsFreq =
-            getHarmonicProductSpectrumPeakFrequency(spectrum, _fftSize, _sampleRate, *_logger);
-        const float hpsFreqFloat = static_cast<float>(hpsFreq);
-        _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
-
-        _logger->EndNewEstimate(nullptr, 0);
-
-        auto maxIndex = 0;
-        auto wentNegative = false;
-        auto maximum = 0.f;
-        for (auto i = 0; i < _lastSearchIndex; ++i) {
-            wentNegative |= time[i] < 0;
-            if (wentNegative && time[i] > maximum) {
-                maximum = time[i];
-                maxIndex = i;
-            }
+float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
+    //
+    _ringBuffer.writeBuff(audio, _blockSize);
+    assert(_ringBuffer.readAvailable() >= _window.size());
+    if (_ringBuffer.readAvailable() < _window.size()) {
+        if (!_bufferErrorLoggedAlready) {
+            _bufferErrorLoggedAlready = true;
+            std::cerr << "PitchDetectorImpl::process called before enough samples were read\n";
         }
+        return 0.f;
+    }
 
-        maximum /= _windowXcor[maxIndex];
-        if (presenceScore) {
-            *presenceScore = maximum;
-        }
-        if (maximum > 0.9) {
-            // _detectedPitch = _sampleRate / maxIndex;
-            result = getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
-        } else if (!result.has_value()) {
-            result = 0.f;
+    std::vector<float> time(_fftSize);
+
+    const float* buffer = _ringBuffer.peek();
+    utils::Finally readRingBuffer([&]() { _ringBuffer.readBuff(time.data(), _blockSize); });
+
+    time.insert(time.begin(), buffer, buffer + _window.size());
+    std::fill(time.begin() + _window.size(), time.begin() + _fftSize, 0.f);
+
+    _logger->SamplesRead(_blockSize);
+    _logger->StartNewEstimate();
+    _logger->Log(_sampleRate, "sampleRate");
+    _logger->Log(_fftSize, "fftSize");
+    _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
+    _logger->Log(time.data(), time.size(), "inputAudio");
+    applyWindow(_window, time);
+    _logger->Log(time.data(), time.size(), "windowedAudio");
+
+    // Capture spectrum for HPS analysis
+    std::vector<std::complex<float>> spectrum;
+    getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
+    _logger->Log(time.data(), time.size(), "xcorr");
+
+    // Compute HPS estimate
+    const auto hpsFreq =
+        getHarmonicProductSpectrumPeakFrequency(spectrum, _fftSize, _sampleRate, *_logger);
+    const float hpsFreqFloat = static_cast<float>(hpsFreq);
+    _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
+
+    _logger->EndNewEstimate(nullptr, 0);
+
+    auto maxIndex = 0;
+    auto wentNegative = false;
+    auto maximum = 0.f;
+    for (auto i = 0; i < _lastSearchIndex; ++i) {
+        wentNegative |= time[i] < 0;
+        if (wentNegative && time[i] > maximum) {
+            maximum = time[i];
+            maxIndex = i;
         }
     }
 
-    return result;
+    maximum /= _windowXcor[maxIndex];
+    if (presenceScore) {
+        *presenceScore = maximum;
+    }
+
+    if (maximum > 0.9) {
+        // _detectedPitch = _sampleRate / maxIndex;
+        return getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
+    } else {
+        return 0.f;
+    }
 }
 }  // namespace saint

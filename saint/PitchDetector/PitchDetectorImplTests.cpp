@@ -6,6 +6,7 @@
 #include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorLogger.h"
+#include "Utils.h"
 #include "testUtils.h"
 
 namespace saint {
@@ -111,7 +112,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     for (auto s = 0; s < samples.size(); ++s) {
         const auto& sample = samples[s];
         const auto& testFile = sample.file;
-        std::cout << "Processing " << testFile << "\n";
 
         const fs::path cleanFile = testUtils::getFileShortName(testFile);
         constexpr auto blockSize = 512;
@@ -122,11 +122,14 @@ TEST(PitchDetectorImpl, benchmarking) {
             continue;
         }
 
+        auto somethingProcessed = false;
         for (auto n = 0; n < noiseData.size(); ++n) {
-            testUtils::Finally incrementInstanceCount([&instanceCount]() { ++instanceCount; });
+            utils::Finally incrementInstanceCount([&instanceCount]() { ++instanceCount; });
 
             if (argInstanceCount.has_value() && instanceCount != *argInstanceCount) {
                 continue;
+            } else {
+                somethingProcessed = true;
             }
 
             const auto& noise = noiseData[n];
@@ -152,19 +155,17 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
             const auto* loggerPtr = logger.get();
 
-            PitchDetectorImpl sut(clean->sampleRate, config, std::move(logger));
+            PitchDetectorImpl sut(clean->sampleRate, blockSize, config, std::move(logger));
             std::vector<float> results;
             for (auto i = 0u; i + blockSize < noisy.size(); i += blockSize) {
                 auto presenceScore = 0.f;
-                auto result = sut.process(noisy.data() + i, blockSize, &presenceScore);
+                auto result = sut.process(noisy.data() + i, &presenceScore);
                 const auto currentTime = static_cast<double>(i + blockSize) / clean->sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
-                if (result.has_value()) {
-                    ++estimateIndex;
-                    results.push_back(*result);
-                    rocResults.emplace_back(truth, presenceScore);
-                }
+                ++estimateIndex;
+                results.push_back(result);
+                rocResults.emplace_back(truth, presenceScore);
             }
 
             const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
@@ -187,6 +188,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             std::cout << "    RMS error: " << rmsError << " cents, instanceCount: " << instanceCount
                       << "\n";
         }
+
+        if (somethingProcessed)
+            std::cout << "\nFinished with " << testFile << "\n\n";
     }
 
     auto rmsAvg = 0.;
@@ -198,7 +202,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     }
     std::cout << "Average RMS error across all tests: " << rmsAvg << " cents\n";
 
-    constexpr auto previousRmsError = 178.02243990022137;
+    constexpr auto previousRmsError = 182.66206599347711;
     constexpr auto comparisonTolerance = 0.01;
     const auto rmsErrorIsUnchanged = testUtils::valueIsUnchanged(
         testUtils::getEvalDir() / "BenchmarkingOutput" / "RMS_error.txt", previousRmsError, rmsAvg,
@@ -218,7 +222,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     testUtils::PrintPythonVector(rocFile, rocInfo.falsePositiveRates, "falsePositiveRates");
     testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates, "truePositiveRates");
 
-    constexpr auto previousAuc = 0.89471154289243526;
+    constexpr auto previousAuc = 0.74945484877774871;
     const auto classifierQualityIsUnchanged =
         testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt",
                                     previousAuc, rocInfo.areaUnderCurve, comparisonTolerance);

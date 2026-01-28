@@ -168,15 +168,5 @@ void PrintPythonVector(std::ofstream& ofs, const std::vector<T>& v, const char* 
     std::for_each(v.begin(), v.end(), [&](T x) { ofs << x << ","; });
     ofs << "]\n";
 }
-
-template <typename F>
-struct Finally {
-    Finally(F f) : func(std::move(f)) {}
-    ~Finally() {
-        func();
-    }
-    F func;
-};
-
 }  // namespace testUtils
 }  // namespace saint
