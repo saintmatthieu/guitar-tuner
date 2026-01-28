@@ -292,7 +292,8 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         *presenceScore = maximum;
     }
 
-    if (maximum > 0.9) {
+    constexpr auto threshold = 0.982216f;
+    if (maximum > threshold) {
         // _detectedPitch = _sampleRate / maxIndex;
         return getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
     } else {

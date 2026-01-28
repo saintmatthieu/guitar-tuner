@@ -30,6 +30,10 @@ std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSam
 }
 
 bool testUtils::toWavFile(fs::path path, const Audio& audio) {
+    constexpr auto skip = false;
+    if (skip) {
+        return true;
+    }
     SF_INFO sfinfo;
     sfinfo.channels = 1;
     sfinfo.samplerate = audio.sampleRate;
