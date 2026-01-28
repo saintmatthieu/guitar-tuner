@@ -14,6 +14,8 @@ Easiest would be to have each file contain only one accurately tuned note. The g
 
 ## Test recordings
 
+File format can be anything Audacity reads.
+
 ### Guitar samples
 
 In `./eval/testFiles/notes/`
