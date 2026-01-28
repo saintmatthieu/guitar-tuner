@@ -50,10 +50,10 @@ bool testUtils::toWavFile(fs::path path, const Audio& audio) {
         std::cerr << "Could not open file for writing: " << path << "\n";
         return false;
     }
-    sf_count_t numWritten =
-        sf_writef_float(sndfile, audio.interleaved.data(), audio.interleaved.size());
+    const auto numFrames = audio.interleaved.size() / sfinfo.channels;
+    sf_count_t numWritten = sf_writef_float(sndfile, audio.interleaved.data(), numFrames);
     sf_close(sndfile);
-    const auto success = numWritten == static_cast<sf_count_t>(audio.interleaved.size());
+    const auto success = numWritten == static_cast<sf_count_t>(numFrames);
     if (!success) {
         std::cerr << "Could not write all samples to file: " << path << "\n";
     } else {

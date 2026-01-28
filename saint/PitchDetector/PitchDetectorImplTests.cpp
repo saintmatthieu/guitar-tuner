@@ -113,7 +113,7 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     const std::vector<float> silence(44100, 0.f);
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
-    testUtils::toWavFile(silenceFilePath, {silence, 44100});
+    testUtils::toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono});
 
     const auto numSamples = samples.size();
     const auto numNoises =
@@ -158,7 +158,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto noiseFileName =
                 testUtils::getOutDir() / "wav" /
                 (shortFileName.string() + "_" + noise.rmsDb + "dB_" + ".wav");
-            testUtils::toWavFile(noiseFileName, {noise.data, clean->sampleRate});
+            testUtils::toWavFile(noiseFileName,
+                                 {noise.data, clean->sampleRate, clean->channelFormat});
 
             auto noisy = *clean;
             testUtils::mixNoise(noisy, noise.data);
@@ -222,7 +223,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
                                   "_at_" + noise.rmsDb + "dB";
             const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
-            testUtils::toWavFile(outWavName, {noisy.interleaved, clean->sampleRate});
+            testUtils::toWavFile(outWavName, noisy);
 
             const auto resultPath = testUtils::getOutDir() / (cleanFile.string() + "_results.py");
             const auto rmsError = testUtils::writeResultFile(sample, sampleResults, resultPath);
