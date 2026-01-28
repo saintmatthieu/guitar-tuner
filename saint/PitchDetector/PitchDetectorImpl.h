@@ -1,7 +1,7 @@
 #pragma once
 
 #include <optional>
-#include <ringbuffer.hpp>
+#include <vector>
 
 #include "Cepstrum.h"
 #include "PitchDetector.h"
@@ -28,7 +28,7 @@ class PitchDetectorImpl : public PitchDetector {
     const int _fftSize;
     RealFft _fwdFft;
     CepstrumData _cepstrumData;
-    jnk0le::Ringbuffer<float, maxBlockSize> _ringBuffer;
+    std::vector<float> _audioBuffer;
     const std::vector<float> _lpWindow;
     const std::vector<float> _windowXcor;
     const float _minFreq;

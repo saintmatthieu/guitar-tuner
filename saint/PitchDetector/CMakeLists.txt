@@ -20,7 +20,6 @@ target_link_libraries(PitchDetector
 target_include_directories(PitchDetector
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${GUITAR_TUNER_ROOT}/Ring-Buffer
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

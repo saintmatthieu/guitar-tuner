@@ -227,18 +227,19 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, int blockSize,
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / _minFreq))),
-      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)) {
+      _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)),
+      _audioBuffer(std::max(static_cast<int>(_window.size()) - blockSize, 0), 0.f) {
     //
     assert(blockSize <= PitchDetector::maxBlockSize);
-    std::vector<float> zeroes(std::max(static_cast<int>(_window.size()) - blockSize, 0), 0.f);
-    _ringBuffer.writeBuff(zeroes.data(), zeroes.size());
+    _audioBuffer.reserve(_window.size());
 }
 
 float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
-    //
-    _ringBuffer.writeBuff(audio, _blockSize);
-    assert(_ringBuffer.readAvailable() >= _window.size());
-    if (_ringBuffer.readAvailable() < _window.size()) {
+    // Append new audio samples to buffer
+    _audioBuffer.insert(_audioBuffer.end(), audio, audio + _blockSize);
+
+    assert(_audioBuffer.size() >= _window.size());
+    if (_audioBuffer.size() < _window.size()) {
         if (!_bufferErrorLoggedAlready) {
             _bufferErrorLoggedAlready = true;
             std::cerr << "PitchDetectorImpl::process called before enough samples were read\n";
@@ -249,10 +250,13 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     std::vector<float> time(_fftSize);
     _logger->StartNewEstimate();
 
-    const float* buffer = _ringBuffer.peek();
-    utils::Finally readRingBuffer([&]() { _ringBuffer.readBuff(time.data(), _blockSize); });
+    // Copy the most recent window of samples
+    const auto bufferStart = _audioBuffer.end() - _window.size();
+    std::copy(bufferStart, _audioBuffer.end(), time.begin());
 
-    time.insert(time.begin(), buffer, buffer + _window.size());
+    // Remove old samples, keeping only what's needed for the next window
+    const auto samplesToKeep = _window.size() - _blockSize;
+    _audioBuffer.erase(_audioBuffer.begin(), _audioBuffer.end() - samplesToKeep);
     std::fill(time.begin() + _window.size(), time.begin() + _fftSize, 0.f);
 
     _logger->SamplesRead(_blockSize);
