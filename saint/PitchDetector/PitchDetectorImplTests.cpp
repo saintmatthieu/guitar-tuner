@@ -239,7 +239,7 @@ TEST(PitchDetectorImpl, benchmarking) {
         << "RMS error has changed! Previous RMS error: " << previousRmsError
         << ", new RMS error: " << rmsAvg;
 
-    constexpr auto allowedFalsePositiveRate = 0.05;
+    constexpr auto allowedFalsePositiveRate = 0.01;  // 1%
     const testUtils::RocInfo rocInfo =
         testUtils::GetRocInfo<RocResult>(rocResults, allowedFalsePositiveRate);
 
@@ -253,6 +253,13 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto classifierQualityIsUnchanged =
         testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt",
                                     previousAuc, rocInfo.areaUnderCurve, comparisonTolerance);
+
+    {
+        const auto thresholdFilePath =
+            testUtils::getEvalDir() / "BenchmarkingOutput" / "threshold.txt";
+        std::ofstream thresholdFile{thresholdFilePath};
+        thresholdFile << rocInfo.threshold;
+    }
 
     // If it changes and it's for the better, then it's probably a good thing, but
     // let's keep an eye on it anyway. If it's for the worse, then either there is
