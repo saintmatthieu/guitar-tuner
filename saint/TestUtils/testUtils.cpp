@@ -10,17 +10,20 @@
 namespace saint {
 namespace fs = std::filesystem;
 
-std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path) {
+std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSamples) {
     // read all the file in one go using libsndfile:
     SF_INFO sfinfo;
     SNDFILE* sndfile = sf_open(path.string().c_str(), SFM_READ, &sfinfo);
     if (sndfile == nullptr) {
         return std::nullopt;
     }
-    std::vector<float> audio(sfinfo.frames * sfinfo.channels);
-    sf_count_t numRead = sf_readf_float(sndfile, audio.data(), sfinfo.frames);
+    const auto framesToRead =
+        numSamples > 0 ? std::min<sf_count_t>(numSamples, sfinfo.frames) : sfinfo.frames;
+
+    std::vector<float> audio(framesToRead * sfinfo.channels);
+    sf_count_t numRead = sf_readf_float(sndfile, audio.data(), framesToRead);
     sf_close(sndfile);
-    if (numRead != sfinfo.frames) {
+    if (numRead != framesToRead) {
         return std::nullopt;
     }
     return Audio{std::move(audio), sfinfo.samplerate};
@@ -38,11 +41,18 @@ bool testUtils::toWavFile(fs::path path, const Audio& audio) {
 
     SNDFILE* sndfile = sf_open(path.string().c_str(), SFM_WRITE, &sfinfo);
     if (sndfile == nullptr) {
+        std::cerr << "Could not open file for writing: " << path << "\n";
         return false;
     }
     sf_count_t numWritten = sf_writef_float(sndfile, audio.data.data(), audio.data.size());
     sf_close(sndfile);
-    return numWritten == static_cast<sf_count_t>(audio.data.size());
+    const auto success = numWritten == static_cast<sf_count_t>(audio.data.size());
+    if (!success) {
+        std::cerr << "Could not write all samples to file: " << path << "\n";
+    } else {
+        std::cout << "Wrote " << path << "\n";
+    }
+    return success;
 }
 
 fs::path testUtils::getEvalDir() {
@@ -55,12 +65,20 @@ fs::path testUtils::getOutDir() {
 
 void testUtils::scaleToRms(std::vector<float>& data, float targetRmsDb) {
     float sumSquares = 0.f;
+    float peak = 0.f;
     for (const auto sample : data) {
         sumSquares += sample * sample;
+        peak = std::max(peak, std::abs(sample));
     }
     const float currentRms = std::sqrt(sumSquares / static_cast<float>(data.size()));
     const float targetRms = std::pow(10.f, targetRmsDb / 20.f);
-    const float scale = targetRms / currentRms;
+
+    constexpr auto maxPeakDb = -30.f;
+    const float maxPeak = std::pow(10.f, maxPeakDb / 20.f);
+
+    const float rmsScale = targetRms / currentRms;
+    const float peakScale = maxPeak / peak;
+    const float scale = std::min(rmsScale, peakScale);
     for (auto& sample : data) {
         sample *= scale;
     }

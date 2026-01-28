@@ -6,6 +6,7 @@
 #include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorLogger.h"
+#include "PitchDetectorMedianFilter.h"
 #include "Utils.h"
 #include "testUtils.h"
 
@@ -56,7 +57,7 @@ std::vector<testUtils::Sample> loadSamples() {
     return samples;
 }
 
-std::vector<Noise> loadNoiseData() {
+std::vector<Noise> loadNoiseData(int numSamples) {
     std::vector<fs::path> noiseFiles;
     for (const auto& entry :
          fs::recursive_directory_iterator(testUtils::getEvalDir() / "testFiles" / "noise")) {
@@ -68,7 +69,7 @@ std::vector<Noise> loadNoiseData() {
     const std::vector<const char*> noiseRmsDb{"-40", "-30"};
     std::vector<Noise> noiseData;
     for (const auto& noiseFile : noiseFiles) {
-        auto noiseAudio = testUtils::fromWavFile(noiseFile);
+        auto noiseAudio = testUtils::fromWavFile(noiseFile, numSamples);
         if (!noiseAudio.has_value()) {
             continue;
         }
@@ -86,14 +87,13 @@ std::vector<Noise> loadNoiseData() {
 // pitch changes while tuning
 // - max note is the high E on the first string, adding a tone for margin
 constexpr PitchDetector::Config config{
-    Pitch{PitchClass::C, 2},
-    Pitch{PitchClass::Gb, 4},
+    Pitch{PitchClass::G, 1},
+    Pitch{PitchClass::A, 4},
 };
 }  // namespace
 
 TEST(PitchDetectorImpl, benchmarking) {
     const auto samples = loadSamples();
-    const auto noiseData = loadNoiseData();
 
     std::vector<double> rmsErrors;
     std::vector<RocResult> rocResults;
@@ -110,7 +110,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     }
 
     for (auto s = 0; s < samples.size(); ++s) {
-        const auto& sample = samples[s];
+        const testUtils::Sample& sample = samples[s];
         const auto& testFile = sample.file;
 
         const fs::path cleanFile = testUtils::getFileShortName(testFile);
@@ -122,18 +122,33 @@ TEST(PitchDetectorImpl, benchmarking) {
             continue;
         }
 
+        const auto noiseData = loadNoiseData(clean->data.size());
+
         auto somethingProcessed = false;
         for (auto n = 0; n < noiseData.size(); ++n) {
-            utils::Finally incrementInstanceCount([&instanceCount]() { ++instanceCount; });
+            const auto takeTestCase =
+                !argInstanceCount.has_value() || instanceCount == *argInstanceCount;
+            utils::Finally incrementInstanceCount([&instanceCount, takeTestCase]() {
+                ++instanceCount;
+                if (takeTestCase)
+                    std::cout << "\n";
+            });
 
-            if (argInstanceCount.has_value() && instanceCount != *argInstanceCount) {
+            if (!takeTestCase) {
                 continue;
             } else {
                 somethingProcessed = true;
             }
 
-            const auto& noise = noiseData[n];
-            std::cout << "  Adding noise from " << noise.file << " at " << noise.rmsDb << " dB\n";
+            const Noise& noise = noiseData[n];
+            const auto shortFileName =
+                noise.file.parent_path().stem() /
+                (std::to_string(instanceCount) + "_" + noise.file.stem().string());
+            const auto noiseFileName =
+                testUtils::getOutDir() / "wav" /
+                (shortFileName.string() + "_" + noise.rmsDb + "dB_" + ".wav");
+            testUtils::toWavFile(noiseFileName, {noise.data, clean->sampleRate});
+
             auto noisy = clean->data;
             testUtils::mixNoise(noisy, noise.data);
 
@@ -155,7 +170,11 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
             const auto* loggerPtr = logger.get();
 
-            PitchDetectorImpl sut(clean->sampleRate, blockSize, config, std::move(logger));
+            auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
+                clean->sampleRate, blockSize, config, std::move(logger));
+            const auto windowSizeSamples = internalAlgorithm->windowSizeSamples();
+            PitchDetectorMedianFilter sut(clean->sampleRate, blockSize,
+                                          std::move(internalAlgorithm));
             std::vector<float> results;
             for (auto i = 0u; i + blockSize < noisy.size(); i += blockSize) {
                 auto presenceScore = 0.f;
@@ -180,7 +199,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             if (auto realLogger = dynamic_cast<PitchDetectorLogger const*>(loggerPtr);
                 realLogger && realLogger->analysisAudioIndex()) {
                 const auto endIndex = *realLogger->analysisAudioIndex();
-                const auto startIndex = endIndex - sut.windowSizeSamples();
+                const auto startIndex = endIndex - windowSizeSamples;
                 const testUtils::Marking marking{startIndex, endIndex};
                 testUtils::writeMarkedWavFile(filename, noisy, clean->sampleRate, marking);
             }
@@ -193,16 +212,25 @@ TEST(PitchDetectorImpl, benchmarking) {
             std::cout << "\nFinished with " << testFile << "\n\n";
     }
 
+    if (argInstanceCount.has_value()) {
+        return;
+    }
+
     auto rmsAvg = 0.;
     for (const auto e : rmsErrors) {
         rmsAvg += e;
     }
-    if (!rmsErrors.empty()) {
-        rmsAvg /= static_cast<double>(rmsErrors.size());
-    }
-    std::cout << "Average RMS error across all tests: " << rmsAvg << " cents\n";
 
-    constexpr auto previousRmsError = 182.66206599347711;
+    rmsAvg /= static_cast<double>(rmsErrors.size());
+    const auto worstRmsIt = std::max_element(rmsErrors.begin(), rmsErrors.end());
+    const auto worstRmsIndex = std::distance(rmsErrors.begin(), worstRmsIt);
+    std::cout << "Average RMS error across all tests: " << rmsAvg
+              << " cents, worst RMS error: " << *worstRmsIt << " at index " << worstRmsIndex
+              << "\n";
+
+    constexpr auto previousRmsError = 80.03728061699101;
+    constexpr auto previousAuc = 0.72537432090447673;
+
     constexpr auto comparisonTolerance = 0.01;
     const auto rmsErrorIsUnchanged = testUtils::valueIsUnchanged(
         testUtils::getEvalDir() / "BenchmarkingOutput" / "RMS_error.txt", previousRmsError, rmsAvg,
@@ -222,7 +250,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     testUtils::PrintPythonVector(rocFile, rocInfo.falsePositiveRates, "falsePositiveRates");
     testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates, "truePositiveRates");
 
-    constexpr auto previousAuc = 0.74945484877774871;
     const auto classifierQualityIsUnchanged =
         testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt",
                                     previousAuc, rocInfo.areaUnderCurve, comparisonTolerance);

@@ -29,7 +29,7 @@ struct Sample {
     Truth truth;
 };
 
-std::optional<Audio> fromWavFile(std::filesystem::path path);
+std::optional<Audio> fromWavFile(std::filesystem::path path, int numSamples = 0);
 bool toWavFile(std::filesystem::path path, const Audio& audio);
 
 std::filesystem::path getEvalDir();

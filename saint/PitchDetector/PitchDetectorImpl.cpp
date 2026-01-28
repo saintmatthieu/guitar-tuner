@@ -12,13 +12,6 @@
 #include "Utils.h"
 
 namespace saint {
-
-std::unique_ptr<PitchDetector> PitchDetector::createInstance(int sampleRate, int blockSize,
-                                                             const std::optional<Config>& config) {
-    return std::make_unique<PitchDetectorImpl>(sampleRate, blockSize, config,
-                                               std::make_unique<DummyPitchDetectorLogger>());
-}
-
 namespace {
 constexpr auto cutoffFreq = 1500;
 
