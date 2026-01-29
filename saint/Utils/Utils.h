@@ -1,11 +1,14 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 
 namespace saint {
 namespace utils {
-enum class WindowType { Hann, Hamming };
+enum class WindowType { Hann, Hamming, MinimumThreeTerm, _count };
+constexpr auto numWindowTypes = static_cast<size_t>(WindowType::_count);
+constexpr std::array<int, numWindowTypes> windowOrders = {1, 1, 2};
 
 std::string getEnvironmentVariable(const char*);
 bool getEnvironmentVariableAsBool(const char*);

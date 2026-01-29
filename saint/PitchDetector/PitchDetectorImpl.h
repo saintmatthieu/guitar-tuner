@@ -7,6 +7,7 @@
 #include "Cepstrum.h"
 #include "PitchDetector.h"
 #include "RealFft.h"
+#include "Utils.h"
 
 class PitchDetectorLoggerInterface;
 
@@ -27,6 +28,7 @@ class PitchDetectorImpl : public PitchDetector {
     const ChannelFormat _channelFormat;
     const int _blockSize;
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
+    const utils::WindowType _windowType;
     const std::vector<float> _window;
     const int _fftSize;
     RealFft _fwdFft;

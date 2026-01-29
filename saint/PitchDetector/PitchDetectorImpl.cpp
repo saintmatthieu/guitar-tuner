@@ -9,7 +9,6 @@
 #include <optional>
 
 #include "DummyPitchDetectorLogger.h"
-#include "Utils.h"
 
 namespace saint {
 namespace {
@@ -47,14 +46,11 @@ float getMaxFreq(const std::optional<PitchDetector::Config>& config) {
                                                       : 2000.f;
 }
 
-int getWindowSizeSamples(int sampleRate, const std::optional<PitchDetector::Config>& config) {
-    // 3.3 times the fundamental period. More and that's unnecessary delay, less
-    // and the detection becomes inaccurate - at least with this autocorrelation
-    // method. A spectral-domain method might need less than this, since
-    // autocorrelation requires there to be at least two periods within the
-    // window, against 1 for a spectrum reading.
+int getWindowSizeSamples(int sampleRate, utils::WindowType windowType,
+                         const std::optional<PitchDetector::Config>& config) {
     const auto minFreq = getMinFreq(config);
-    const auto windowSizeMs = 1000 * 3.3 / minFreq;
+    const auto numPeriods = utils::windowOrders.at(static_cast<size_t>(windowType)) * 2 + 1.3;
+    const auto windowSizeMs = 1000. * numPeriods / minFreq;
     return static_cast<int>(windowSizeMs * sampleRate / 1000);
 }
 
@@ -214,8 +210,9 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _channelFormat(channelFormat),
       _blockSize(samplesPerBlockPerChannel),
       _logger(std::move(logger)),
-      _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, config),
-                                       utils::WindowType::Hamming)),
+      _windowType(utils::WindowType::MinimumThreeTerm),
+      _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, _windowType, config),
+                                       _windowType)),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
       _fwdFft(_fftSize),
       _cepstrumData(_fftSize),

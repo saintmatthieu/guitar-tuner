@@ -50,14 +50,18 @@ float utils::getCrotchetsPerSample(float crotchetsPerSecond, int samplesPerSecon
 }
 
 namespace {
-std::pair<float, float> getCoefs(utils::WindowType type) {
+std::vector<float> getCoefs(utils::WindowType type) {
     switch (type) {
         case utils::WindowType::Hann:
-            return {1.f, 1.f};
+            return {1.f, -1.f};
         case utils::WindowType::Hamming:
             // Found in PhD thesis Matthieu Hodgkinson @NUIM
             // https://mural.maynoothuniversity.ie/id/eprint/3910/1/thesis.pdf
-            return {1.f, 349.f / 407.f};
+            // Section 2.2.3, p90
+            return {1.f, -349.f / 407.f};
+        case utils::WindowType::MinimumThreeTerm:
+            // Same
+            return {1.f, -1152.f / 983.f, +515.f / 2792.f};
         default:
             assert(false);
             return getCoefs(utils::WindowType::Hann);
@@ -70,12 +74,15 @@ std::vector<float> utils::getAnalysisWindow(int windowSize, WindowType type) {
     constexpr auto twoPi = 6.283185307179586f;
     const auto freq = twoPi / (float)windowSize;
 
-    const auto [a0, a1] = getCoefs(type);
+    const auto coefs = getCoefs(type);
     auto sum = 0.f;
     for (auto i = 0u; i < windowSize; ++i) {
         // i + 1 so that the tip of the window is at windowSize / 2, which is
         // convenient when taking the second half of it.
-        window[i] = a0 - a1 * cosf((i + 1) * freq);
+        window[i] = coefs[0];
+        for (size_t j = 1; j < coefs.size(); ++j) {
+            window[i] += coefs[j] * cosf((i + 1) * j * freq);
+        }
         sum += window[i];
     }
     std::transform(window.begin(), window.end(), window.begin(),
