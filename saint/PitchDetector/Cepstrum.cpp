@@ -60,7 +60,7 @@ namespace {
 std::vector<float> getHalfWindow(int fftSize) {
     // We'll only be keeping the lower part of the spectrum - the rest is just too
     // noisy. The rest will be zeroed and it will act as zero-padding.
-    std::vector<float> window = utils::getAnalysisWindow(fftSize / 8);
+    std::vector<float> window = utils::getAnalysisWindow(fftSize / 8, utils::WindowType::Hann);
     window.erase(window.begin(), window.begin() + window.size() / 2 - 1);
     return window;
 }

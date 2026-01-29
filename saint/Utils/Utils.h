@@ -5,12 +5,14 @@
 
 namespace saint {
 namespace utils {
+enum class WindowType { Hann, Hamming };
+
 std::string getEnvironmentVariable(const char*);
 bool getEnvironmentVariableAsBool(const char*);
 bool isDebugBuild();
 float getPitch(int noteNumber);
 float getCrotchetsPerSample(float crotchetsPerSecond, int samplesPerSecond);
-std::vector<float> getAnalysisWindow(int windowSize);
+std::vector<float> getAnalysisWindow(int windowSize, WindowType type);
 
 constexpr float FastLog2(float x) {
     static_assert(sizeof(float) == sizeof(int32_t));
