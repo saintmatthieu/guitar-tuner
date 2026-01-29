@@ -281,7 +281,8 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     // Capture spectrum for HPS analysis
     std::vector<std::complex<float>> spectrum;
     getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
-    _logger->Log(time.data(), time.size(), "xcorr", _xcorrTransform);
+    _logger->Log(time.data(), time.size(), "xcorr");
+    _logger->Log(time.data(), time.size(), "xcorrFlattened", _xcorrTransform);
 
     // // Compute HPS estimate
     // const auto hpsFreq =
