@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -30,12 +31,16 @@ class PitchDetectorImpl : public PitchDetector {
     const int _fftSize;
     RealFft _fwdFft;
     CepstrumData _cepstrumData;
-    std::vector<float> _audioBuffer;
     const std::vector<float> _lpWindow;
     const std::vector<float> _windowXcor;
+    const int _latencySamples;
+    std::vector<float> _audioBuffer;
     const float _minFreq;
     const float _maxFreq;
     const int _lastSearchIndex;
     bool _bufferErrorLoggedAlready = false;
+    const std::function<float(float)> _xcorrTransform = [this, i = 0](float x) mutable {
+        return x / std::max(_windowXcor[i++], 1e-6f);
+    };
 };
 }  // namespace saint

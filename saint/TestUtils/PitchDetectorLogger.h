@@ -29,7 +29,8 @@ class PitchDetectorLogger : public PitchDetectorLoggerInterface {
     void SamplesRead(int count) override;
     bool StartNewEstimate() override;
     void Log(int value, const char* name) const override;
-    void Log(const float* samples, size_t size, const char* name) const override;
+    void Log(const float* samples, size_t size, const char* name,
+             const std::function<float(float)>& transform) const override;
     void Log(const std::complex<float>* samples, size_t size, const char* name,
              const std::function<float(const std::complex<float>&)>& transform) const override;
     /*!

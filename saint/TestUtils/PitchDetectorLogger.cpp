@@ -56,12 +56,19 @@ void PitchDetectorLogger::Log(int value, const char* name) const {
     }
 }
 
-void PitchDetectorLogger::Log(const float* samples, size_t size, const char* name) const {
+void PitchDetectorLogger::Log(const float* samples, size_t size, const char* name,
+                              const std::function<float(float)>& transform) const {
     if (!mOfs) {
         // Keep it lightweight if we're not logging.
         return;
     }
     assert(std::all_of(samples, samples + size, [](float x) { return std::isfinite(x); }));
+    if (transform) {
+        std::vector<float> transformed(size);
+        std::transform(samples, samples + size, transformed.begin(), transform);
+        PrintPythonVector(*mOfs, transformed.begin(), transformed.end(), name);
+        return;
+    }
     PrintPythonVector(*mOfs, samples, samples + size, name);
 }
 

@@ -21,6 +21,10 @@ struct Audio {
     std::vector<float> interleaved;
     const int sampleRate;
     const ChannelFormat channelFormat;
+    int numFrames() const {
+        const auto numChannels = channelFormat == ChannelFormat::Mono ? 1 : 2;
+        return static_cast<int>(interleaved.size() / numChannels);
+    }
 };
 
 struct Truth {
@@ -35,14 +39,15 @@ struct Sample {
 };
 
 struct Result {
-    Result(bool t, float s, float f) : truth(t), score(s), freq(f) {}
+    Result(bool t, float s, float f, double time) : truth(t), score(s), freq(f), time(time) {}
     bool truth = false;
     float score = 0.0;
     float freq = 0.f;
+    double time = 0.0;
 };
 
 std::optional<Audio> fromWavFile(std::filesystem::path path, int numSamples = 0);
-bool toWavFile(std::filesystem::path path, const Audio& audio);
+bool toWavFile(std::filesystem::path path, const Audio& audio, const std::string& what = "");
 
 std::filesystem::path getEvalDir();
 std::filesystem::path getOutDir();
@@ -64,7 +69,7 @@ struct Marking {
     const int startSample;
     const int endSample;
 };
-void writeMarkedWavFile(const std::filesystem::path& filenameStem, Audio src, int sampleRate,
+void writeMarkedWavFile(const std::filesystem::path& filenameStem, int sampleRate, int numSamples,
                         Marking marking);
 double writeResultFile(const Sample& sample, const std::vector<Result>& results,
                        const std::filesystem::path& outputPath);

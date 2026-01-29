@@ -224,9 +224,11 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _maxFreq(getMaxFreq(config)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / _minFreq))),
       _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)),
-      _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f) {
+      _latencySamples(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0)),
+      _audioBuffer(_latencySamples, 0.f) {
     //
     _audioBuffer.reserve(_window.size());
+    _logger->SamplesRead(-_latencySamples);
 }
 
 float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
@@ -282,7 +284,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     // Capture spectrum for HPS analysis
     std::vector<std::complex<float>> spectrum;
     getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
-    _logger->Log(time.data(), time.size(), "xcorr");
+    _logger->Log(time.data(), time.size(), "xcorr", _xcorrTransform);
 
     // // Compute HPS estimate
     // const auto hpsFreq =

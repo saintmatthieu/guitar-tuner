@@ -31,7 +31,7 @@ std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSam
     return Audio{std::move(audio), sfinfo.samplerate, channelFormat};
 }
 
-bool testUtils::toWavFile(fs::path path, const Audio& audio) {
+bool testUtils::toWavFile(fs::path path, const Audio& audio, const std::string& what) {
     constexpr auto skip = false;
     if (skip) {
         return true;
@@ -56,8 +56,8 @@ bool testUtils::toWavFile(fs::path path, const Audio& audio) {
     const auto success = numWritten == static_cast<sf_count_t>(numFrames);
     if (!success) {
         std::cerr << "Could not write all samples to file: " << path << "\n";
-    } else {
-        std::cout << "Wrote " << path << "\n";
+    } else if (!what.empty()) {
+        std::cout << what << "\t" << path << "\n";
     }
     return success;
 }
@@ -170,14 +170,12 @@ std::optional<testUtils::Sample> testUtils::getSampleFromFile(const fs::path& fi
     return Sample{filePath, Truth{startTime, endTime, trueFreq}};
 }
 
-void testUtils::writeMarkedWavFile(const fs::path& filenameStem, Audio audio, int sampleRate,
+void testUtils::writeMarkedWavFile(const fs::path& filenameStem, int sampleRate, int numSamples,
                                    Marking marking) {
-    const auto numChannels = audio.channelFormat == ChannelFormat::Mono ? 1 : 2;
-    for (auto c = 0; c < numChannels; ++c) {
-        audio.interleaved[marking.startSample * numChannels + c] = 1.f;
-        audio.interleaved[marking.endSample * numChannels + c] = 1.f;
-    }
-    toWavFile(getOutDir() / (filenameStem.string() + "_marked.wav"), audio);
+    std::vector<float> audio(numSamples, 0.f);
+    audio[marking.startSample] = 1.f;
+    audio[marking.endSample] = 1.f;
+    toWavFile(getOutDir() / "marks.wav", {audio, sampleRate, ChannelFormat::Mono}, "MARKS");
 }
 
 double testUtils::writeResultFile(const Sample& sample, const std::vector<Result>& results,

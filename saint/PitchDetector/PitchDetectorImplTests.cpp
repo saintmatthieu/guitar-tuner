@@ -91,6 +91,8 @@ constexpr PitchDetector::Config config{
 }  // namespace
 
 TEST(PitchDetectorImpl, benchmarking) {
+    std::cout << "\n";
+
     std::vector<testUtils::Result> results;
     std::vector<double> rmsErrors;
 
@@ -159,7 +161,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                 testUtils::getOutDir() / "wav" /
                 (shortFileName.string() + "_" + noise.rmsDb + "dB_" + ".wav");
             testUtils::toWavFile(noiseFileName,
-                                 {noise.data, clean->sampleRate, clean->channelFormat});
+                                 {noise.data, clean->sampleRate, clean->channelFormat}, "NOISE");
 
             auto noisy = *clean;
             testUtils::mixNoise(noisy, noise.data);
@@ -197,6 +199,11 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             std::vector<testUtils::Result> sampleResults;
 
+            std::vector<float> presenceScoreAsAudio;
+            if (logEstimateIndex.has_value()) {
+                presenceScoreAsAudio.resize(numFrames);
+            }
+
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 auto presenceScore = 0.f;
                 std::vector<float> frame(noisyData + i * numChannels,
@@ -215,15 +222,27 @@ TEST(PitchDetectorImpl, benchmarking) {
                         ++falsePositiveCount;
                 }
                 ++estimateIndex;
-                sampleResults.emplace_back(truth, presenceScore, result);
+                sampleResults.emplace_back(truth, presenceScore, result, currentTime);
+                if (logEstimateIndex.has_value()) {
+                    std::fill(presenceScoreAsAudio.begin() + i,
+                              presenceScoreAsAudio.begin() + i + blockSize, presenceScore);
+                }
             }
+
+            if (logEstimateIndex.has_value()) {
+                const auto presenceScoreWavName = testUtils::getOutDir() / "presenceScore.wav";
+                testUtils::toWavFile(presenceScoreWavName,
+                                     {presenceScoreAsAudio, clean->sampleRate, ChannelFormat::Mono},
+                                     "PRESENCE");
+            }
+
             const auto FPR = 1. * falsePositiveCount / negativeCount;
             const auto FNR = 1. * falseNegativeCount / positiveCount;
 
             const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
                                   "_at_" + noise.rmsDb + "dB";
             const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
-            testUtils::toWavFile(outWavName, noisy);
+            testUtils::toWavFile(outWavName, noisy, "MIX");
 
             const auto resultPath = testUtils::getOutDir() / (cleanFile.string() + "_results.py");
             const auto rmsError = testUtils::writeResultFile(sample, sampleResults, resultPath);
@@ -233,18 +252,20 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             if (auto realLogger = dynamic_cast<PitchDetectorLogger const*>(loggerPtr);
                 realLogger && realLogger->analysisAudioIndex()) {
-                const auto endIndex = *realLogger->analysisAudioIndex();
-                const auto startIndex = endIndex - windowSizeSamples;
+                const auto startIndex = *realLogger->analysisAudioIndex();
+                const auto endIndex = startIndex + windowSizeSamples;
                 const testUtils::Marking marking{startIndex, endIndex};
-                testUtils::writeMarkedWavFile(filename, noisy, clean->sampleRate, marking);
+                testUtils::writeMarkedWavFile(filename, clean->sampleRate, clean->numFrames(),
+                                              marking);
             }
 
-            tee << "    " << instanceCount << "/" << numEvaluations << ": RMS error: " << rmsError
-                << " cents, FPR: " << FPR << ", FNR: " << FNR << "\n";
+            tee << "STATS\t" << instanceCount << "/" << numEvaluations
+                << ": RMS error: " << rmsError << " cents, FPR: " << FPR << ", FNR: " << FNR
+                << "\n";
         }
 
         if (somethingProcessed)
-            tee << "\nFinished with " << testFile << "\n\n";
+            tee << "Finished with " << testFile << "\n\n";
     }
 
     if (argInstanceCount.has_value()) {

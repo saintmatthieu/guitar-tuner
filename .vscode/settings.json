@@ -2,5 +2,6 @@
   "cmake.configureArgs": [
     // "-DPFFFT_DISABLE_LINK_WITH_M=ON",
   ],
+  "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}",
   "cmake.generator": "Ninja"
 }
