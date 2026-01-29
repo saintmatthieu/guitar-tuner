@@ -45,7 +45,7 @@ void saint::takeCepstrum(const std::complex<float>* spectrum, int N, CepstrumDat
 
     // Apply a gentle exponentially decaying filter to reduce the risk of
     // harmonics dominating the cepstrum peak detection.
-    const float decayFactor = 0.998f;
+    const float decayFactor = 0.9975f;
     float decay = 1.f;
     for (auto i = 0; i < cepstrumData.fft.size / 2; ++i) {
         cepstrumData.vec()[i] *= decay;
