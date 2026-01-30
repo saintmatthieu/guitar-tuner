@@ -114,29 +114,65 @@ std::vector<float> getWindowXCorr(RealFft& fft, const std::vector<float>& window
     return xcorr;
 }
 
+std::optional<int> takeThisIndexInstead(const std::vector<float>& cepstrum, int leftmost,
+                                        int maxValuedIndex) {
+    // Although we do "low-pass lifter" the cepstrum to reduce the risk of confusing the first
+    // harmonic for the fundamental, it still happens. Liftering some introduces damage, according
+    // to benchmarking.
+    // Let's check if there is a peak near maxValuedIndex / 2 and if it rivals that at
+    // maxValuedIndex in terms of value. If it does, let's go for this one.
+    auto halfIndex = maxValuedIndex / 2;
+
+    if (halfIndex < leftmost) {
+        return {};
+    }
+
+    // climb to the top
+    while (halfIndex + 1 < cepstrum.size() && cepstrum[halfIndex + 1] >= cepstrum[halfIndex]) {
+        ++halfIndex;
+    }
+    while (halfIndex - 1 >= 0 && cepstrum[halfIndex - 1] > cepstrum[halfIndex]) {
+        --halfIndex;
+    }
+    if (const auto tooFar = std::abs(maxValuedIndex / 2 - halfIndex) > 1) {
+        return {};
+    }
+
+    const auto ratio = cepstrum[halfIndex] / cepstrum[maxValuedIndex];
+    if (ratio > 0.78f) {
+        return halfIndex;
+    } else {
+        return {};
+    }
+}
+
 double getCepstrumPeakFrequency(const CepstrumData& cepstrumData, int sampleRate, float minFreq,
                                 float maxFreq) {
+    const auto& vec = cepstrumData.vec();
+
     // We're using this for a tuner, so look between 30Hz (a detuned E0 on a bass
     // guitar) and 500Hz (Ukulele high A is 440Hz)
     const auto maxPeriod = 1. / minFreq;
     const auto minPeriod = 1. / maxFreq;
-    const auto firstCepstrumSample = static_cast<int>(minPeriod * sampleRate);
-    const auto& vec = cepstrumData.vec();
-    const auto lastCepstrumSample = std::min<int>(maxPeriod * sampleRate, vec.size() / 2);
-    const auto it =
-        std::max_element(vec.begin() + firstCepstrumSample, vec.begin() + lastCepstrumSample);
-    const auto maxCepstrumIndex = std::distance(vec.begin(), it);
+    const auto leftmost = static_cast<int>(minPeriod * sampleRate);
+    const auto rightmost = std::min<int>(maxPeriod * sampleRate, vec.size() / 2);
+    const auto it = std::max_element(vec.begin() + leftmost, vec.begin() + rightmost);
+    auto maxCepstrumIndex = std::distance(vec.begin(), it);
     if (maxCepstrumIndex == 0)
         return 0;
     else if (maxCepstrumIndex == vec.size())
         return static_cast<float>(sampleRate) / maxCepstrumIndex;
 
+    const auto bestIndex =
+        takeThisIndexInstead(vec, leftmost, maxCepstrumIndex).value_or(maxCepstrumIndex);
+
     // Parabolic interpolation
-    const auto prev = vec[maxCepstrumIndex - 1];
-    const auto max = vec[maxCepstrumIndex];
-    const auto next = vec[maxCepstrumIndex + 1];
+    const auto prev = vec[bestIndex - 1];
+    const auto max = vec[bestIndex];
+    const auto next = vec[bestIndex + 1];
     const auto p = 0.5f * (prev - next) / (prev + next - 2 * max);
-    const auto peakIndex = maxCepstrumIndex + p;
+    const auto peakIndex = bestIndex + p;
+
     return sampleRate / peakIndex;
 }
 
