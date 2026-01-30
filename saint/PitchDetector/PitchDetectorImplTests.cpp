@@ -113,6 +113,15 @@ TEST(PitchDetectorImpl, benchmarking) {
         }
     }
 
+    std::optional<fs::path> argSampleFile;
+    for (size_t i = 1; i < argv.size(); ++i) {
+        const std::string argStr(argv[i]);
+        const std::string prefix("sample=");
+        if (argStr.find(prefix) == 0) {
+            argSampleFile = fs::path(argStr.substr(prefix.size()));
+        }
+    }
+
     const std::vector<float> silence(44100, 0.f);
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
     testUtils::toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono});
@@ -137,10 +146,13 @@ TEST(PitchDetectorImpl, benchmarking) {
 
         const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
 
+        const auto takeSample =
+            !argSampleFile.has_value() || fs::equivalent(*argSampleFile, testFile);
+
         auto somethingProcessed = false;
         for (auto n = 0; n < noiseData.size(); ++n) {
             const auto takeTestCase =
-                !argInstanceCount.has_value() || instanceCount == *argInstanceCount;
+                takeSample && (!argInstanceCount.has_value() || instanceCount == *argInstanceCount);
             utils::Finally incrementInstanceCount([&instanceCount, takeTestCase, &tee]() {
                 ++instanceCount;
                 if (takeTestCase)
@@ -268,7 +280,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             tee << "Finished with " << testFile << "\n\n";
     }
 
-    if (argInstanceCount.has_value()) {
+    if (argInstanceCount.has_value() || argSampleFile.has_value()) {
         return;
     }
 

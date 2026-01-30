@@ -67,7 +67,11 @@ fs::path testUtils::getEvalDir() {
 }
 
 fs::path testUtils::getOutDir() {
-    return getEvalDir() / "out";
+    const auto dir = getEvalDir() / "out";
+    if (!fs::exists(dir)) {
+        fs::create_directories(dir);
+    }
+    return dir;
 }
 
 void testUtils::scaleToRms(std::vector<float>& data, float targetRmsDb) {
