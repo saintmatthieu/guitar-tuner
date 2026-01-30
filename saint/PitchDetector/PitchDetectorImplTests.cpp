@@ -85,8 +85,8 @@ std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath
 // pitch changes while tuning
 // - max note is the high E on the first string, adding a tone for margin
 constexpr PitchDetector::Config config{
-    Pitch{PitchClass::G, 1},
-    Pitch{PitchClass::A, 4},
+    Pitch{PitchClass::Db, 2},
+    Pitch{PitchClass::Gb, 4},
 };
 }  // namespace
 
