@@ -39,15 +39,39 @@ struct Sample {
 };
 
 struct Result {
-    Result(bool t, float s, float f, double time) : truth(t), score(s), freq(f), time(time) {}
-    bool truth = false;
-    float score = 0.0;
-    float freq = 0.f;
-    double time = 0.0;
+    Result(bool truth, float score, float frequencyEstimate, float rawFrequencyEstimate)
+        : t(truth), s(score), f(frequencyEstimate), r(rawFrequencyEstimate) {}
+    bool t = false;
+    float s = 0.0;
+    float f = 0.f;
+    float r = 0.f;
+};
+
+class TeeStream {
+   public:
+    TeeStream(std::ostream& console, std::ostream& file) : console_(console), file_(file) {}
+
+    template <typename T>
+    TeeStream& operator<<(const T& value) {
+        console_ << value;
+        file_ << value;
+        return *this;
+    }
+
+    TeeStream& operator<<(std::ostream& (*manip)(std::ostream&)) {
+        console_ << manip;
+        file_ << manip;
+        return *this;
+    }
+
+   private:
+    std::ostream& console_;
+    std::ostream& file_;
 };
 
 std::optional<Audio> fromWavFile(std::filesystem::path path, int numSamples = 0);
-bool toWavFile(std::filesystem::path path, const Audio& audio, const std::string& what = "");
+bool toWavFile(std::filesystem::path path, const Audio& audio, TeeStream* logger,
+               const std::string& what = "");
 
 std::filesystem::path getEvalDir();
 std::filesystem::path getOutDir();
@@ -69,8 +93,7 @@ struct Marking {
     const int startSample;
     const int endSample;
 };
-void writeMarkedWavFile(const std::filesystem::path& filenameStem, int sampleRate, int numSamples,
-                        Marking marking);
+void writeLogMarks(const std::filesystem::path& filenameStem, int sampleRate, Marking marking);
 double writeResultFile(const Sample& sample, const std::vector<Result>& results,
                        const std::filesystem::path& outputPath);
 
@@ -101,7 +124,7 @@ struct RocInfo {
  * is a measure of the classifier's performance. The greater the AUC, the
  * better the classifier.
  *
- * @tparam Result has public members `truth`, boolean, and `score`, numeric
+ * @tparam Result has public members `t` (for truth), boolean, and `s` (for score), numeric
  * @param results true classifications and scores of some population
  * @pre at least one of `results` is really positive (`truth` is true), and at
  * least one is really negative
@@ -109,7 +132,7 @@ struct RocInfo {
  */
 template <typename Result>
 RocInfo GetRocInfo(std::vector<Result> results, double allowedFalsePositiveRate = 0.) {
-    const auto truth = std::mem_fn(&Result::truth);
+    const auto truth = std::mem_fn(&Result::t);
     const auto falsity = std::not_fn(truth);
 
     // There is at least one positive and one negative sample.
@@ -121,7 +144,7 @@ RocInfo GetRocInfo(std::vector<Result> results, double allowedFalsePositiveRate 
 
     // Sort the results by score, descending.
     std::sort(results.begin(), results.end(),
-              [](const auto& a, const auto& b) { return a.score > b.score; });
+              [](const auto& a, const auto& b) { return a.s > b.s; });
 
     const auto size = results.size();
     const auto numPositives = count_if(results.begin(), results.end(), truth);
@@ -138,7 +161,7 @@ RocInfo GetRocInfo(std::vector<Result> results, double allowedFalsePositiveRate 
     size_t numTruePositives = 0;
     size_t numFalsePositives = 0;
     for (const auto& result : results) {
-        if (result.truth)
+        if (result.t)
             ++numTruePositives;
         else
             ++numFalsePositives;
@@ -166,15 +189,15 @@ RocInfo GetRocInfo(std::vector<Result> results, double allowedFalsePositiveRate 
 
     if (it == falsePositiveRates.end())
         // All breakpoints satify the constraint. Return the least score.
-        return {auc, results.back().score};
+        return {auc, results.back().s};
     else if (it == falsePositiveRates.begin())
         // No breakpoint satisfies the constraint. Return the greatest score.
-        return {auc, results.front().score};
+        return {auc, results.front().s};
 
     // For threshold, use the score halfway between the last breakpoint that
     // satisfies the constraint and the first breakpoint that doesn't.
     const auto index = it - falsePositiveRates.begin();
-    const auto threshold = (results[index - 1].score + results[index].score) / 2;
+    const auto threshold = (results[index - 1].s + results[index].s) / 2;
 
     return {auc, threshold, truePositiveRates, falsePositiveRates};
 }
@@ -186,26 +209,5 @@ void PrintPythonVector(std::ofstream& ofs, const std::vector<T>& v, const char* 
     ofs << "]\n";
 }
 
-class TeeStream {
-   public:
-    TeeStream(std::ostream& console, std::ostream& file) : console_(console), file_(file) {}
-
-    template <typename T>
-    TeeStream& operator<<(const T& value) {
-        console_ << value;
-        file_ << value;
-        return *this;
-    }
-
-    TeeStream& operator<<(std::ostream& (*manip)(std::ostream&)) {
-        console_ << manip;
-        file_ << manip;
-        return *this;
-    }
-
-   private:
-    std::ostream& console_;
-    std::ostream& file_;
-};
 }  // namespace testUtils
 }  // namespace saint

@@ -23,11 +23,20 @@ PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSi
       _buffer(getFilterSize(sampleRate, blockSize), 0.f) {}
 
 float PitchDetectorMedianFilter::process(const float* input, float* presenceScore) {
-    //
+    process(input, presenceScore, nullptr);
+}
+
+float PitchDetectorMedianFilter::process(const float* input, float* presenceScore,
+                                         float* unfilteredEstimate) {
     _buffer.erase(_buffer.begin());
-    _buffer.push_back(_innerDetector->process(input, presenceScore));
+    const auto raw = _innerDetector->process(input, presenceScore);
+    if (unfilteredEstimate != nullptr) {
+        *unfilteredEstimate = raw;
+    }
+    _buffer.push_back(raw);
     auto sortedBuffer = _buffer;
     std::sort(sortedBuffer.begin(), sortedBuffer.end());
     return sortedBuffer[sortedBuffer.size() / 2];
 }
+
 }  // namespace saint

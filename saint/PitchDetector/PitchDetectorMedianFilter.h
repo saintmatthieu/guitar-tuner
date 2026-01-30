@@ -10,8 +10,10 @@ class PitchDetectorMedianFilter : public PitchDetector {
     PitchDetectorMedianFilter(int sampleRate, int blockSize,
                               std::unique_ptr<PitchDetector> innerDetector);
 
-    float process(const float* input, float* presenceScore = nullptr) override;
     ~PitchDetectorMedianFilter() override = default;
+
+    float process(const float* input, float* presenceScore) override;
+    float process(const float* input, float* presenceScore, float* unfilteredEstimate);
 
    private:
     const std::unique_ptr<PitchDetector> _innerDetector;

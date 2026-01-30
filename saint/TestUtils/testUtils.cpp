@@ -31,7 +31,8 @@ std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSam
     return Audio{std::move(audio), sfinfo.samplerate, channelFormat};
 }
 
-bool testUtils::toWavFile(fs::path path, const Audio& audio, const std::string& what) {
+bool testUtils::toWavFile(fs::path path, const Audio& audio, TeeStream* logger,
+                          const std::string& what) {
     constexpr auto skip = false;
     if (skip) {
         return true;
@@ -56,8 +57,13 @@ bool testUtils::toWavFile(fs::path path, const Audio& audio, const std::string& 
     const auto success = numWritten == static_cast<sf_count_t>(numFrames);
     if (!success) {
         std::cerr << "Could not write all samples to file: " << path << "\n";
-    } else if (!what.empty()) {
-        std::cout << what << "\t" << path << "\n";
+    } else if (logger != nullptr) {
+        if (!what.empty()) {
+            *logger << what;
+        } else {
+            *logger << "Wrote";
+        }
+        *logger << "\t" << path << "\n";
     }
     return success;
 }
@@ -174,12 +180,12 @@ std::optional<testUtils::Sample> testUtils::getSampleFromFile(const fs::path& fi
     return Sample{filePath, Truth{startTime, endTime, trueFreq}};
 }
 
-void testUtils::writeMarkedWavFile(const fs::path& filenameStem, int sampleRate, int numSamples,
-                                   Marking marking) {
-    std::vector<float> audio(numSamples, 0.f);
-    audio[marking.startSample] = 1.f;
-    audio[marking.endSample] = 1.f;
-    toWavFile(getOutDir() / "marks.wav", {audio, sampleRate, ChannelFormat::Mono}, "MARKS");
+void testUtils::writeLogMarks(const fs::path& filenameStem, int sampleRate, Marking marking) {
+    // Write a text file that can be imported by Audacity as labels:
+    const auto labelPath = getOutDir() / "wav" / (filenameStem.string() + "_log_marks.txt");
+    std::ofstream labelFile(labelPath);
+    labelFile << static_cast<double>(marking.startSample) / sampleRate << "\t"
+              << static_cast<double>(marking.endSample) / sampleRate << "\n";
 }
 
 double testUtils::writeResultFile(const Sample& sample, const std::vector<Result>& results,
@@ -193,8 +199,8 @@ double testUtils::writeResultFile(const Sample& sample, const std::vector<Result
     double rmsErrorCents = 0.;
     std::vector<double> errorCents;
     for (const auto& r : results) {
-        if (r.freq > 0.) {
-            const auto e = 1200. * std::log2(r.freq / sample.truth.frequency);
+        if (r.f > 0.) {
+            const auto e = 1200. * std::log2(r.f / sample.truth.frequency);
             rmsErrorCents += e * e;
             errorCents.push_back(e);
         }

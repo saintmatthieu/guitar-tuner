@@ -124,7 +124,7 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     const std::vector<float> silence(44100, 0.f);
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
-    testUtils::toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono});
+    testUtils::toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
 
     const auto numSamples = samples.size();
     const auto numNoises =
@@ -173,7 +173,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 testUtils::getOutDir() / "wav" /
                 (shortFileName.string() + "_" + noise.rmsDb + "dB_" + ".wav");
             testUtils::toWavFile(noiseFileName,
-                                 {noise.data, clean->sampleRate, clean->channelFormat}, "NOISE");
+                                 {noise.data, clean->sampleRate, clean->channelFormat}, &tee,
+                                 "NOISE");
 
             auto noisy = *clean;
             testUtils::mixNoise(noisy, noise.data);
@@ -218,9 +219,11 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 auto presenceScore = 0.f;
+                auto unfilteredEstimate = 0.f;
                 std::vector<float> frame(noisyData + i * numChannels,
                                          noisyData + (i + blockSize) * numChannels);
-                auto result = sut.process(noisyData + i * numChannels, &presenceScore);
+                auto result =
+                    sut.process(noisyData + i * numChannels, &presenceScore, &unfilteredEstimate);
                 const auto currentTime = static_cast<double>(i + blockSize) / clean->sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
@@ -234,7 +237,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                         ++falsePositiveCount;
                 }
                 ++estimateIndex;
-                sampleResults.emplace_back(truth, presenceScore, result, currentTime);
+                sampleResults.emplace_back(truth, presenceScore, result, unfilteredEstimate);
                 if (logEstimateIndex.has_value()) {
                     std::fill(presenceScoreAsAudio.begin() + i,
                               presenceScoreAsAudio.begin() + i + blockSize, presenceScore);
@@ -245,7 +248,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                 const auto presenceScoreWavName = testUtils::getOutDir() / "presenceScore.wav";
                 testUtils::toWavFile(presenceScoreWavName,
                                      {presenceScoreAsAudio, clean->sampleRate, ChannelFormat::Mono},
-                                     "PRESENCE");
+                                     &tee, "PRESENCE");
             }
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
@@ -254,7 +257,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
                                   "_at_" + noise.rmsDb + "dB";
             const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
-            testUtils::toWavFile(outWavName, noisy, "MIX");
+            testUtils::toWavFile(outWavName, noisy, &tee, "MIX");
 
             const auto resultPath = testUtils::getOutDir() / (cleanFile.string() + "_results.py");
             const auto rmsError = testUtils::writeResultFile(sample, sampleResults, resultPath);
@@ -267,8 +270,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                 const auto startIndex = *realLogger->analysisAudioIndex();
                 const auto endIndex = startIndex + windowSizeSamples;
                 const testUtils::Marking marking{startIndex, endIndex};
-                testUtils::writeMarkedWavFile(filename, clean->sampleRate, clean->numFrames(),
-                                              marking);
+                testUtils::writeLogMarks(filename, clean->sampleRate, marking);
             }
 
             tee << "STATS\t" << instanceCount << "/" << numEvaluations
