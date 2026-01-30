@@ -32,6 +32,7 @@ class PitchDetector {
      * @return float 0 if no pitch detected, the value in Hz if pitch is detected.
      */
     virtual float process(const float* input, float* presenceScore = nullptr) = 0;
+    virtual int delaySamples() const = 0;
     virtual ~PitchDetector() = default;
 };
 }  // namespace saint

@@ -9,10 +9,12 @@
       "type": "lldb",
       "request": "launch",
       "program": "${command:cmake.launchTargetPath}",
-      "args": ["instanceCount=94", "logEstimateIndex=139"],
-      // "args": [
-      //   "sample=/home/matthieu/github/saintmatthieu/guitar-tuner/eval/testFiles/notes/debug/e2.wav"
-      // ],
+      "stopOnEntry": false,
+      "args": [
+        // "instanceCount=544",
+        // "logEstimateIndex=150"
+        // "sample=/home/matthieu/github/saintmatthieu/guitar-tuner/eval/testFiles/notes/debug/A3.wav"
+      ],
       "cwd": "${workspaceFolder}"
     },
     {

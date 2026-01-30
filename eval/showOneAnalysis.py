@@ -17,14 +17,14 @@ fig = 0
 
 fig += 1
 plt.figure(fig)
-plt.plot(t + t0, pdl.inputAudio)
+plt.plot(t, pdl.inputAudio)
 plt.grid(True)
 plt.title("Input Audio Signal")
 plt.gcf().canvas.manager.set_window_title("Input Audio Signal")
 
 fig += 1
 plt.figure(fig)
-plt.plot(t + t0, pdl.windowedAudio)
+plt.plot(t, pdl.windowedAudio)
 plt.grid(True)
 plt.title("Windowed Audio Signal")
 plt.gcf().canvas.manager.set_window_title("Windowed Audio Signal")
@@ -39,17 +39,6 @@ plt.plot(pdl.xcorr)
 plt.grid(True)
 plt.suptitle("Autocorrelation")
 plt.gcf().canvas.manager.set_window_title("Autocorrelation")
-
-fig += 1
-plt.figure(fig)
-plt.subplot(2, 1, 1)
-plt.plot(t, pdl.xcorrFlattened)
-plt.grid(True)
-plt.subplot(2, 1, 2)
-plt.plot(pdl.xcorrFlattened)
-plt.grid(True)
-plt.suptitle("Autocorrelation (Flattened)")
-plt.gcf().canvas.manager.set_window_title("Autocorrelation (Flattened)")
 
 fig += 1
 plt.figure(fig)

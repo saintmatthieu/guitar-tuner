@@ -84,6 +84,9 @@ void getXCorr(RealFft& fft, std::vector<float>& time, const std::vector<float>& 
     }
     std::fill(freqData + lpWindow.size(), freqData + fft.size / 2, 0.f);
     fft.inverse(freqData, timeData);
+    if (timeData[0] < 1e-6f) {
+        return;
+    }
     const auto normalizer = 1.f / timeData[0];
     for (auto i = 0; i < fft.size; ++i) {
         timeData[i] *= normalizer;
@@ -344,7 +347,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         *presenceScore = maximum;
     }
 
-    constexpr auto threshold = 0.982216f;
+    constexpr auto threshold = 0.851758f;
     if (maximum > threshold) {
         // _detectedPitch = _sampleRate / maxIndex;
         return getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);

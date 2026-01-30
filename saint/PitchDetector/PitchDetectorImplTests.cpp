@@ -85,8 +85,8 @@ std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath
 // pitch changes while tuning
 // - max note is the high E on the first string, adding a tone for margin
 constexpr PitchDetector::Config config{
-    Pitch{PitchClass::G, 1},
-    Pitch{PitchClass::A, 4},
+    Pitch{PitchClass::Db, 2},
+    Pitch{PitchClass::Gb, 4},
 };
 }  // namespace
 
@@ -122,9 +122,16 @@ TEST(PitchDetectorImpl, benchmarking) {
         }
     }
 
+    std::unique_ptr<testUtils::FileWriter> fileWriter;
+    if (argInstanceCount.has_value() || argSampleFile.has_value()) {
+        fileWriter = std::make_unique<testUtils::RealFileWriter>();
+    } else {
+        fileWriter = std::make_unique<testUtils::DummyFileWriter>();
+    }
+
     const std::vector<float> silence(44100, 0.f);
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
-    testUtils::toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
+    fileWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
 
     const auto numSamples = samples.size();
     const auto numNoises =
@@ -147,7 +154,8 @@ TEST(PitchDetectorImpl, benchmarking) {
         const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
 
         const auto takeSample =
-            !argSampleFile.has_value() || fs::equivalent(*argSampleFile, testFile);
+            !argSampleFile.has_value() ||
+            (fs::exists(*argSampleFile) && fs::equivalent(*argSampleFile, testFile));
 
         auto somethingProcessed = false;
         for (auto n = 0; n < noiseData.size(); ++n) {
@@ -172,9 +180,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto noiseFileName =
                 testUtils::getOutDir() / "wav" /
                 (shortFileName.string() + "_" + noise.rmsDb + "dB_" + ".wav");
-            testUtils::toWavFile(noiseFileName,
-                                 {noise.data, clean->sampleRate, clean->channelFormat}, &tee,
-                                 "NOISE");
+            fileWriter->toWavFile(noiseFileName,
+                                  {noise.data, clean->sampleRate, clean->channelFormat}, &tee,
+                                  "NOISE");
 
             auto noisy = *clean;
             testUtils::mixNoise(noisy, noise.data);
@@ -224,7 +232,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                                          noisyData + (i + blockSize) * numChannels);
                 auto result =
                     sut.process(noisyData + i * numChannels, &presenceScore, &unfilteredEstimate);
-                const auto currentTime = static_cast<double>(i + blockSize) / clean->sampleRate;
+                const auto currentTime =
+                    static_cast<double>(i + blockSize - sut.delaySamples()) / clean->sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
                 if (truth) {
@@ -246,9 +255,10 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             if (logEstimateIndex.has_value()) {
                 const auto presenceScoreWavName = testUtils::getOutDir() / "presenceScore.wav";
-                testUtils::toWavFile(presenceScoreWavName,
-                                     {presenceScoreAsAudio, clean->sampleRate, ChannelFormat::Mono},
-                                     &tee, "PRESENCE");
+                fileWriter->toWavFile(
+                    presenceScoreWavName,
+                    {presenceScoreAsAudio, clean->sampleRate, ChannelFormat::Mono}, &tee,
+                    "PRESENCE");
             }
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
@@ -257,7 +267,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
                                   "_at_" + noise.rmsDb + "dB";
             const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
-            testUtils::toWavFile(outWavName, noisy, &tee, "MIX");
+            fileWriter->toWavFile(outWavName, noisy, &tee, "MIX");
 
             const auto resultPath = testUtils::getOutDir() / (cleanFile.string() + "_results.py");
             const auto rmsError = testUtils::writeResultFile(sample, sampleResults, resultPath);
@@ -297,8 +307,8 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Average RMS error across all tests: " << rmsAvg
         << " cents, worst RMS error: " << *worstRmsIt << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 4.48536092590846;
-    constexpr auto previousAuc = 0.9244750037729325;
+    constexpr auto previousRmsError = 64.96206721657379;
+    constexpr auto previousAuc = 0.9660401601236678;
 
     constexpr auto comparisonTolerance = 0.01;
     const auto rmsErrorIsUnchanged = testUtils::valueIsUnchanged(

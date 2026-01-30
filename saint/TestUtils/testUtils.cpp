@@ -33,10 +33,6 @@ std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSam
 
 bool testUtils::toWavFile(fs::path path, const Audio& audio, TeeStream* logger,
                           const std::string& what) {
-    constexpr auto skip = false;
-    if (skip) {
-        return true;
-    }
     SF_INFO sfinfo;
     sfinfo.channels = audio.channelFormat == ChannelFormat::Mono ? 1 : 2;
     sfinfo.samplerate = audio.sampleRate;

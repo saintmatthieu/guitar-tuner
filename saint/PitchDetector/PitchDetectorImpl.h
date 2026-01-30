@@ -17,9 +17,14 @@ class PitchDetectorImpl : public PitchDetector {
     PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel,
                       const std::optional<Config>& config,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
-    float process(const float*, float* presenceScore) override;
+    ~PitchDetectorImpl() override = default;
 
-    int windowSizeSamples() {
+    float process(const float*, float* presenceScore) override;
+    int delaySamples() const override {
+        return windowSizeSamples() / 2;
+    }
+
+    int windowSizeSamples() const {
         return static_cast<int>(_window.size());
     }
 
