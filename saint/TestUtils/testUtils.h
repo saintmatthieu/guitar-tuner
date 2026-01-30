@@ -209,5 +209,25 @@ void PrintPythonVector(std::ofstream& ofs, const std::vector<T>& v, const char* 
     ofs << "]\n";
 }
 
+struct FileWriter {
+    virtual ~FileWriter() = default;
+    virtual bool toWavFile(std::filesystem::path path, const Audio& audio, TeeStream* logger,
+                           const std::string& what = "") const = 0;
+};
+
+struct RealFileWriter : public FileWriter {
+    bool toWavFile(std::filesystem::path path, const Audio& audio, TeeStream* logger,
+                   const std::string& what = "") const override {
+        return testUtils::toWavFile(path, audio, logger, what);
+    }
+};
+
+struct DummyFileWriter : public FileWriter {
+    bool toWavFile(std::filesystem::path path, const Audio& audio, TeeStream* logger,
+                   const std::string& what = "") const override {
+        return true;
+    }
+};
+
 }  // namespace testUtils
 }  // namespace saint
