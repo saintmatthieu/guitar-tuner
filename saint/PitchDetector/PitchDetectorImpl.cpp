@@ -12,7 +12,20 @@
 
 namespace saint {
 namespace {
-constexpr auto cutoffFreq = 1500;
+constexpr int getCutoffBin(int sampleRate, int fftSize) {
+    constexpr auto cutoffFreq = 1500;
+    return std::min(fftSize / 2, fftSize * cutoffFreq / sampleRate);
+}
+
+constexpr int getRolloffSize(int sampleRate, int fftSize) {
+    return fftSize * 200 / sampleRate;
+}
+
+constexpr int getFilteredXcorrSize(int sampleRate, int fftSize, int lastSearchIndex) {
+    const auto max = std::max(
+        lastSearchIndex, getCutoffBin(sampleRate, fftSize) + getRolloffSize(sampleRate, fftSize));
+    return std::min(max, fftSize / 2);
+}
 
 constexpr float log2ToDb = 20 / 3.321928094887362f;
 constexpr float defaultLeastFrequencyToDetect = /* A0 */ 27.5f;
@@ -60,40 +73,34 @@ void applyWindow(const std::vector<float>& window, std::vector<float>& input) {
     }
 }
 
-void getXCorr(RealFft& fft, std::vector<float>& time, const std::vector<float>& lpWindow,
-              PitchDetectorLoggerInterface& logger, CepstrumData* cepstrumData = nullptr,
-              std::vector<std::complex<float>>* outSpectrum = nullptr) {
-    Aligned<std::vector<std::complex<float>>> freq;
+Spectrum getSpectrum(RealFft& fft, const std::vector<float>& time) {
+    Spectrum freq;
     freq.value.resize(fft.size / 2);
-    auto freqData = freq.value.data();
-    auto timeData = time.data();
+    fft.forward(time.data(), freq.value.data());
+    return freq;
+}
 
-    fft.forward(timeData, freqData);
-
-    if (outSpectrum) {
-        *outSpectrum = freq.value;
-    }
-
-    if (cepstrumData) {
-        takeCepstrum(freq.value.data(), freq.value.size(), *cepstrumData, logger);
-    }
+void getXCorr(RealFft& fft, Spectrum freq, std::vector<float>& out,
+              const std::vector<float>& lpWindow) {
+    auto* outData = out.data();
+    auto* freqData = freq.value.data();
 
     for (auto i = 0; i < lpWindow.size(); ++i) {
         auto& X = freqData[i];
         X *= lpWindow[i] * std::complex<float>{X.real(), -X.imag()};
     }
     std::fill(freqData + lpWindow.size(), freqData + fft.size / 2, 0.f);
-    fft.inverse(freqData, timeData);
-    const auto normalizer = 1.f / timeData[0];
+    fft.inverse(freqData, outData);
+    const auto normalizer = 1.f / outData[0];
     for (auto i = 0; i < fft.size; ++i) {
-        timeData[i] *= normalizer;
+        outData[i] *= normalizer;
     }
 }
 
 std::vector<float> getLpWindow(int sampleRate, int fftSize) {
     std::vector<float> window(fftSize / 2);
-    const int cutoffBin = std::min(fftSize / 2, fftSize * cutoffFreq / sampleRate);
-    const int rollOffSize = fftSize * 200 / sampleRate;
+    const int cutoffBin = getCutoffBin(sampleRate, fftSize);
+    const int rollOffSize = getRolloffSize(sampleRate, fftSize);
     std::fill(window.begin(), window.begin() + cutoffBin, 1.f);
     for (auto i = 0; i < rollOffSize && cutoffBin + rollOffSize < fftSize / 2; ++i) {
         window[cutoffBin + i] = 1.f - i / static_cast<float>(rollOffSize);
@@ -110,7 +117,8 @@ std::vector<float> getWindowXCorr(RealFft& fft, const std::vector<float>& window
     std::copy(window.begin(), window.end(), xcorr.begin());
     std::fill(xcorr.begin() + window.size(), xcorr.end(), 0.f);
     DummyPitchDetectorLogger logger;
-    getXCorr(fft, xcorr, lpWindow, logger);
+    auto spectrum = getSpectrum(fft, xcorr);
+    getXCorr(fft, std::move(spectrum), xcorr, lpWindow);
     return xcorr;
 }
 
@@ -146,16 +154,20 @@ std::optional<int> takeThisIndexInstead(const std::vector<float>& cepstrum, int 
     }
 }
 
+constexpr std::pair<int, int> getCepstrumSearchRange(int sampleRate, float minFreq, float maxFreq,
+                                                     int cepstrumSize) {
+    const auto maxPeriod = 1. / minFreq;
+    const auto minPeriod = 1. / maxFreq;
+    return std::make_pair(static_cast<int>(minPeriod * sampleRate),
+                          std::min(static_cast<int>(maxPeriod * sampleRate), cepstrumSize / 2));
+}
+
 double getCepstrumPeakFrequency(const CepstrumData& cepstrumData, int sampleRate, float minFreq,
                                 float maxFreq) {
     const auto& vec = cepstrumData.vec();
 
-    // We're using this for a tuner, so look between 30Hz (a detuned E0 on a bass
-    // guitar) and 500Hz (Ukulele high A is 440Hz)
-    const auto maxPeriod = 1. / minFreq;
-    const auto minPeriod = 1. / maxFreq;
-    const auto leftmost = static_cast<int>(minPeriod * sampleRate);
-    const auto rightmost = std::min<int>(maxPeriod * sampleRate, vec.size() / 2);
+    const auto [leftmost, rightmost] =
+        getCepstrumSearchRange(sampleRate, minFreq, maxFreq, vec.size());
     const auto it = std::max_element(vec.begin() + leftmost, vec.begin() + rightmost);
     auto maxCepstrumIndex = std::distance(vec.begin(), it);
     if (maxCepstrumIndex == 0)
@@ -176,65 +188,19 @@ double getCepstrumPeakFrequency(const CepstrumData& cepstrumData, int sampleRate
     return sampleRate / peakIndex;
 }
 
-double getHarmonicProductSpectrumPeakFrequency(const std::vector<std::complex<float>>& spectrum,
-                                               int fftSize, int sampleRate,
-                                               PitchDetectorLoggerInterface& logger) {
-    // Harmonic Product Spectrum: downsample and multiply harmonics
-    constexpr int numHarmonics = 5;
-    constexpr auto minFreq = 30.f;   // E0 on bass guitar
-    constexpr auto maxFreq = 500.f;  // Ukulele high A is 440Hz
+float getXCorrFilterCoeff(int samplesPerSecond, int samplesPerBlock) {
+    const auto blocksPerSecond = 1.f * samplesPerSecond / samplesPerBlock;
+    return std::pow(10.f, -1.f / blocksPerSecond);
+}
 
-    const auto minBin = static_cast<int>(minFreq * fftSize / sampleRate);
-    const auto maxBin = static_cast<int>(maxFreq * fftSize / sampleRate);
-
-    // Compute magnitude spectrum
-    std::vector<float> power(spectrum.size());
-    power[0] = std::abs(spectrum[0].real());
-    for (int i = 1; i < spectrum.size(); ++i) {
-        power[i] = std::sqrt(spectrum[i].real() * spectrum[i].real() +
-                             spectrum[i].imag() * spectrum[i].imag());
+void filterSpectrum(float coef, const Spectrum& xAligned, Spectrum& stateAligned) {
+    const auto& x = xAligned.value;
+    auto& state = stateAligned.value;
+    assert(x.size() >= state.size());
+    const auto feoc = 1.f - coef;
+    for (auto i = 0; i < state.size(); ++i) {
+        state[i] = feoc * x[i] + coef * state[i];
     }
-
-    logger.Log(power.data(), power.size(), "hpsMagnitude");
-
-    // Initialize HPS product with the fundamental spectrum
-    std::vector<float> hpsProduct(maxBin + 1);
-    std::fill(hpsProduct.begin(), hpsProduct.end(), 0.f);
-
-    logger.Log(numHarmonics, "hpsNumHarmonics");
-    // Multiply by downsampled harmonics
-    for (int harmonic = 1; harmonic <= numHarmonics; ++harmonic) {
-        std::vector<float> downsampledSpectrum(maxBin + 1);
-        for (int i = 0; i <= maxBin; ++i) {
-            const int harmonicBin = i * harmonic;
-            if (harmonicBin < spectrum.size()) {
-                downsampledSpectrum[i] = power[harmonicBin];
-                hpsProduct[i] += power[harmonicBin];
-            } else {
-                hpsProduct[i] = 0.f;
-            }
-        }
-        logger.Log(downsampledSpectrum.data(), downsampledSpectrum.size(),
-                   ("hpsDownsampledHarmonic" + std::to_string(harmonic)).c_str());
-        logger.Log(hpsProduct.data(), hpsProduct.size(),
-                   ("hpsAfterHarmonic" + std::to_string(harmonic)).c_str());
-    }
-
-    // Find peak in HPS product
-    const auto it = std::max_element(hpsProduct.begin() + minBin, hpsProduct.begin() + maxBin + 1);
-    const auto maxBinIndex = std::distance(hpsProduct.begin(), it);
-
-    if (maxBinIndex == 0 || maxBinIndex >= maxBin)
-        return 0;
-
-    // Parabolic interpolation for sub-bin accuracy
-    const auto prev = hpsProduct[maxBinIndex - 1];
-    const auto max = hpsProduct[maxBinIndex];
-    const auto next = hpsProduct[maxBinIndex + 1];
-    const auto p = 0.5f * (prev - next) / (prev + next - 2 * max);
-    const auto peakBin = maxBinIndex + p;
-
-    return peakBin * sampleRate / fftSize;
 }
 }  // namespace
 
@@ -257,9 +223,11 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _maxFreq(getMaxFreq(config)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / _minFreq))),
       _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)),
+      _coefs(getXCorrFilterCoeff(sampleRate, samplesPerBlockPerChannel)),
       _latencySamples(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0)),
       _audioBuffer(_latencySamples, 0.f) {
     //
+    _filteredSpectrum.value.resize(_fftSize / 2);
     _audioBuffer.reserve(_window.size());
     _logger->SamplesRead(-_latencySamples);
 }
@@ -314,42 +282,54 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     applyWindow(_window, time);
     _logger->Log(time.data(), time.size(), "windowedAudio");
 
-    // Capture spectrum for HPS analysis
-    std::vector<std::complex<float>> spectrum;
-    getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
+    Spectrum spectrum = getSpectrum(_fwdFft, time);
+    filterSpectrum(_coefs, spectrum, _filteredSpectrum);
+
+    getXCorr(_fwdFft, spectrum, time, _lpWindow);
     _logger->Log(time.data(), time.size(), "xcorr");
     _logger->Log(time.data(), time.size(), "xcorrFlattened", _xcorrTransform);
 
-    // // Compute HPS estimate
-    // const auto hpsFreq =
-    //     getHarmonicProductSpectrumPeakFrequency(spectrum, _fftSize, _sampleRate, *_logger);
-    // const float hpsFreqFloat = static_cast<float>(hpsFreq);
-    // _logger->Log(&hpsFreqFloat, 1, "hpsFrequency");
+    std::vector<float> filteredXCorr(_fftSize);
+    getXCorr(_fwdFft, _filteredSpectrum, filteredXCorr, _lpWindow);
 
     _logger->EndNewEstimate(nullptr, 0);
 
-    auto maxIndex = 0;
-    auto wentNegative = false;
-    auto maximum = 0.f;
-    for (auto i = 0; i < _lastSearchIndex; ++i) {
-        wentNegative |= time[i] < 0;
-        if (wentNegative && time[i] > maximum) {
-            maximum = time[i];
-            maxIndex = i;
-        }
-    }
+    const auto maximum = getXCorrNormalizedMaximum(time);
+    const auto filteredMaximum = getXCorrNormalizedMaximum(filteredXCorr);
 
-    maximum /= _windowXcor[maxIndex];
+    if (maximum > filteredMaximum) {
+        _filteredSpectrum = spectrum;
+    }
+    const auto presence = std::max(maximum, filteredMaximum);
+
+    takeCepstrum(spectrum.value.data(), spectrum.value.size(), _cepstrumData, *_logger);
+
     if (presenceScore) {
-        *presenceScore = maximum;
+        *presenceScore = presence;
     }
 
     constexpr auto threshold = 0.982216f;
-    if (maximum > threshold) {
+    if (presence > threshold) {
         // _detectedPitch = _sampleRate / maxIndex;
         return getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
     } else {
         return 0.f;
     }
+}
+
+float PitchDetectorImpl::getXCorrNormalizedMaximum(const std::vector<float>& xcorr) const {
+    auto maxIndex = 0;
+    auto wentNegative = false;
+    auto maximum = 0.f;
+    for (auto i = 0; i < _lastSearchIndex; ++i) {
+        wentNegative |= xcorr[i] < 0;
+        if (wentNegative && xcorr[i] > maximum) {
+            maximum = xcorr[i];
+            maxIndex = i;
+        }
+    }
+
+    maximum /= _windowXcor[maxIndex];
+    return maximum;
 }
 }  // namespace saint

@@ -12,6 +12,8 @@
 class PitchDetectorLoggerInterface;
 
 namespace saint {
+using Spectrum = Aligned<std::vector<std::complex<float>>>;
+
 class PitchDetectorImpl : public PitchDetector {
    public:
     PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel,
@@ -24,6 +26,8 @@ class PitchDetectorImpl : public PitchDetector {
     }
 
    private:
+    float getXCorrNormalizedMaximum(const std::vector<float>& xcorr) const;
+
     const float _sampleRate;
     const ChannelFormat _channelFormat;
     const int _blockSize;
@@ -34,12 +38,15 @@ class PitchDetectorImpl : public PitchDetector {
     RealFft _fwdFft;
     CepstrumData _cepstrumData;
     const std::vector<float> _lpWindow;
-    const std::vector<float> _windowXcor;
-    const int _latencySamples;
-    std::vector<float> _audioBuffer;
     const float _minFreq;
     const float _maxFreq;
     const int _lastSearchIndex;
+    const std::vector<float> _windowXcor;
+    const float _coefs;
+    Spectrum _filteredSpectrum;
+
+    const int _latencySamples;
+    std::vector<float> _audioBuffer;
     bool _bufferErrorLoggedAlready = false;
     const std::function<float(float)> _xcorrTransform = [this, i = 0](float x) mutable {
         return x / std::max(_windowXcor[i++], 1e-6f);
