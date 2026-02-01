@@ -38,8 +38,8 @@ struct Sample {
     Truth truth;
 };
 
-struct Result {
-    Result(bool truth, float score, float frequencyEstimate, float rawFrequencyEstimate)
+struct ProcessEstimate {
+    ProcessEstimate(bool truth, float score, float frequencyEstimate, float rawFrequencyEstimate)
         : t(truth), s(score), f(frequencyEstimate), r(rawFrequencyEstimate) {}
     bool t = false;
     float s = 0.0;
@@ -94,7 +94,12 @@ struct Marking {
     const int endSample;
 };
 void writeLogMarks(const std::filesystem::path& filenameStem, int sampleRate, Marking marking);
-std::optional<double> getRmsError(const Sample& sample, const std::vector<Result>& results);
+
+struct Cents {
+    float rms = 0.f;
+    float avg = 0.f;
+};
+std::optional<Cents> getError(const Sample& sample, const std::vector<ProcessEstimate>& results);
 
 // Value comparison utility
 template <typename T>

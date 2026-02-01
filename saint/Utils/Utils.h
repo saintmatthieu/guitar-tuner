@@ -2,6 +2,7 @@
 
 #include <array>
 #include <complex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,9 @@ void getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out
  * @return float
  */
 float quadFit(const float* y);
+
+std::optional<float> estimateFundamentalByPeakPicking(const std::vector<float>& logSpectrum,
+                                                      int sampleRate, float minFreq, float maxFreq);
 
 template <typename F>
 struct Finally {

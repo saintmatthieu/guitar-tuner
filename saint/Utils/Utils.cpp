@@ -111,4 +111,24 @@ float utils::quadFit(const float* y) {
     const auto delta = 0.5f * (y[0] - y[2]) / (y[2] - 2 * y[1] + y[0]);
     return delta;
 }
+
+// std::optional<float> utils::estimateFundamentalByPeakPicking(const std::vector<float>&
+// logSpectrum,
+//                                                              int sampleRate, int fftSize,
+//                                                              float minFreq, float maxFreq) {
+
+//     // Find the `P` highest peaks, not below `minFreq`, but searching harmonics beyond `maxFreq`
+//     is
+//     // allowed (`maxFreq` being the maximum fundamental frequency estimate).
+//     // Once the peaks have been found, look for the greatest common divisor.
+
+//     const auto binFreq = static_cast<float>(sampleRate) / fftSize;
+//     const auto minBin = static_cast<int>(std::ceil(minFreq / binFreq));
+//     const auto maxBin = std::min(static_cast<int>(logSpectrum.size() - 1),
+//                                  static_cast<int>(std::floor(maxFreq / binFreq)));
+
+//     constexpr auto P = 5;
+//     std::vector<std::vector<float>::const_iterator> its;
+//     its.reserve(P);
+// }
 }  // namespace saint

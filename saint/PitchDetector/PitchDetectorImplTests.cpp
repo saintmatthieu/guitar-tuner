@@ -93,8 +93,8 @@ constexpr PitchDetector::Config config{
 TEST(PitchDetectorImpl, benchmarking) {
     std::cout << "\n";
 
-    std::vector<testUtils::Result> results;
-    std::vector<double> rmsErrors;
+    std::vector<testUtils::ProcessEstimate> estimatesForRoc;
+    std::vector<std::optional<testUtils::Cents>> allTestFileEstimates;
 
     const auto logFilePath = testUtils::getOutDir() / "benchmarking.log";
     std::ofstream logFile(logFilePath);
@@ -187,19 +187,19 @@ TEST(PitchDetectorImpl, benchmarking) {
             auto noisy = *clean;
             testUtils::mixNoise(noisy, noise.data);
 
-            auto estimateIndex = 0;
-            std::optional<int> logEstimateIndex;
-            const std::string logPrefix("logEstimateIndex=");
+            auto processIndex = 0;
+            std::optional<int> indexOfProcessToLog;
+            const std::string logPrefix("indexOfProcessToLog=");
             for (size_t i = 1; i < argv.size(); ++i) {
                 const std::string argStr(argv[i]);
                 if (argStr.find(logPrefix) == 0) {
-                    logEstimateIndex = std::stoi(argStr.substr(logPrefix.size()));
+                    indexOfProcessToLog = std::stoi(argStr.substr(logPrefix.size()));
                 }
             }
             std::unique_ptr<PitchDetectorLoggerInterface> logger;
-            if (logEstimateIndex.has_value()) {
+            if (indexOfProcessToLog.has_value()) {
                 logger =
-                    std::make_unique<PitchDetectorLogger>(clean->sampleRate, *logEstimateIndex);
+                    std::make_unique<PitchDetectorLogger>(clean->sampleRate, *indexOfProcessToLog);
             } else {
                 logger = std::make_unique<DummyPitchDetectorLogger>();
             }
@@ -218,10 +218,10 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto numFrames = noisy.interleaved.size() / numChannels;
             const auto* noisyData = noisy.interleaved.data();
 
-            std::vector<testUtils::Result> sampleResults;
+            std::vector<testUtils::ProcessEstimate> testFileEstimates;
 
             std::vector<float> presenceScoreAsAudio;
-            if (logEstimateIndex.has_value()) {
+            if (indexOfProcessToLog.has_value()) {
                 presenceScoreAsAudio.resize(numFrames);
             }
 
@@ -245,15 +245,15 @@ TEST(PitchDetectorImpl, benchmarking) {
                     if (result != 0.f)
                         ++falsePositiveCount;
                 }
-                ++estimateIndex;
-                sampleResults.emplace_back(truth, presenceScore, result, unfilteredEstimate);
-                if (logEstimateIndex.has_value()) {
+                ++processIndex;
+                testFileEstimates.emplace_back(truth, presenceScore, result, unfilteredEstimate);
+                if (indexOfProcessToLog.has_value()) {
                     std::fill(presenceScoreAsAudio.begin() + i,
                               presenceScoreAsAudio.begin() + i + blockSize, presenceScore);
                 }
             }
 
-            if (logEstimateIndex.has_value()) {
+            if (indexOfProcessToLog.has_value()) {
                 const auto presenceScoreWavName = testUtils::getOutDir() / "presenceScore.wav";
                 fileWriter->toWavFile(
                     presenceScoreWavName,
@@ -269,12 +269,12 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
             fileWriter->toWavFile(outWavName, noisy, &tee, "MIX");
 
-            const auto rmsError = testUtils::getRmsError(sample, sampleResults);
-            if (rmsError.has_value()) {
-                rmsErrors.push_back(*rmsError);
-            }
+            const std::optional<testUtils::Cents> cents =
+                testUtils::getError(sample, testFileEstimates);
+            allTestFileEstimates.push_back(cents);
 
-            results.insert(results.end(), sampleResults.begin(), sampleResults.end());
+            estimatesForRoc.insert(estimatesForRoc.end(), testFileEstimates.begin(),
+                                   testFileEstimates.end());
 
             if (auto realLogger = dynamic_cast<PitchDetectorLogger const*>(loggerPtr);
                 realLogger && realLogger->analysisAudioIndex()) {
@@ -284,9 +284,10 @@ TEST(PitchDetectorImpl, benchmarking) {
                 testUtils::writeLogMarks(filename, clean->sampleRate, marking);
             }
 
+            const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
             tee << "STATS\t" << instanceCount << "/" << numEvaluations
-                << ": RMS error: " << rmsError.value_or(-1.f) << " cents, FPR: " << FPR
-                << ", FNR: " << FNR << "\n";
+                << ": AVG error: " << displayCents.avg << ", RMS error: " << displayCents.rms
+                << ", FPR: " << FPR << ", FNR: " << FNR << "\n";
         }
 
         if (somethingProcessed)
@@ -297,16 +298,28 @@ TEST(PitchDetectorImpl, benchmarking) {
         return;
     }
 
+    auto avgAvg = 0.;
     auto rmsAvg = 0.;
-    for (const auto e : rmsErrors) {
-        rmsAvg += e;
+    auto count = 0;
+    auto worstRms = 0.;
+    auto worstRmsIndex = 0;
+    for (auto i = 0; i < allTestFileEstimates.size(); ++i) {
+        const auto& e = allTestFileEstimates[i];
+        if (e.has_value()) {
+            ++count;
+            avgAvg += e->avg;
+            rmsAvg += e->rms;
+            if (e->rms > worstRms) {
+                worstRms = e->rms;
+                worstRmsIndex = i;
+            }
+        }
     }
+    avgAvg /= count;
+    rmsAvg /= count;
 
-    rmsAvg /= static_cast<double>(rmsErrors.size());
-    const auto worstRmsIt = std::max_element(rmsErrors.begin(), rmsErrors.end());
-    const auto worstRmsIndex = std::distance(rmsErrors.begin(), worstRmsIt);
-    tee << "Average RMS error across all tests: " << rmsAvg
-        << " cents, worst RMS error: " << *worstRmsIt << " at index " << worstRmsIndex << "\n";
+    tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
+        << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
     constexpr auto previousRmsError = 83.6037725884205;
     constexpr auto previousAuc = 0.9660401601236678;
@@ -320,8 +333,8 @@ TEST(PitchDetectorImpl, benchmarking) {
         << ", new RMS error: " << rmsAvg;
 
     constexpr auto allowedFalsePositiveRate = 0.01;  // 1%
-    const testUtils::RocInfo rocInfo =
-        testUtils::GetRocInfo<testUtils::Result>(results, allowedFalsePositiveRate);
+    const testUtils::RocInfo rocInfo = testUtils::GetRocInfo<testUtils::ProcessEstimate>(
+        estimatesForRoc, allowedFalsePositiveRate);
 
     std::ofstream rocFile(testUtils::getOutDir() / "roc_curve.py");
     rocFile << "AUC = " << rocInfo.areaUnderCurve << "\n";

@@ -184,24 +184,30 @@ void testUtils::writeLogMarks(const fs::path& filenameStem, int sampleRate, Mark
               << static_cast<double>(marking.endSample) / sampleRate << "\n";
 }
 
-std::optional<double> testUtils::getRmsError(const Sample& sample,
-                                             const std::vector<Result>& results) {
-    double rmsErrorCents = 0.;
+std::optional<testUtils::Cents> testUtils::getError(const Sample& sample,
+                                                    const std::vector<ProcessEstimate>& results) {
+    float avg = 0.f;
+    float rms = 0.f;
 
-    std::vector<double> errorCents;
+    auto count = 0;
     for (const auto& r : results) {
         if (r.f > 0.) {
             const auto e = 1200. * std::log2(r.f / sample.truth.frequency);
-            rmsErrorCents += e * e;
-            errorCents.push_back(e);
+            avg += e;
+            rms += e * e;
+            ++count;
         }
     }
 
-    if (errorCents.empty()) {
+    if (count == 0) {
         return std::nullopt;
     }
 
-    return std::sqrt(rmsErrorCents / errorCents.size());
+    Cents cents;
+    cents.rms = std::sqrt(rms / count);
+    cents.avg = avg / count;
+
+    return cents;
 }
 
 }  // namespace saint
