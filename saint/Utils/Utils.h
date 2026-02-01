@@ -37,6 +37,15 @@ constexpr float FastLog2(float x) {
  */
 void getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out, int count);
 
+/**
+ * @brief assuming y to be of size 3 with y[1] the maximum and the x coordinates -1, 0, 1,
+ * return the x coordinate of the vertex of the parabola fitting the three points.
+ *
+ * @param y
+ * @return float
+ */
+float quadFit(const float* y);
+
 template <typename F>
 struct Finally {
     Finally(F f) : func(std::move(f)) {}

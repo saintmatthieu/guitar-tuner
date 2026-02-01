@@ -193,6 +193,30 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
     _logger->SamplesRead(-_latencySamples);
 }
 
+float getFrequencyOfClosestPeak(const std::vector<float>& logSpectrum, int sampleRate, int fftSize,
+                                float targetFreq) {
+    const auto binFreq = static_cast<float>(sampleRate) / fftSize;
+    const auto targetBin = static_cast<int>(targetFreq / binFreq + 0.5f);
+    // go up
+    auto peakBin = targetBin;
+    while (peakBin + 1 < logSpectrum.size() && logSpectrum[peakBin + 1] >= logSpectrum[peakBin]) {
+        ++peakBin;
+    }
+    // go down
+    while (peakBin - 1 >= 0 && logSpectrum[peakBin - 1] > logSpectrum[peakBin]) {
+        --peakBin;
+    }
+
+    // parabolic interpolation
+    if (peakBin <= 0 || peakBin >= logSpectrum.size() - 1) {
+        return static_cast<float>(peakBin) * binFreq;
+    }
+
+    const auto delta = utils::quadFit(&logSpectrum[peakBin - 1]);
+
+    return (static_cast<float>(peakBin) + delta) * binFreq;
+}
+
 float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     // Append new audio samples to buffer
     if (_channelFormat == ChannelFormat::Mono) {
@@ -284,6 +308,9 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     const auto cepstrumEstimate =
         getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
 
-    return static_cast<float>(cepstrumEstimate);
+    const auto finalEstimateFreq =
+        getFrequencyOfClosestPeak(logSpectrum, _sampleRate, _fftSize, cepstrumEstimate);
+
+    return finalEstimateFreq;
 }
 }  // namespace saint

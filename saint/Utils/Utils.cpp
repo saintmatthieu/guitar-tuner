@@ -105,4 +105,10 @@ void utils::getLogSpectrum(const std::vector<std::complex<float>>& spectrum, flo
                        return utils::FastLog2(power);
                    });
 }
+
+float utils::quadFit(const float* y) {
+    // vertex at x = 0.5 * (y[-1] - y[1]) / (y[-1] - 2 * y[0] + y[1])
+    const auto delta = 0.5f * (y[0] - y[2]) / (y[2] - 2 * y[1] + y[0]);
+    return delta;
+}
 }  // namespace saint
