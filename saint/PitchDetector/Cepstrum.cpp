@@ -11,13 +11,14 @@ void saint::takeCepstrum(const std::vector<std::complex<float>>& spectrum,
     auto& logMag = alignedLogMag.value;
     logMag.resize(cepstrumData.fft.size);
 
+    const auto& hw = cepstrumData.halfWindow;
     // First bin is DC only.
-    logMag[0] = utils::FastLog2(spectrum[0].real() * spectrum[0].real());
+    logMag[0] = hw[0] * utils::FastLog2(spectrum[0].real() * spectrum[0].real());
     auto k = 1;
     std::transform(spectrum.data() + 1, spectrum.data() + cepstrumData.halfWindow.size(),
                    logMag.begin(), [&](const std::complex<float>& X) {
                        const auto power = X.real() * X.real() + X.imag() * X.imag();
-                       const auto w = cepstrumData.halfWindow[k++];
+                       const auto w = hw[k++];
                        return w * utils::FastLog2(power);
                    });
 
