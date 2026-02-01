@@ -100,6 +100,10 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::ofstream logFile(logFilePath);
     testUtils::TeeStream tee(std::cout, logFile);
 
+    const auto csvFilePath = testUtils::getOutDir() / "benchmarking.csv";
+    std::ofstream csvFile(csvFilePath);
+    csvFile << "index,AVG,RMS,FPR,FNR,testFile,noiseFile,noiseDb,mix\n";
+
     const auto samples = loadSamples();
 
     auto instanceCount = 0;
@@ -285,9 +289,15 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
-            tee << "STATS\t" << instanceCount << "/" << numEvaluations
-                << ": AVG error: " << displayCents.avg << ", RMS error: " << displayCents.rms
-                << ", FPR: " << FPR << ", FNR: " << FNR << "\n";
+            const auto evalDir = testUtils::getEvalDir();
+            std::stringstream csvLine;
+            csvLine << instanceCount << "," << displayCents.avg << "," << displayCents.rms << ","
+                    << FPR << "," << FNR << "," << fs::relative(testFile, evalDir) << ","
+                    << fs::relative(noise.file, evalDir) << "," << noise.rmsDb << ","
+                    << fs::relative(outWavName, evalDir) << "\n";
+            csvFile << csvLine.str();
+
+            std::cout << instanceCount << "/" << numEvaluations;
         }
 
         if (somethingProcessed)
