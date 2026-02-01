@@ -184,15 +184,10 @@ void testUtils::writeLogMarks(const fs::path& filenameStem, int sampleRate, Mark
               << static_cast<double>(marking.endSample) / sampleRate << "\n";
 }
 
-double testUtils::writeResultFile(const Sample& sample, const std::vector<Result>& results,
-                                  const fs::path& outputPath) {
-    if (!fs::exists(outputPath.parent_path())) {
-        fs::create_directories(outputPath.parent_path());
-    }
-
-    std::ofstream resultFile(outputPath);
-
+std::optional<double> testUtils::getRmsError(const Sample& sample,
+                                             const std::vector<Result>& results) {
     double rmsErrorCents = 0.;
+
     std::vector<double> errorCents;
     for (const auto& r : results) {
         if (r.f > 0.) {
@@ -201,20 +196,12 @@ double testUtils::writeResultFile(const Sample& sample, const std::vector<Result
             errorCents.push_back(e);
         }
     }
-    if (!errorCents.empty()) {
-        rmsErrorCents = std::sqrt(rmsErrorCents / errorCents.size());
-    }
-    resultFile << "rmsErrorCents = " << rmsErrorCents << "\n";
 
-    resultFile << "results = [";
-    auto separator = "";
-    for (const auto& e : errorCents) {
-        resultFile << separator << e;
-        separator = ",\n";
+    if (errorCents.empty()) {
+        return std::nullopt;
     }
-    resultFile << "]\n";
 
-    return rmsErrorCents;
+    return std::sqrt(rmsErrorCents / errorCents.size());
 }
 
 }  // namespace saint

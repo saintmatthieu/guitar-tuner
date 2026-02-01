@@ -269,10 +269,11 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
             fileWriter->toWavFile(outWavName, noisy, &tee, "MIX");
 
-            const auto resultPath = testUtils::getOutDir() / (cleanFile.string() + "_results.py");
-            const auto rmsError = testUtils::writeResultFile(sample, sampleResults, resultPath);
+            const auto rmsError = testUtils::getRmsError(sample, sampleResults);
+            if (rmsError.has_value()) {
+                rmsErrors.push_back(*rmsError);
+            }
 
-            rmsErrors.push_back(rmsError);
             results.insert(results.end(), sampleResults.begin(), sampleResults.end());
 
             if (auto realLogger = dynamic_cast<PitchDetectorLogger const*>(loggerPtr);
@@ -284,8 +285,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             tee << "STATS\t" << instanceCount << "/" << numEvaluations
-                << ": RMS error: " << rmsError << " cents, FPR: " << FPR << ", FNR: " << FNR
-                << "\n";
+                << ": RMS error: " << rmsError.value_or(-1.f) << " cents, FPR: " << FPR
+                << ", FNR: " << FNR << "\n";
         }
 
         if (somethingProcessed)
@@ -307,7 +308,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Average RMS error across all tests: " << rmsAvg
         << " cents, worst RMS error: " << *worstRmsIt << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 67.866591865894293;
+    constexpr auto previousRmsError = 83.6037725884205;
     constexpr auto previousAuc = 0.9660401601236678;
 
     constexpr auto comparisonTolerance = 0.01;

@@ -94,8 +94,7 @@ struct Marking {
     const int endSample;
 };
 void writeLogMarks(const std::filesystem::path& filenameStem, int sampleRate, Marking marking);
-double writeResultFile(const Sample& sample, const std::vector<Result>& results,
-                       const std::filesystem::path& outputPath);
+std::optional<double> getRmsError(const Sample& sample, const std::vector<Result>& results);
 
 // Value comparison utility
 template <typename T>
