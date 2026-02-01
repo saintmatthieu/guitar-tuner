@@ -90,4 +90,19 @@ std::vector<float> utils::getAnalysisWindow(int windowSize, WindowType type) {
     return window;
 }
 
+void utils::getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out,
+                           int count) {
+    if (count <= 0) {
+        return;
+    }
+
+    // First bin is DC only.
+    out[0] = utils::FastLog2(spectrum[0].real() * spectrum[0].real());
+    auto k = 1;
+    std::transform(spectrum.data() + 1, spectrum.data() + count, out + 1,
+                   [&](const std::complex<float>& X) {
+                       const auto power = X.real() * X.real() + X.imag() * X.imag();
+                       return utils::FastLog2(power);
+                   });
+}
 }  // namespace saint

@@ -29,7 +29,7 @@ class PitchDetectorImpl : public PitchDetector {
     }
 
    private:
-    const float _sampleRate;
+    const int _sampleRate;
     const ChannelFormat _channelFormat;
     const int _blockSize;
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;

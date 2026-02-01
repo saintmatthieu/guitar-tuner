@@ -143,8 +143,8 @@ std::optional<int> takeThisIndexInstead(const std::vector<float>& cepstrum, int 
     }
 }
 
-double getCepstrumPeakFrequency(const CepstrumData& cepstrumData, int sampleRate, float minFreq,
-                                float maxFreq) {
+float getCepstrumPeakFrequency(const CepstrumData& cepstrumData, int sampleRate, float minFreq,
+                               float maxFreq) {
     const auto& vec = cepstrumData.vec();
 
     // We're using this for a tuner, so look between 30Hz (a detuned E0 on a bass
@@ -156,14 +156,14 @@ double getCepstrumPeakFrequency(const CepstrumData& cepstrumData, int sampleRate
     const auto it = std::max_element(vec.begin() + leftmost, vec.begin() + rightmost);
     auto maxCepstrumIndex = std::distance(vec.begin(), it);
     if (maxCepstrumIndex == 0)
-        return 0;
+        return 0.f;
     else if (maxCepstrumIndex == vec.size())
         return static_cast<float>(sampleRate) / maxCepstrumIndex;
 
     const auto bestIndex =
         takeThisIndexInstead(vec, leftmost, maxCepstrumIndex).value_or(maxCepstrumIndex);
 
-    return sampleRate / bestIndex;
+    return static_cast<float>(sampleRate) / bestIndex;
 }
 }  // namespace
 
@@ -245,6 +245,10 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
 
     // Forward FFT
     std::vector<std::complex<float>> freq = getSpectrum(_fwdFft, time.data());
+
+    std::vector<float> logSpectrum(freq.size());
+    utils::getLogSpectrum(freq, logSpectrum.data(), freq.size());
+    _logger->Log(logSpectrum.data(), logSpectrum.size(), "logSpectrum");
 
     // Cepstrum analysis
     takeCepstrum(freq, _cepstrumData, *_logger);

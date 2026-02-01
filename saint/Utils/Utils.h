@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <complex>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,12 @@ constexpr float FastLog2(float x) {
     log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val - 0.65871759316667f;
     return log_2;
 }
+
+/**
+ * @param count `spectrum` and `out` have the same FFT format, but only the first `count`
+ * bins are transformed, to save computation.
+ */
+void getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out, int count);
 
 template <typename F>
 struct Finally {

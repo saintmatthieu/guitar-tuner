@@ -7,32 +7,33 @@
 
 void saint::takeCepstrum(const std::vector<std::complex<float>>& spectrum,
                          CepstrumData& cepstrumData, PitchDetectorLoggerInterface& logger) {
-    Aligned<std::vector<float>> alignedLogMag;
-    auto& logMag = alignedLogMag.value;
-    logMag.resize(cepstrumData.fft.size);
+    Aligned<std::vector<float>> windowedLogSpecAligned;
+    auto& windowedLogSpec = windowedLogSpecAligned.value;
+    windowedLogSpec.resize(cepstrumData.fft.size);
 
-    const auto& hw = cepstrumData.halfWindow;
-    // First bin is DC only.
-    logMag[0] = hw[0] * utils::FastLog2(spectrum[0].real() * spectrum[0].real());
-    auto k = 1;
-    std::transform(spectrum.data() + 1, spectrum.data() + cepstrumData.halfWindow.size(),
-                   logMag.begin(), [&](const std::complex<float>& X) {
-                       const auto power = X.real() * X.real() + X.imag() * X.imag();
-                       const auto w = hw[k++];
-                       return w * utils::FastLog2(power);
-                   });
+    const auto halfWindowSize = cepstrumData.halfWindow.size();
 
-    // No need to set the middle values to zero, `resize` already did that.
+    utils::getLogSpectrum(spectrum, windowedLogSpec.data(), halfWindowSize);
+
+    // Apply half-windowing to reduce spectral leakage in the cepstrum.
+    std::transform(windowedLogSpec.begin(), windowedLogSpec.begin() + halfWindowSize,
+                   cepstrumData.halfWindow.begin(), windowedLogSpec.begin(),
+                   [](float x, float w) { return x * w; });
+
+    // Fill the rest with zeros
+    const auto k = cepstrumData.fft.size / 2 - halfWindowSize + 1;
+    std::fill(windowedLogSpec.begin() + halfWindowSize, windowedLogSpec.end(), 0.f);
 
     // Now we mirror about the half
-    std::reverse_copy(logMag.begin() + 1, logMag.begin() + k - 1, logMag.end() - (k - 2));
+    std::reverse_copy(windowedLogSpec.begin() + 1, windowedLogSpec.begin() + k - 1,
+                      windowedLogSpec.end() - (k - 2));
 
-    logger.Log(logMag.data(), logMag.size(), "logMagSpectrum");
+    logger.Log(windowedLogSpec.data(), windowedLogSpec.size(), "windowedLogSpec");
 
-    cepstrumData.fft.forward(logMag.data(), cepstrumData.ptr());
+    cepstrumData.fft.forward(windowedLogSpec.data(), cepstrumData.ptr());
 
     // PFFFT wrote cepstrumData.vec.size() / 2 complex values in cepstrumData.
-    // Since logMag is symmetric, the imaginary parts will be (approximately)
+    // Since windowedLogSpec is symmetric, the imaginary parts will be (approximately)
     // zero. We collapse the data into real values.
 
     // For convenience, we reinterpret the cepstrum data as complex.
