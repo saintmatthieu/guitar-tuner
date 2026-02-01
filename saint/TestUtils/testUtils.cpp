@@ -97,6 +97,19 @@ void testUtils::scaleToRms(std::vector<float>& data, float targetRmsDb) {
     }
 }
 
+void testUtils::scaleToPeak(std::vector<float>& data, float targetPeakDb) {
+    float peak = 0.f;
+    for (const auto sample : data) {
+        peak = std::max(peak, std::abs(sample));
+    }
+
+    const float targetPeak = std::pow(10.f, targetPeakDb / 20.f);
+    const float scale = targetPeak / peak;
+    for (auto& sample : data) {
+        sample *= scale;
+    }
+}
+
 void testUtils::mixNoise(Audio& signal, const std::vector<float>& noise) {
     const auto noiseSize = noise.size();
     size_t n = 0;
@@ -178,7 +191,7 @@ std::optional<testUtils::Sample> testUtils::getSampleFromFile(const fs::path& fi
 
 void testUtils::writeLogMarks(const fs::path& filenameStem, int sampleRate, Marking marking) {
     // Write a text file that can be imported by Audacity as labels:
-    const auto labelPath = getOutDir() / "wav" / (filenameStem.string() + "_log_marks.txt");
+    const auto labelPath = getOutDir() / "logged_audio.txt";
     std::ofstream labelFile(labelPath);
     labelFile << static_cast<double>(marking.startSample) / sampleRate << "\t"
               << static_cast<double>(marking.endSample) / sampleRate << "\n";

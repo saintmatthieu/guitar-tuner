@@ -78,6 +78,7 @@ std::filesystem::path getOutDir();
 
 // Audio processing utilities
 void scaleToRms(std::vector<float>& data, float targetRmsDb);
+void scaleToPeak(std::vector<float>& data, float targetPeakDb);
 void mixNoise(Audio& signal, const std::vector<float>& noise);
 
 // Music theory utilities

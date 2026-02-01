@@ -147,13 +147,15 @@ TEST(PitchDetectorImpl, benchmarking) {
         const auto& testFile = sample.file;
 
         const fs::path cleanFile = testUtils::getFileShortName(testFile);
-        const std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
+        std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
         const auto blockSize = clean->sampleRate / 100;  // To make debugging easier
 
         if (!clean.has_value()) {
             std::cerr << "Could not read file: " << testFile << "\n";
             continue;
         }
+
+        testUtils::scaleToPeak(clean->interleaved, -10.f);
 
         const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
 
@@ -331,7 +333,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 83.6037725884205;
+    constexpr auto previousRmsError = 74.51134357210736;
     constexpr auto previousAuc = 0.9660401601236678;
 
     constexpr auto comparisonTolerance = 0.01;
