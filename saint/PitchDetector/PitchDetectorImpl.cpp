@@ -8,7 +8,7 @@
 #include <iostream>
 #include <optional>
 
-#include "DummyPitchDetectorLogger.h"
+#include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
 namespace {
@@ -60,30 +60,16 @@ void applyWindow(const std::vector<float>& window, std::vector<float>& input) {
     }
 }
 
-void getXCorr(RealFft& fft, std::vector<float>& time, const std::vector<float>& lpWindow,
-              PitchDetectorLoggerInterface& logger, CepstrumData* cepstrumData = nullptr,
-              std::vector<std::complex<float>>* outSpectrum = nullptr) {
-    Aligned<std::vector<std::complex<float>>> freq;
-    freq.value.resize(fft.size / 2);
-    auto freqData = freq.value.data();
+void getXCorr(RealFft& fft, std::vector<float>& time, std::vector<std::complex<float>> freq,
+              const std::vector<float>& lpWindow) {
     auto timeData = time.data();
 
-    fft.forward(timeData, freqData);
-
-    if (outSpectrum) {
-        *outSpectrum = freq.value;
-    }
-
-    if (cepstrumData) {
-        takeCepstrum(freq.value.data(), freq.value.size(), *cepstrumData, logger);
-    }
-
-    for (auto i = 0; i < lpWindow.size(); ++i) {
-        auto& X = freqData[i];
+    for (auto i = 0u; i < lpWindow.size(); ++i) {
+        auto& X = freq[i];
         X *= lpWindow[i] * std::complex<float>{X.real(), -X.imag()};
     }
-    std::fill(freqData + lpWindow.size(), freqData + fft.size / 2, 0.f);
-    fft.inverse(freqData, timeData);
+    std::fill(freq.data() + lpWindow.size(), freq.data() + fft.size / 2, 0.f);
+    fft.inverse(freq.data(), timeData);
     if (timeData[0] < 1e-6f) {
         return;
     }
@@ -105,6 +91,14 @@ std::vector<float> getLpWindow(int sampleRate, int fftSize) {
     return window;
 }
 
+std::vector<std::complex<float>> getSpectrum(RealFft& fft, const float* timeData) {
+    Aligned<std::vector<std::complex<float>>> freqAligned;
+    auto& freq = freqAligned.value;
+    freq.resize(fft.size / 2);
+    fft.forward(timeData, freq.data());
+    return freqAligned.value;
+}
+
 std::vector<float> getWindowXCorr(RealFft& fft, const std::vector<float>& window,
                                   const std::vector<float>& lpWindow) {
     Aligned<std::vector<float>> xcorrAligned;
@@ -112,8 +106,8 @@ std::vector<float> getWindowXCorr(RealFft& fft, const std::vector<float>& window
     xcorr.resize(fft.size);
     std::copy(window.begin(), window.end(), xcorr.begin());
     std::fill(xcorr.begin() + window.size(), xcorr.end(), 0.f);
-    DummyPitchDetectorLogger logger;
-    getXCorr(fft, xcorr, lpWindow, logger);
+    std::vector<std::complex<float>> freq = getSpectrum(fft, xcorr.data());
+    getXCorr(fft, xcorr, freq, lpWindow);
     return xcorr;
 }
 
@@ -317,9 +311,14 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     applyWindow(_window, time);
     _logger->Log(time.data(), time.size(), "windowedAudio");
 
-    // Capture spectrum for HPS analysis
-    std::vector<std::complex<float>> spectrum;
-    getXCorr(_fwdFft, time, _lpWindow, *_logger, &_cepstrumData, &spectrum);
+    // Forward FFT
+    std::vector<std::complex<float>> freq = getSpectrum(_fwdFft, time.data());
+
+    // Cepstrum analysis
+    takeCepstrum(freq, _cepstrumData, *_logger);
+
+    // Compute cross-correlation
+    getXCorr(_fwdFft, time, freq, _lpWindow);
     _logger->Log(time.data(), time.size(), "xcorr");
     _logger->Log(time.data(), time.size(), "xcorrFlattened", _xcorrTransform);
 
@@ -348,11 +347,13 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     }
 
     constexpr auto threshold = 0.851758f;
-    if (maximum > threshold) {
-        // _detectedPitch = _sampleRate / maxIndex;
-        return getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
-    } else {
+    if (maximum < threshold) {
         return 0.f;
     }
+
+    const auto cepstrumEstimate =
+        getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
+
+    return static_cast<float>(cepstrumEstimate);
 }
 }  // namespace saint

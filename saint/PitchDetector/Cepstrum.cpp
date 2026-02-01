@@ -5,8 +5,8 @@
 #include "PitchDetectorLoggerInterface.h"
 #include "Utils.h"
 
-void saint::takeCepstrum(const std::complex<float>* spectrum, int N, CepstrumData& cepstrumData,
-                         PitchDetectorLoggerInterface& logger) {
+void saint::takeCepstrum(const std::vector<std::complex<float>>& spectrum,
+                         CepstrumData& cepstrumData, PitchDetectorLoggerInterface& logger) {
     Aligned<std::vector<float>> alignedLogMag;
     auto& logMag = alignedLogMag.value;
     logMag.resize(cepstrumData.fft.size);
@@ -14,8 +14,8 @@ void saint::takeCepstrum(const std::complex<float>* spectrum, int N, CepstrumDat
     // First bin is DC only.
     logMag[0] = utils::FastLog2(spectrum[0].real() * spectrum[0].real());
     auto k = 1;
-    std::transform(spectrum + 1, spectrum + cepstrumData.halfWindow.size(), logMag.begin(),
-                   [&](const std::complex<float>& X) {
+    std::transform(spectrum.data() + 1, spectrum.data() + cepstrumData.halfWindow.size(),
+                   logMag.begin(), [&](const std::complex<float>& X) {
                        const auto power = X.real() * X.real() + X.imag() * X.imag();
                        const auto w = cepstrumData.halfWindow[k++];
                        return w * utils::FastLog2(power);

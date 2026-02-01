@@ -29,6 +29,6 @@ class CepstrumData {
 /**
  * @param spectrum N/2 complex values, the first of which is DC + Nyquist
  */
-void takeCepstrum(const std::complex<float>* spectrum, int N, CepstrumData& cepstrumData,
+void takeCepstrum(const std::vector<std::complex<float>>& spectrum, CepstrumData& cepstrumData,
                   PitchDetectorLoggerInterface& logger);
 }  // namespace saint
