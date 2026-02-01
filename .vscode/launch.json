@@ -12,7 +12,7 @@
       "stopOnEntry": false,
       "args": [
         // "instanceCount=544",
-        // "logEstimateIndex=150"
+        // "indexOfProcessToLog=150"
         // "sample=/home/matthieu/github/saintmatthieu/guitar-tuner/eval/testFiles/notes/debug/A3.wav"
       ],
       "cwd": "${workspaceFolder}"
