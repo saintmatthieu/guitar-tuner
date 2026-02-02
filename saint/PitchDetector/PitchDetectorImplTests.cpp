@@ -312,11 +312,11 @@ TEST(PitchDetectorImpl, benchmarking) {
         // For histogram
         std::ofstream errorsFile(testUtils::getOutDir() / "errors.py");
         errorsFile << "errors = [";
-        for (const auto& estimate : estimatesForRoc) {
-            if (estimate.f > 0.f) {
-                errorsFile << estimate.e << ",";
-            }
-        }
+        // for (const auto& estimate : estimatesForRoc) {
+        //     if (estimate.f > 0.f) {
+        //         errorsFile << estimate.e << ",";
+        //     }
+        // }
         errorsFile << "]";
     }
 

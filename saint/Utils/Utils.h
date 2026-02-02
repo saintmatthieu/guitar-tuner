@@ -47,9 +47,6 @@ void getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out
  */
 float quadFit(const float* y);
 
-std::optional<float> estimateFundamentalByPeakPicking(const std::vector<float>& logSpectrum,
-                                                      int sampleRate, float minFreq, float maxFreq);
-
 template <typename F>
 struct Finally {
     Finally(F f) : func(std::move(f)) {}
