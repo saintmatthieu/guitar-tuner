@@ -235,11 +235,9 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 auto presenceScore = 0.f;
-                auto unfilteredEstimate = 0.f;
                 std::vector<float> frame(noisyData + i * numChannels,
                                          noisyData + (i + blockSize) * numChannels);
-                auto result =
-                    sut.process(noisyData + i * numChannels, &presenceScore, &unfilteredEstimate);
+                auto result = sut.process(noisyData + i * numChannels, &presenceScore);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - sut.delaySamples()) / clean->sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
@@ -254,7 +252,9 @@ TEST(PitchDetectorImpl, benchmarking) {
                         ++falsePositiveCount;
                 }
                 ++processIndex;
-                testFileEstimates.emplace_back(truth, presenceScore, result, unfilteredEstimate);
+                const auto errorCents =
+                    result > 0.f ? 1200.f * std::log2(result / sample.truth.frequency) : 0.f;
+                testFileEstimates.emplace_back(truth, presenceScore, result, errorCents);
                 if (indexOfProcessToLog.has_value()) {
                     std::fill(presenceScoreAsAudio.begin() + i,
                               presenceScoreAsAudio.begin() + i + blockSize, presenceScore);
@@ -308,6 +308,18 @@ TEST(PitchDetectorImpl, benchmarking) {
             tee << "Finished with " << testFile << "\n\n";
     }
 
+    {
+        // For histogram
+        std::ofstream errorsFile(testUtils::getOutDir() / "errors.py");
+        errorsFile << "errors = [";
+        for (const auto& estimate : estimatesForRoc) {
+            if (estimate.f > 0.f) {
+                errorsFile << estimate.e << ",";
+            }
+        }
+        errorsFile << "]";
+    }
+
     if (argInstanceCount.has_value() || argSampleFile.has_value()) {
         return;
     }
@@ -350,12 +362,14 @@ TEST(PitchDetectorImpl, benchmarking) {
     const testUtils::RocInfo rocInfo = testUtils::GetRocInfo<testUtils::ProcessEstimate>(
         estimatesForRoc, allowedFalsePositiveRate);
 
-    std::ofstream rocFile(testUtils::getOutDir() / "roc_curve.py");
-    rocFile << "AUC = " << rocInfo.areaUnderCurve << "\n";
-    rocFile << "threshold = " << rocInfo.threshold << "\n";
-    rocFile << "allowedFalsePositiveRate = " << allowedFalsePositiveRate << "\n";
-    testUtils::PrintPythonVector(rocFile, rocInfo.falsePositiveRates, "falsePositiveRates");
-    testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates, "truePositiveRates");
+    {
+        std::ofstream rocFile(testUtils::getOutDir() / "roc_curve.py");
+        rocFile << "AUC = " << rocInfo.areaUnderCurve << "\n";
+        rocFile << "threshold = " << rocInfo.threshold << "\n";
+        rocFile << "allowedFalsePositiveRate = " << allowedFalsePositiveRate << "\n";
+        testUtils::PrintPythonVector(rocFile, rocInfo.falsePositiveRates, "falsePositiveRates");
+        testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates, "truePositiveRates");
+    }
 
     const auto classifierQualityIsUnchanged =
         testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt",
