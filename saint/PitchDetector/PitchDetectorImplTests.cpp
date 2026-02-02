@@ -64,7 +64,7 @@ std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath
     const auto silenceAudio = testUtils::fromWavFile(silenceFilePath, numSamples);
     noiseData.push_back(Noise{silenceFilePath, "-inf", silenceAudio->interleaved});
 
-    const std::vector<const char*> noiseRmsDb{"-40", "-30"};
+    const std::vector<const char*> noiseRmsDb{"-40", "-50", "-60"};
     for (const auto& noiseFile : noiseFiles) {
         auto noiseAudio = testUtils::fromWavFile(noiseFile, numSamples);
         if (!noiseAudio.has_value()) {
@@ -126,16 +126,18 @@ TEST(PitchDetectorImpl, benchmarking) {
         }
     }
 
-    std::unique_ptr<testUtils::FileWriter> fileWriter;
-    if (argInstanceCount.has_value() || argSampleFile.has_value()) {
-        fileWriter = std::make_unique<testUtils::RealFileWriter>();
+    constexpr auto forceWriteFiles = false;
+    auto silenceWriter = std::make_shared<testUtils::RealFileWriter>();
+    std::shared_ptr<testUtils::FileWriter> fileWriter;
+    if (forceWriteFiles || argInstanceCount.has_value() || argSampleFile.has_value()) {
+        fileWriter = silenceWriter;
     } else {
-        fileWriter = std::make_unique<testUtils::DummyFileWriter>();
+        fileWriter = std::make_shared<testUtils::DummyFileWriter>();
     }
 
     const std::vector<float> silence(44100, 0.f);
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
-    fileWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
+    silenceWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
 
     const auto numSamples = samples.size();
     const auto numNoises =
@@ -333,8 +335,8 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 74.51134357210736;
-    constexpr auto previousAuc = 0.9660401601236678;
+    constexpr auto previousRmsError = 76.62722630301519;
+    constexpr auto previousAuc = 0.902510855252703;
 
     constexpr auto comparisonTolerance = 0.01;
     const auto rmsErrorIsUnchanged = testUtils::valueIsUnchanged(

@@ -86,14 +86,9 @@ void testUtils::scaleToRms(std::vector<float>& data, float targetRmsDb) {
     const float currentRms = std::sqrt(sumSquares / static_cast<float>(data.size()));
     const float targetRms = std::pow(10.f, targetRmsDb / 20.f);
 
-    constexpr auto maxPeakDb = -30.f;
-    const float maxPeak = std::pow(10.f, maxPeakDb / 20.f);
-
-    const float rmsScale = targetRms / currentRms;
-    const float peakScale = maxPeak / peak;
-    const float scale = std::min(rmsScale, peakScale);
+    const float scale = targetRms / currentRms;
     for (auto& sample : data) {
-        sample *= scale;
+        sample = std::clamp(sample * scale, -1.f, 1.f);
     }
 }
 
