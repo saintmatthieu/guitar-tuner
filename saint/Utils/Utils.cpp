@@ -112,23 +112,60 @@ float utils::quadFit(const float* y) {
     return delta;
 }
 
-// std::optional<float> utils::estimateFundamentalByPeakPicking(const std::vector<float>&
-// logSpectrum,
-//                                                              int sampleRate, int fftSize,
-//                                                              float minFreq, float maxFreq) {
+float utils::getApproximateGcd(const std::vector<float>& values) {
+    if (values.size() < 2) {
+        return 0.f;
+    }
 
-//     // Find the `P` highest peaks, not below `minFreq`, but searching harmonics beyond `maxFreq`
-//     is
-//     // allowed (`maxFreq` being the maximum fundamental frequency estimate).
-//     // Once the peaks have been found, look for the greatest common divisor.
+    // Use a histogram approach to find the approximate GCD.
+    // The GCD can't be larger than the smallest value in the set.
+    const float maxValue = *std::min_element(values.begin(), values.end()) * 1.1f;
+    const int numBins = 1000;
+    std::vector<int> histogram(numBins, 0);
+    const float binSize = maxValue / numBins;
 
-//     const auto binFreq = static_cast<float>(sampleRate) / fftSize;
-//     const auto minBin = static_cast<int>(std::ceil(minFreq / binFreq));
-//     const auto maxBin = std::min(static_cast<int>(logSpectrum.size() - 1),
-//                                  static_cast<int>(std::floor(maxFreq / binFreq)));
+    for (const auto value : values) {
+        for (float factor = 1.f; factor * value <= maxValue; factor += 1.f) {
+            const float scaledValue = factor * value;
+            const int binIndex = static_cast<int>(scaledValue / binSize);
+            if (binIndex >= 0 && binIndex < numBins) {
+                histogram[binIndex]++;
+            }
+        }
+    }
 
-//     constexpr auto P = 5;
-//     std::vector<std::vector<float>::const_iterator> its;
-//     its.reserve(P);
-// }
+    // Find the bin with the maximum count.
+    int maxCount = 0;
+    int bestBinIndex = 0;
+    for (int i = 0; i < numBins; ++i) {
+        if (histogram[i] > maxCount) {
+            maxCount = histogram[i];
+            bestBinIndex = i;
+        }
+    }
+
+    // The approximate GCD is the center of the best bin.
+    return (bestBinIndex + 0.5f) * binSize;
+}
+
+std::optional<float> utils::estimateFundamentalByPeakPicking(std::vector<float> logSpectrum,
+                                                             int sampleRate, int fftSize,
+                                                             float minFreq, float maxFreq) {
+    // Strategy:
+
+    // Find the `P` highest peaks, not below `minFreq`, but searching harmonics beyond `maxFreq` is
+    // allowed (`maxFreq` being the maximum fundamental frequency estimate).
+    // Once the peaks have been found, look for the greatest common divisor.
+
+    // const auto binFreq = static_cast<float>(sampleRate) / fftSize;
+    // const auto minBin = static_cast<int>(std::ceil(minFreq / binFreq));
+    // const auto maxBin = std::min(static_cast<int>(logSpectrum.size() - 1),
+    //                              static_cast<int>(std::floor(maxFreq / binFreq)));
+
+    // constexpr auto P = 5;
+    // std::vector<std::vector<float>::const_iterator> its;
+    // its.reserve(P);
+
+    return std::nullopt;
+}
 }  // namespace saint

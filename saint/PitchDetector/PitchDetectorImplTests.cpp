@@ -335,7 +335,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 76.62722630301519;
+    constexpr auto previousRmsError = 67.61210419531332;
     constexpr auto previousAuc = 0.902510855252703;
 
     constexpr auto comparisonTolerance = 0.01;

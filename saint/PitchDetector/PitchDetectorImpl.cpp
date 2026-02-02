@@ -300,7 +300,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         *presenceScore = maximum;
     }
 
-    constexpr auto threshold = 0.856294f;
+    constexpr auto threshold = 0.88f;
     if (maximum < threshold) {
         return 0.f;
     }
