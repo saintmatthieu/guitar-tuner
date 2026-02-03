@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <atomic>
+#include <execution>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 
 #include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
@@ -19,6 +23,26 @@ struct Noise {
     fs::path file;
     const char* rmsDb;
     std::vector<float> data;
+};
+
+struct TestCase {
+    int index;
+    testUtils::Sample sample;
+    Noise noise;
+    testUtils::Audio noisy;
+    int blockSize;
+};
+
+struct TestResult {
+    int index;
+    std::vector<testUtils::ProcessEstimate> estimates;
+    std::optional<testUtils::Cents> cents;
+    double FPR;
+    double FNR;
+    std::string csvLine;
+    fs::path testFile;
+    fs::path noiseFile;
+    std::string noiseRmsDb;
 };
 
 std::vector<testUtils::Sample> loadSamples() {
@@ -88,13 +112,67 @@ constexpr PitchDetector::Config config{
     Pitch{PitchClass::Db, 2},
     Pitch{PitchClass::Gb, 4},
 };
+
+std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleFile,
+                                       const std::optional<int>& argInstanceCount) {
+    const auto samples = loadSamples();
+
+    constexpr auto forceWriteFiles = false;
+    auto silenceWriter = std::make_shared<testUtils::RealFileWriter>();
+    std::shared_ptr<testUtils::FileWriter> fileWriter;
+    if (forceWriteFiles || argInstanceCount.has_value() || argSampleFile.has_value()) {
+        fileWriter = silenceWriter;
+    } else {
+        fileWriter = std::make_shared<testUtils::DummyFileWriter>();
+    }
+
+    const std::vector<float> silence(44100, 0.f);
+    const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
+    silenceWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
+
+    std::vector<TestCase> testCases;
+    int instanceCount = 0;
+
+    std::cout << "Preparing test cases..." << std::endl;
+    auto testCaseCount = 0;
+    for (const auto& sample : samples) {
+        std::cout << "\r" << ++testCaseCount << "/" << samples.size() << std::flush;
+        const auto& testFile = sample.file;
+
+        std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
+        if (!clean.has_value()) {
+            std::cerr << "Could not read file: " << testFile << "\n";
+            continue;
+        }
+
+        const auto blockSize = clean->sampleRate / 100;
+        testUtils::scaleToPeak(clean->interleaved, -10.f);
+
+        const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
+
+        const auto takeSample =
+            !argSampleFile.has_value() ||
+            (fs::exists(*argSampleFile) && fs::equivalent(*argSampleFile, testFile));
+
+        for (const auto& noise : noiseData) {
+            const auto takeTestCase =
+                takeSample && (!argInstanceCount.has_value() || instanceCount == *argInstanceCount);
+
+            if (takeTestCase) {
+                auto noisy = *clean;
+                testUtils::mixNoise(noisy, noise.data);
+                testCases.push_back(
+                    TestCase{instanceCount, sample, noise, std::move(noisy), blockSize});
+            }
+            ++instanceCount;
+        }
+    }
+    return testCases;
+}
 }  // namespace
 
 TEST(PitchDetectorImpl, benchmarking) {
     std::cout << "\n";
-
-    std::vector<testUtils::ProcessEstimate> estimatesForRoc;
-    std::vector<std::optional<testUtils::Cents>> allTestFileEstimates;
 
     const auto logFilePath = testUtils::getOutDir() / "benchmarking.log";
     std::ofstream logFile(logFilePath);
@@ -104,9 +182,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::ofstream csvFile(csvFilePath);
     csvFile << "index,AVG,RMS,FPR,FNR,testFile,noiseFile,noiseDb,mix\n";
 
-    const auto samples = loadSamples();
-
-    auto instanceCount = 0;
     std::optional<int> argInstanceCount;
     const auto& argv = ::testing::internal::GetArgvs();
     for (size_t i = 1; i < argv.size(); ++i) {
@@ -126,120 +201,49 @@ TEST(PitchDetectorImpl, benchmarking) {
         }
     }
 
-    constexpr auto forceWriteFiles = false;
-    auto silenceWriter = std::make_shared<testUtils::RealFileWriter>();
-    std::shared_ptr<testUtils::FileWriter> fileWriter;
-    if (forceWriteFiles || argInstanceCount.has_value() || argSampleFile.has_value()) {
-        fileWriter = silenceWriter;
-    } else {
-        fileWriter = std::make_shared<testUtils::DummyFileWriter>();
-    }
+    // Build all test cases upfront
+    const std::vector<TestCase> testCases = prepareTestCases(argSampleFile, argInstanceCount);
 
-    const std::vector<float> silence(44100, 0.f);
-    const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
-    silenceWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
+    const auto numEvaluations = testCases.size();
 
-    const auto numSamples = samples.size();
-    const auto numNoises =
-        loadNoiseData(1000 /*arbitrary, small number of samples*/, silenceFilePath).size();
-    const auto numEvaluations = numSamples * numNoises;
+    // Pre-allocate results vector for thread-safe indexed access
+    std::vector<TestResult> results(testCases.size());
+    std::atomic<int> completedCount{0};
+    std::mutex progressMutex;
 
-    for (auto s = 0; s < samples.size(); ++s) {
-        const testUtils::Sample& sample = samples[s];
-        const auto& testFile = sample.file;
+    std::cout << std::endl << "Evaluating samples..." << std::endl;
+    // Process test cases in parallel
+    std::for_each(
+        std::execution::par, testCases.begin(), testCases.end(),
+        [&results, &testCases, &completedCount, &progressMutex,
+         numEvaluations](const TestCase& testCase) {
+            const auto idx = static_cast<size_t>(&testCase - testCases.data());  // Get index
+            const auto& sample = testCase.sample;
+            const auto& noisy = testCase.noisy;
+            const auto blockSize = testCase.blockSize;
 
-        const fs::path cleanFile = testUtils::getFileShortName(testFile);
-        std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
-        const auto blockSize = clean->sampleRate / 100;  // To make debugging easier
-
-        if (!clean.has_value()) {
-            std::cerr << "Could not read file: " << testFile << "\n";
-            continue;
-        }
-
-        testUtils::scaleToPeak(clean->interleaved, -10.f);
-
-        const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
-
-        const auto takeSample =
-            !argSampleFile.has_value() ||
-            (fs::exists(*argSampleFile) && fs::equivalent(*argSampleFile, testFile));
-
-        auto somethingProcessed = false;
-        for (auto n = 0; n < noiseData.size(); ++n) {
-            const auto takeTestCase =
-                takeSample && (!argInstanceCount.has_value() || instanceCount == *argInstanceCount);
-            utils::Finally incrementInstanceCount([&instanceCount, takeTestCase, &tee]() {
-                ++instanceCount;
-                if (takeTestCase)
-                    tee << "\n";
-            });
-
-            if (!takeTestCase) {
-                continue;
-            } else {
-                somethingProcessed = true;
-            }
-
-            const Noise& noise = noiseData[n];
-            const auto shortFileName =
-                noise.file.parent_path().stem() /
-                (std::to_string(instanceCount) + "_" + noise.file.stem().string());
-            const auto noiseFileName =
-                testUtils::getOutDir() / "wav" /
-                (shortFileName.string() + "_" + noise.rmsDb + "dB_" + ".wav");
-            fileWriter->toWavFile(noiseFileName,
-                                  {noise.data, clean->sampleRate, clean->channelFormat}, &tee,
-                                  "NOISE");
-
-            auto noisy = *clean;
-            testUtils::mixNoise(noisy, noise.data);
-
-            auto processIndex = 0;
-            std::optional<int> indexOfProcessToLog;
-            const std::string logPrefix("indexOfProcessToLog=");
-            for (size_t i = 1; i < argv.size(); ++i) {
-                const std::string argStr(argv[i]);
-                if (argStr.find(logPrefix) == 0) {
-                    indexOfProcessToLog = std::stoi(argStr.substr(logPrefix.size()));
-                }
-            }
-            std::unique_ptr<PitchDetectorLoggerInterface> logger;
-            if (indexOfProcessToLog.has_value()) {
-                logger =
-                    std::make_unique<PitchDetectorLogger>(clean->sampleRate, *indexOfProcessToLog);
-            } else {
-                logger = std::make_unique<DummyPitchDetectorLogger>();
-            }
-            const auto* loggerPtr = logger.get();
+            auto logger = std::make_unique<DummyPitchDetectorLogger>();
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                clean->sampleRate, clean->channelFormat, blockSize, config, std::move(logger));
-            const auto windowSizeSamples = internalAlgorithm->windowSizeSamples();
-            PitchDetectorMedianFilter sut(clean->sampleRate, blockSize,
+                noisy.sampleRate, noisy.channelFormat, blockSize, config, std::move(logger));
+            PitchDetectorMedianFilter sut(noisy.sampleRate, blockSize,
                                           std::move(internalAlgorithm));
+
             auto negativeCount = 0;
             auto falseNegativeCount = 0;
             auto positiveCount = 0;
             auto falsePositiveCount = 0;
-            const auto numChannels = clean->channelFormat == ChannelFormat::Mono ? 1 : 2;
+            const auto numChannels = noisy.channelFormat == ChannelFormat::Mono ? 1 : 2;
             const auto numFrames = noisy.interleaved.size() / numChannels;
             const auto* noisyData = noisy.interleaved.data();
 
             std::vector<testUtils::ProcessEstimate> testFileEstimates;
 
-            std::vector<float> presenceScoreAsAudio;
-            if (indexOfProcessToLog.has_value()) {
-                presenceScoreAsAudio.resize(numFrames);
-            }
-
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 auto presenceScore = 0.f;
-                std::vector<float> frame(noisyData + i * numChannels,
-                                         noisyData + (i + blockSize) * numChannels);
                 auto result = sut.process(noisyData + i * numChannels, &presenceScore);
                 const auto currentTime =
-                    static_cast<double>(i + blockSize - sut.delaySamples()) / clean->sampleRate;
+                    static_cast<double>(i + blockSize - sut.delaySamples()) / noisy.sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
                 if (truth) {
@@ -251,72 +255,70 @@ TEST(PitchDetectorImpl, benchmarking) {
                     if (result != 0.f)
                         ++falsePositiveCount;
                 }
-                ++processIndex;
                 const auto errorCents =
                     result > 0.f ? 1200.f * std::log2(result / sample.truth.frequency) : 0.f;
                 testFileEstimates.emplace_back(truth, presenceScore, result, errorCents);
-                if (indexOfProcessToLog.has_value()) {
-                    std::fill(presenceScoreAsAudio.begin() + i,
-                              presenceScoreAsAudio.begin() + i + blockSize, presenceScore);
-                }
-            }
-
-            if (indexOfProcessToLog.has_value()) {
-                const auto presenceScoreWavName = testUtils::getOutDir() / "presenceScore.wav";
-                fileWriter->toWavFile(
-                    presenceScoreWavName,
-                    {presenceScoreAsAudio, clean->sampleRate, ChannelFormat::Mono}, &tee,
-                    "PRESENCE");
             }
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
             const auto FNR = 1. * falseNegativeCount / positiveCount;
 
-            const auto filename = cleanFile.string() + "_with_" + noise.file.stem().string() +
-                                  "_at_" + noise.rmsDb + "dB";
-            const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
-            fileWriter->toWavFile(outWavName, noisy, &tee, "MIX");
-
             const std::optional<testUtils::Cents> cents =
                 testUtils::getError(sample, testFileEstimates);
-            allTestFileEstimates.push_back(cents);
 
-            estimatesForRoc.insert(estimatesForRoc.end(), testFileEstimates.begin(),
-                                   testFileEstimates.end());
-
-            if (auto realLogger = dynamic_cast<PitchDetectorLogger const*>(loggerPtr);
-                realLogger && realLogger->analysisAudioIndex()) {
-                const auto startIndex = *realLogger->analysisAudioIndex();
-                const auto endIndex = startIndex + windowSizeSamples;
-                const testUtils::Marking marking{startIndex, endIndex};
-                testUtils::writeLogMarks(filename, clean->sampleRate, marking);
-            }
+            const fs::path cleanFile = testUtils::getFileShortName(sample.file);
+            const auto filename = cleanFile.string() + "_with_" +
+                                  testCase.noise.file.stem().string() + "_at_" +
+                                  testCase.noise.rmsDb + "dB";
+            const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
 
             const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
             const auto evalDir = testUtils::getEvalDir();
             std::stringstream csvLine;
-            csvLine << instanceCount << "," << displayCents.avg << "," << displayCents.rms << ","
-                    << FPR << "," << FNR << "," << fs::relative(testFile, evalDir) << ","
-                    << fs::relative(noise.file, evalDir) << "," << noise.rmsDb << ","
-                    << fs::relative(outWavName, evalDir) << "\n";
-            csvFile << csvLine.str();
+            csvLine << testCase.index << "," << displayCents.avg << "," << displayCents.rms << ","
+                    << FPR << "," << FNR << "," << fs::relative(sample.file, evalDir) << ","
+                    << fs::relative(testCase.noise.file, evalDir) << "," << testCase.noise.rmsDb
+                    << "," << fs::relative(outWavName, evalDir) << "\n";
 
-            std::cout << instanceCount << "/" << numEvaluations;
-        }
+            results[idx] = TestResult{testCase.index,
+                                      std::move(testFileEstimates),
+                                      cents,
+                                      FPR,
+                                      FNR,
+                                      csvLine.str(),
+                                      sample.file,
+                                      testCase.noise.file,
+                                      testCase.noise.rmsDb};
 
-        if (somethingProcessed)
-            tee << "Finished with " << testFile << "\n\n";
+            // Progress reporting (thread-safe)
+            const auto completed = ++completedCount;
+            {
+                std::lock_guard<std::mutex> lock(progressMutex);
+                std::cout << "\r" << completed << "/" << numEvaluations << std::flush;
+            }
+        });
+
+    std::cout << "\n";
+
+    // Aggregate results (sequential)
+    std::vector<testUtils::ProcessEstimate> estimatesForRoc;
+    std::vector<std::optional<testUtils::Cents>> allTestFileEstimates;
+
+    // Sort results by index to maintain deterministic output order
+    std::sort(results.begin(), results.end(),
+              [](const TestResult& a, const TestResult& b) { return a.index < b.index; });
+
+    for (const auto& result : results) {
+        csvFile << result.csvLine;
+        allTestFileEstimates.push_back(result.cents);
+        estimatesForRoc.insert(estimatesForRoc.end(), result.estimates.begin(),
+                               result.estimates.end());
     }
 
     {
         // For histogram
         std::ofstream errorsFile(testUtils::getOutDir() / "errors.py");
         errorsFile << "errors = [";
-        // for (const auto& estimate : estimatesForRoc) {
-        //     if (estimate.f > 0.f) {
-        //         errorsFile << estimate.e << ",";
-        //     }
-        // }
         errorsFile << "]";
     }
 

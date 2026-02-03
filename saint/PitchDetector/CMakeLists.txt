@@ -34,10 +34,13 @@ add_executable(PitchDetectorImplTests
 
 target_compile_options(PitchDetectorImplTests PRIVATE ${SAINT_ANNOYING_WARNINGS})
 
+find_package(TBB REQUIRED)
+
 target_link_libraries(PitchDetectorImplTests
   PRIVATE
     PitchDetector
     TestUtils
     gtest_main
     gmock
+    TBB::tbb
 )
