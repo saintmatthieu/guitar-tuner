@@ -71,6 +71,11 @@ std::vector<testUtils::Sample> loadSamples() {
             }
         }
     }
+    // Sort samples by file path to ensure deterministic test case indices
+    std::sort(
+        samples.begin(), samples.end(),
+        [](const testUtils::Sample& a, const testUtils::Sample& b) { return a.file < b.file; });
+
     return samples;
 }
 
@@ -82,6 +87,8 @@ std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath
             noiseFiles.push_back(entry.path());
         }
     }
+    // Sort noise files to ensure deterministic test case indices
+    std::sort(noiseFiles.begin(), noiseFiles.end());
 
     std::vector<Noise> noiseData;
 
@@ -138,6 +145,14 @@ std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleF
     int instanceCount = 0;
 
     std::cout << "Preparing test cases..." << std::endl;
+    std::cout << "Number of samples: " << samples.size() << std::endl;
+    std::cout << "Number of noise variations: " << numNoiseVariations << std::endl;
+    
+    // Print first few samples for verification
+    for (size_t i = 0; i < std::min(samples.size(), size_t(5)); ++i) {
+        std::cout << "Sample " << i << ": " << samples[i].file << std::endl;
+    }
+    
     auto testCaseCount = 0;
     for (const auto& sample : samples) {
         const auto& testFile = sample.file;
@@ -152,6 +167,12 @@ std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleF
         const auto instanceInRange =
             !argInstanceCount.has_value() ||
             (*argInstanceCount >= sampleStartIndex && *argInstanceCount < sampleEndIndex);
+
+        if (argInstanceCount.has_value() && instanceInRange) {
+            std::cout << "\nFound target instance " << *argInstanceCount << " in sample "
+                      << testCaseCount << ": " << testFile << " (range " << sampleStartIndex << "-"
+                      << sampleEndIndex << ")" << std::endl;
+        }
 
         if (!takeSample || !instanceInRange) {
             // Skip this sample entirely - don't read the wav file
@@ -230,6 +251,9 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     // Build all test cases upfront
     const std::vector<TestCase> testCases = prepareTestCases(argSampleFile, argInstanceCount);
+
+    // std::cerr << testCases[0].sample.file << ", " << testCases[0].noise.file << ", "
+    //           << testCases[0].noise.rmsDb << "\n";
 
     const auto numEvaluations = testCases.size();
 

@@ -182,16 +182,12 @@ float disambiguateFundamentalIndex(float priorIndex, const std::vector<float>& d
             indices[k - 1] = refinedPeakIndex;
         }
 
-        std::vector<float> weights(K);
-        std::transform(peakDbs.begin(), peakDbs.end(), weights.begin(),
-                       [](float db) { return std::max(db / 60 + 1, 0.f); });
-
-        const auto a = utils::leastSquareFit(harmonicNumbers, indices, weights);
+        const auto a = utils::leastSquareFit(harmonicNumbers, indices);
         std::vector<float> errors(K);
         std::transform(harmonicNumbers.begin(), harmonicNumbers.end(), errors.begin(),
-                       [a, &indices, &weights](int k) {
+                       [a, &indices](int k) {
                            const auto error = k * a - indices[k - 1];
-                           return weights[k - 1] * error * error;
+                           return error * error;
                        });
         const auto score = std::accumulate(errors.begin(), errors.end(), 0.f);
 
