@@ -39,12 +39,14 @@ struct Sample {
 };
 
 struct ProcessEstimate {
-    ProcessEstimate(bool truth, float score, float frequencyEstimate, float errorCents)
-        : t(truth), e(errorCents), s(score), f(frequencyEstimate) {}
+    ProcessEstimate(bool truth, float score, float frequencyEstimate, float errorCents,
+                    float unfilteredEstimate)
+        : t(truth), e(errorCents), s(score), f(frequencyEstimate), u(unfilteredEstimate) {}
     bool t = false;
     float e = 0.f;
     float s = 0.0;
     float f = 0.f;
+    float u = 0.f;
 };
 
 class TeeStream {

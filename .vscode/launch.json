@@ -11,8 +11,8 @@
       "program": "${command:cmake.launchTargetPath}",
       "stopOnEntry": false,
       "args": [
-        // "instanceCount=544",
-        // "indexOfProcessToLog=150"
+        "instanceCount=2023",
+        "indexOfProcessToLog=250"
         // "sample=/home/matthieu/github/saintmatthieu/guitar-tuner/eval/testFiles/notes/debug/A3.wav"
       ],
       "cwd": "${workspaceFolder}"

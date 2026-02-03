@@ -130,18 +130,43 @@ std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleF
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
     silenceWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
 
+    // Pre-calculate the number of noise variations to enable fast index lookup
+    const auto numNoiseVariations =
+        loadNoiseData(1000 /*arbitrary small size*/, silenceFilePath).size();
+
     std::vector<TestCase> testCases;
     int instanceCount = 0;
 
     std::cout << "Preparing test cases..." << std::endl;
     auto testCaseCount = 0;
     for (const auto& sample : samples) {
-        std::cout << "\r" << ++testCaseCount << "/" << samples.size() << std::flush;
         const auto& testFile = sample.file;
+
+        const auto takeSample =
+            !argSampleFile.has_value() ||
+            (fs::exists(*argSampleFile) && fs::equivalent(*argSampleFile, testFile));
+
+        // Fast skip: if we're looking for a specific instance, check if it's in this sample's range
+        const auto sampleStartIndex = instanceCount;
+        const auto sampleEndIndex = instanceCount + static_cast<int>(numNoiseVariations);
+        const auto instanceInRange =
+            !argInstanceCount.has_value() ||
+            (*argInstanceCount >= sampleStartIndex && *argInstanceCount < sampleEndIndex);
+
+        if (!takeSample || !instanceInRange) {
+            // Skip this sample entirely - don't read the wav file
+            instanceCount += numNoiseVariations;
+            ++testCaseCount;
+            std::cout << "\r" << testCaseCount << "/" << samples.size() << std::flush;
+            continue;
+        }
+
+        std::cout << "\r" << ++testCaseCount << "/" << samples.size() << std::flush;
 
         std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
         if (!clean.has_value()) {
             std::cerr << "Could not read file: " << testFile << "\n";
+            instanceCount += numNoiseVariations;
             continue;
         }
 
@@ -149,14 +174,11 @@ std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleF
         testUtils::scaleToPeak(clean->interleaved, -10.f);
 
         const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
-
-        const auto takeSample =
-            !argSampleFile.has_value() ||
-            (fs::exists(*argSampleFile) && fs::equivalent(*argSampleFile, testFile));
+        assert(noiseData.size() == numNoiseVariations);
 
         for (const auto& noise : noiseData) {
             const auto takeTestCase =
-                takeSample && (!argInstanceCount.has_value() || instanceCount == *argInstanceCount);
+                !argInstanceCount.has_value() || instanceCount == *argInstanceCount;
 
             if (takeTestCase) {
                 auto noisy = *clean;
@@ -169,6 +191,22 @@ std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleF
     }
     return testCases;
 }
+
+template <typename T>
+std::optional<T> getArgument(const std::string& prefix) {
+    const auto& argv = ::testing::internal::GetArgvs();
+    for (size_t i = 1; i < argv.size(); ++i) {
+        const std::string argStr(argv[i]);
+        if (argStr.find(prefix) == 0) {
+            if constexpr (std::is_same_v<T, fs::path>) {
+                return fs::path(argStr.substr(prefix.size() + 1 /* skip "=" */));
+            } else if constexpr (std::is_same_v<T, int>) {
+                return std::stoi(argStr.substr(prefix.size() + 1 /* skip "=" */));
+            }
+        }
+    }
+    return std::nullopt;
+}
 }  // namespace
 
 TEST(PitchDetectorImpl, benchmarking) {
@@ -178,24 +216,9 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::ofstream logFile(logFilePath);
     testUtils::TeeStream tee(std::cout, logFile);
 
-    std::optional<int> argInstanceCount;
-    const auto& argv = ::testing::internal::GetArgvs();
-    for (size_t i = 1; i < argv.size(); ++i) {
-        const std::string argStr(argv[i]);
-        const std::string prefix("instanceCount=");
-        if (argStr.find(prefix) == 0) {
-            argInstanceCount = std::stoi(argStr.substr(prefix.size()));
-        }
-    }
-
-    std::optional<fs::path> argSampleFile;
-    for (size_t i = 1; i < argv.size(); ++i) {
-        const std::string argStr(argv[i]);
-        const std::string prefix("sample=");
-        if (argStr.find(prefix) == 0) {
-            argSampleFile = fs::path(argStr.substr(prefix.size()));
-        }
-    }
+    const auto argInstanceCount = getArgument<int>("instanceCount");
+    const auto argSampleFile = getArgument<fs::path>("sampleFile");
+    const auto argIndexOfProcessToLog = getArgument<int>("indexOfProcessToLog");
 
     std::optional<std::ofstream> csvFile;
 
@@ -216,17 +239,30 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::mutex progressMutex;
 
     std::cout << std::endl << "Evaluating samples..." << std::endl;
+
+#ifndef NDEBUG
+    const auto exec = std::execution::seq;
+#else
+    const auto exec = std::execution::par;
+#endif
+
     // Process test cases in parallel
     std::for_each(
-        std::execution::par, testCases.begin(), testCases.end(),
-        [&results, &testCases, &completedCount, &progressMutex,
-         numEvaluations](const TestCase& testCase) {
+        exec, testCases.begin(), testCases.end(),
+        [&results, &testCases, &completedCount, &progressMutex, &argIndexOfProcessToLog,
+         &argInstanceCount, numEvaluations](const TestCase& testCase) {
             const auto idx = static_cast<size_t>(&testCase - testCases.data());  // Get index
             const auto& sample = testCase.sample;
             const auto& noisy = testCase.noisy;
             const auto blockSize = testCase.blockSize;
 
-            auto logger = std::make_unique<DummyPitchDetectorLogger>();
+            std::unique_ptr<PitchDetectorLoggerInterface> logger;
+            if (argIndexOfProcessToLog.has_value()) {
+                logger = std::make_unique<PitchDetectorLogger>(noisy.sampleRate,
+                                                               *argIndexOfProcessToLog);
+            } else {
+                logger = std::make_unique<DummyPitchDetectorLogger>();
+            }
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
                 noisy.sampleRate, noisy.channelFormat, blockSize, config, std::move(logger));
@@ -245,7 +281,9 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 auto presenceScore = 0.f;
-                auto result = sut.process(noisyData + i * numChannels, &presenceScore);
+                auto unfilteredEstimate = 0.f;
+                auto result =
+                    sut.process(noisyData + i * numChannels, &presenceScore, &unfilteredEstimate);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - sut.delaySamples()) / noisy.sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
@@ -261,7 +299,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 }
                 const auto errorCents =
                     result > 0.f ? 1200.f * std::log2(result / sample.truth.frequency) : 0.f;
-                testFileEstimates.emplace_back(truth, presenceScore, result, errorCents);
+                testFileEstimates.emplace_back(truth, presenceScore, result, errorCents,
+                                               unfilteredEstimate);
             }
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
@@ -283,6 +322,10 @@ TEST(PitchDetectorImpl, benchmarking) {
                     << FPR << "," << FNR << "," << fs::relative(sample.file, evalDir) << ","
                     << fs::relative(testCase.noise.file, evalDir) << "," << testCase.noise.rmsDb
                     << "," << fs::relative(outWavName, evalDir) << "\n";
+
+            if (argInstanceCount.has_value()) {
+                std::cout << csvLine.str();
+            }
 
             results[idx] = TestResult{testCase.index,
                                       std::move(testFileEstimates),

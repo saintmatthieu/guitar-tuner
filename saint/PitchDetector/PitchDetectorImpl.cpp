@@ -6,8 +6,10 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <numeric>
 #include <optional>
 
+#include "PitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
@@ -145,19 +147,70 @@ std::optional<int> takeThisIndexInstead(const std::vector<float>& cepstrum, int 
     }
 }
 
-int getIndexOfClosestLocalMaximum(const std::vector<float>& values, int startIndex) {
-    // go up
-    auto i = startIndex;
-    while (i + 1 < values.size() && values[i + 1] >= values[i]) {
-        ++i;
+float disambiguateFundamentalIndex(float priorIndex, const std::vector<float>& dbSpectrum) {
+    // clang-format off
+
+    // `priorIndex` is likely a good approximation, but could also be the actual value by 2, 3 or 4 (harmonics
+    // being interpreted as fundamental).
+    //
+    // * For each hypothesis, look for the local maxima within `k*f0 + [-B, B]`, where `k \in [1, 2, ..., N]`
+    //   and `B` with the main lobe width. These must exceed -60dB or they are ignored.
+    // * Get the error vector with values (fk - k * f0)², where fk is the frequency (estimated with quadratic fit) of the `k`th peak.
+    // * Derive a vector of weights `w = dBk / 60 + 1`, where dBk is the value of the `k`th peak.
+    // * The score is the inner product of the error and weight vectors.
+
+    // clang-format on
+
+    constexpr auto K = 5;
+    constexpr auto D = 4;
+    std::vector<float> estimates(D);
+    std::vector<float> scores(D);
+    for (auto d = 1; d <= D; ++d) {
+        const auto f0 = priorIndex / d;
+        std::vector<float> indices(K);
+        std::vector<float> peakDbs(K);
+        std::vector<int> harmonicNumbers(K);
+        std::iota(harmonicNumbers.begin(), harmonicNumbers.end(), 1);
+
+        for (const auto k : harmonicNumbers) {
+            const auto fk = k * f0;
+            const auto peakIndex =
+                utils::getIndexOfClosestLocalMaximum(dbSpectrum, static_cast<int>(fk + .5f));
+            const float fractionalPart = utils::quadFit(dbSpectrum.data() + peakIndex - 1);
+            const float refinedPeakIndex = peakIndex + fractionalPart;
+            peakDbs[k - 1] = dbSpectrum[peakIndex];
+            indices[k - 1] = refinedPeakIndex;
+        }
+
+        std::vector<float> weights(K);
+        std::transform(peakDbs.begin(), peakDbs.end(), weights.begin(),
+                       [](float db) { return std::max(db / 60 + 1, 0.f); });
+
+        const auto a = utils::leastSquareFit(harmonicNumbers, indices, weights);
+        std::vector<float> errors(K);
+        std::transform(harmonicNumbers.begin(), harmonicNumbers.end(), errors.begin(),
+                       [a, &indices, &weights](int k) {
+                           const auto error = k * a - indices[k - 1];
+                           return weights[k - 1] * error * error;
+                       });
+        const auto score = std::accumulate(errors.begin(), errors.end(), 0.f);
+
+        estimates[d - 1] = a;
+        scores[d - 1] = score;
     }
-    // go down
-    while (i - 1 >= 0 && values[i - 1] > values[i]) {
-        --i;
-    }
-    return i;
+
+    const auto it = std::min_element(scores.begin(), scores.end());
+    const auto d = std::distance(scores.begin(), it) + 1;
+
+    return estimates[d - 1];
 }
 }  // namespace
+
+float PitchDetectorImpl::disambiguateEstimate(float priorEstimate,
+                                              const std::vector<float>& dbSpectrum) const {
+    const auto priorIndex = priorEstimate / _binFreq;
+    return disambiguateFundamentalIndex(priorIndex, dbSpectrum) * _binFreq;
+}
 
 float PitchDetectorImpl::getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const {
     const auto& vec = cepstrumData.vec();
@@ -214,7 +267,7 @@ float PitchDetectorImpl::refineEstimateBasedOnStrongestHarmonic(
     std::vector<int> peakBins(numHarmonics);
     for (auto k = 1; k <= numHarmonics; ++k) {
         const auto targetBin = static_cast<int>(targetFreq * k / _binFreq + 0.5f);
-        const auto peakBin = getIndexOfClosestLocalMaximum(logSpectrum, targetBin);
+        const auto peakBin = utils::getIndexOfClosestLocalMaximum(logSpectrum, targetBin);
         peakBins[k - 1] = peakBin;
     }
     const auto it = std::max_element(peakBins.begin(), peakBins.end(),
@@ -324,9 +377,12 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
 
     const auto cepstrumEstimate = getCepstrumPeakFrequency(_cepstrumData);
 
-    const auto finalEstimateFreq =
+    const auto refinedEstimate =
         refineEstimateBasedOnStrongestHarmonic(dbSpectrum, cepstrumEstimate);
 
-    return finalEstimateFreq;
+    const auto disambiguatedEstimate = disambiguateEstimate(refinedEstimate, dbSpectrum);
+
+    return disambiguatedEstimate;
 }
+
 }  // namespace saint

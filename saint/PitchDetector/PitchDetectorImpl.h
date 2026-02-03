@@ -31,6 +31,9 @@ class PitchDetectorImpl : public PitchDetector {
    private:
     float refineEstimateBasedOnStrongestHarmonic(const std::vector<float>& logSpectrum,
                                                  float targetFreq) const;
+
+    float disambiguateEstimate(float priorEstimate, const std::vector<float>& dbSpectrum) const;
+
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
 
     const int _sampleRate;
