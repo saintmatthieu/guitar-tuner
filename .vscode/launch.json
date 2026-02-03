@@ -11,9 +11,8 @@
       "program": "${command:cmake.launchTargetPath}",
       "stopOnEntry": false,
       "args": [
-        "instanceCount=2023",
-        "indexOfProcessToLog=250"
-        // "sample=/home/matthieu/github/saintmatthieu/guitar-tuner/eval/testFiles/notes/debug/A3.wav"
+        // "indexOfProcessToLog=250"
+        "testCaseId=testFiles/notes/Gibson_SG_unplugged/Google_Pixel_7/E4.wav|testFiles/noise/Fender_Stratocaster_noise.wav|-40"
       ],
       "cwd": "${workspaceFolder}"
     },

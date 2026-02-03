@@ -5,6 +5,7 @@
 #include <execution>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <mutex>
 
 #include "DummyPitchDetectorLogger.h"
@@ -19,14 +20,45 @@ namespace saint {
 namespace fs = std::filesystem;
 
 namespace {
+
+// Create a test case ID from clean file, noise file, and noise level.
+// Format: cleanFilePath|noiseFilePath|dBLevel (using relative paths from eval dir)
+std::string computeTestCaseId(const fs::path& cleanFile, const fs::path& noiseFile,
+                              const std::string& noiseRmsDb) {
+    const auto evalDir = testUtils::getEvalDir();
+    const auto relativeClean = fs::relative(cleanFile, evalDir).string();
+    const auto relativeNoise = fs::relative(noiseFile, evalDir).string();
+    return relativeClean + "|" + relativeNoise + "|" + noiseRmsDb;
+}
+
+// Parse a test case ID back into its components
+struct ParsedTestCaseId {
+    fs::path cleanFile;
+    fs::path noiseFile;
+    std::string noiseRmsDb;
+};
+
+std::optional<ParsedTestCaseId> parseTestCaseId(const std::string& id) {
+    const auto evalDir = testUtils::getEvalDir();
+    const auto firstSep = id.find('|');
+    if (firstSep == std::string::npos) return std::nullopt;
+    const auto secondSep = id.find('|', firstSep + 1);
+    if (secondSep == std::string::npos) return std::nullopt;
+
+    return ParsedTestCaseId{
+        evalDir / id.substr(0, firstSep),
+        evalDir / id.substr(firstSep + 1, secondSep - firstSep - 1),
+        id.substr(secondSep + 1)};
+}
+
 struct Noise {
     fs::path file;
-    const char* rmsDb;
+    std::string rmsDb;
     std::vector<float> data;
 };
 
 struct TestCase {
-    int index;
+    std::string id;  // Stable ID based on file paths and noise level
     testUtils::Sample sample;
     Noise noise;
     testUtils::Audio noisy;
@@ -34,7 +66,7 @@ struct TestCase {
 };
 
 struct TestResult {
-    int index;
+    std::string id;
     std::vector<testUtils::ProcessEstimate> estimates;
     std::optional<testUtils::Cents> cents;
     double FPR;
@@ -95,13 +127,13 @@ std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath
     const auto silenceAudio = testUtils::fromWavFile(silenceFilePath, numSamples);
     noiseData.push_back(Noise{silenceFilePath, "-inf", silenceAudio->interleaved});
 
-    const std::vector<const char*> noiseRmsDb{"-40", "-50", "-60"};
+    const std::vector<std::string> noiseRmsDb{"-40", "-50", "-60"};
     for (const auto& noiseFile : noiseFiles) {
         auto noiseAudio = testUtils::fromWavFile(noiseFile, numSamples);
         if (!noiseAudio.has_value()) {
             continue;
         }
-        for (const auto rmsDb : noiseRmsDb) {
+        for (const auto& rmsDb : noiseRmsDb) {
             const float dB = std::stof(rmsDb);
             testUtils::scaleToRms(noiseAudio->interleaved, dB);
             noiseData.push_back(Noise{noiseFile, rmsDb, noiseAudio->interleaved});
@@ -120,74 +152,89 @@ constexpr PitchDetector::Config config{
     Pitch{PitchClass::Gb, 4},
 };
 
-std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleFile,
-                                       const std::optional<int>& argInstanceCount) {
-    const auto samples = loadSamples();
-
-    constexpr auto forceWriteFiles = false;
-    auto silenceWriter = std::make_shared<testUtils::RealFileWriter>();
-    std::shared_ptr<testUtils::FileWriter> fileWriter;
-    if (forceWriteFiles || argInstanceCount.has_value() || argSampleFile.has_value()) {
-        fileWriter = silenceWriter;
-    } else {
-        fileWriter = std::make_shared<testUtils::DummyFileWriter>();
+// Create a single test case from a parsed ID (fast path for debugging)
+std::optional<TestCase> createTestCaseFromId(const std::string& testCaseId) {
+    const auto parsed = parseTestCaseId(testCaseId);
+    if (!parsed.has_value()) {
+        std::cerr << "Could not parse test case ID: " << testCaseId << "\n";
+        return std::nullopt;
     }
+
+    auto sample = testUtils::getSampleFromFile(parsed->cleanFile);
+    if (!sample.has_value()) {
+        std::cerr << "Could not get sample from file: " << parsed->cleanFile << "\n";
+        return std::nullopt;
+    }
+
+    auto clean = testUtils::fromWavFile(parsed->cleanFile);
+    if (!clean.has_value()) {
+        std::cerr << "Could not read clean file: " << parsed->cleanFile << "\n";
+        return std::nullopt;
+    }
+
+    const auto blockSize = clean->sampleRate / 100;
+    testUtils::scaleToPeak(clean->interleaved, -10.f);
+
+    // Load and scale the noise
+    std::vector<float> noiseData;
+    if (parsed->noiseRmsDb == "-inf") {
+        // Silence
+        noiseData.resize(clean->interleaved.size(), 0.f);
+    } else {
+        auto noiseAudio = testUtils::fromWavFile(parsed->noiseFile, clean->interleaved.size());
+        if (!noiseAudio.has_value()) {
+            std::cerr << "Could not read noise file: " << parsed->noiseFile << "\n";
+            return std::nullopt;
+        }
+        const float dB = std::stof(parsed->noiseRmsDb);
+        testUtils::scaleToRms(noiseAudio->interleaved, dB);
+        noiseData = std::move(noiseAudio->interleaved);
+    }
+
+    auto noisy = *clean;
+    testUtils::mixNoise(noisy, noiseData);
+
+    return TestCase{testCaseId,
+                    std::move(*sample),
+                    Noise{parsed->noiseFile, parsed->noiseRmsDb, std::move(noiseData)},
+                    std::move(noisy),
+                    blockSize};
+}
+
+std::vector<TestCase> prepareTestCases(const std::optional<std::string>& argTestCaseId) {
+    // Fast path: if a specific test case ID is provided, parse it and create only that test case
+    if (argTestCaseId.has_value()) {
+        std::cout << "Creating test case from ID: " << *argTestCaseId << std::endl;
+        auto testCase = createTestCaseFromId(*argTestCaseId);
+        if (testCase.has_value()) {
+            return {std::move(*testCase)};
+        }
+        std::cerr << "Failed to create test case from ID\n";
+        return {};
+    }
+
+    // Full path: iterate through all samples and noise combinations
+    const auto samples = loadSamples();
 
     const std::vector<float> silence(44100, 0.f);
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
+    auto silenceWriter = std::make_shared<testUtils::RealFileWriter>();
     silenceWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
 
-    // Pre-calculate the number of noise variations to enable fast index lookup
-    const auto numNoiseVariations =
-        loadNoiseData(1000 /*arbitrary small size*/, silenceFilePath).size();
-
     std::vector<TestCase> testCases;
-    int instanceCount = 0;
 
     std::cout << "Preparing test cases..." << std::endl;
     std::cout << "Number of samples: " << samples.size() << std::endl;
-    std::cout << "Number of noise variations: " << numNoiseVariations << std::endl;
-    
-    // Print first few samples for verification
-    for (size_t i = 0; i < std::min(samples.size(), size_t(5)); ++i) {
-        std::cout << "Sample " << i << ": " << samples[i].file << std::endl;
-    }
-    
+
     auto testCaseCount = 0;
     for (const auto& sample : samples) {
         const auto& testFile = sample.file;
-
-        const auto takeSample =
-            !argSampleFile.has_value() ||
-            (fs::exists(*argSampleFile) && fs::equivalent(*argSampleFile, testFile));
-
-        // Fast skip: if we're looking for a specific instance, check if it's in this sample's range
-        const auto sampleStartIndex = instanceCount;
-        const auto sampleEndIndex = instanceCount + static_cast<int>(numNoiseVariations);
-        const auto instanceInRange =
-            !argInstanceCount.has_value() ||
-            (*argInstanceCount >= sampleStartIndex && *argInstanceCount < sampleEndIndex);
-
-        if (argInstanceCount.has_value() && instanceInRange) {
-            std::cout << "\nFound target instance " << *argInstanceCount << " in sample "
-                      << testCaseCount << ": " << testFile << " (range " << sampleStartIndex << "-"
-                      << sampleEndIndex << ")" << std::endl;
-        }
-
-        if (!takeSample || !instanceInRange) {
-            // Skip this sample entirely - don't read the wav file
-            instanceCount += numNoiseVariations;
-            ++testCaseCount;
-            std::cout << "\r" << testCaseCount << "/" << samples.size() << std::flush;
-            continue;
-        }
 
         std::cout << "\r" << ++testCaseCount << "/" << samples.size() << std::flush;
 
         std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
         if (!clean.has_value()) {
             std::cerr << "Could not read file: " << testFile << "\n";
-            instanceCount += numNoiseVariations;
             continue;
         }
 
@@ -195,19 +242,12 @@ std::vector<TestCase> prepareTestCases(const std::optional<fs::path>& argSampleF
         testUtils::scaleToPeak(clean->interleaved, -10.f);
 
         const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
-        assert(noiseData.size() == numNoiseVariations);
 
         for (const auto& noise : noiseData) {
-            const auto takeTestCase =
-                !argInstanceCount.has_value() || instanceCount == *argInstanceCount;
-
-            if (takeTestCase) {
-                auto noisy = *clean;
-                testUtils::mixNoise(noisy, noise.data);
-                testCases.push_back(
-                    TestCase{instanceCount, sample, noise, std::move(noisy), blockSize});
-            }
-            ++instanceCount;
+            const auto id = computeTestCaseId(testFile, noise.file, noise.rmsDb);
+            auto noisy = *clean;
+            testUtils::mixNoise(noisy, noise.data);
+            testCases.push_back(TestCase{id, sample, noise, std::move(noisy), blockSize});
         }
     }
     return testCases;
@@ -223,6 +263,8 @@ std::optional<T> getArgument(const std::string& prefix) {
                 return fs::path(argStr.substr(prefix.size() + 1 /* skip "=" */));
             } else if constexpr (std::is_same_v<T, int>) {
                 return std::stoi(argStr.substr(prefix.size() + 1 /* skip "=" */));
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                return argStr.substr(prefix.size() + 1 /* skip "=" */);
             }
         }
     }
@@ -237,20 +279,19 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::ofstream logFile(logFilePath);
     testUtils::TeeStream tee(std::cout, logFile);
 
-    const auto argInstanceCount = getArgument<int>("instanceCount");
-    const auto argSampleFile = getArgument<fs::path>("sampleFile");
     const auto argIndexOfProcessToLog = getArgument<int>("indexOfProcessToLog");
+    const auto argTestCaseId = getArgument<std::string>("testCaseId");
 
     std::optional<std::ofstream> csvFile;
 
-    if (!argInstanceCount.has_value() && !argSampleFile.has_value()) {
+    if (!argTestCaseId.has_value()) {
         const auto csvFilePath = testUtils::getOutDir() / "benchmarking.csv";
         csvFile.emplace(csvFilePath);
-        *csvFile << "index,AVG,RMS,FPR,FNR,testFile,noiseFile,noiseDb,mix\n";
+        *csvFile << "AVG,RMS,FPR,FNR,testFile,noiseFile,noiseDb,mix,id\n";
     }
 
     // Build all test cases upfront
-    const std::vector<TestCase> testCases = prepareTestCases(argSampleFile, argInstanceCount);
+    const std::vector<TestCase> testCases = prepareTestCases(argTestCaseId);
 
     // std::cerr << testCases[0].sample.file << ", " << testCases[0].noise.file << ", "
     //           << testCases[0].noise.rmsDb << "\n";
@@ -274,7 +315,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::for_each(
         exec, testCases.begin(), testCases.end(),
         [&results, &testCases, &completedCount, &progressMutex, &argIndexOfProcessToLog,
-         &argInstanceCount, numEvaluations](const TestCase& testCase) {
+         &argTestCaseId, numEvaluations](const TestCase& testCase) {
             const auto idx = static_cast<size_t>(&testCase - testCases.data());  // Get index
             const auto& sample = testCase.sample;
             const auto& noisy = testCase.noisy;
@@ -342,16 +383,16 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
             const auto evalDir = testUtils::getEvalDir();
             std::stringstream csvLine;
-            csvLine << testCase.index << "," << displayCents.avg << "," << displayCents.rms << ","
-                    << FPR << "," << FNR << "," << fs::relative(sample.file, evalDir) << ","
+            csvLine << displayCents.avg << "," << displayCents.rms << "," << FPR << "," << FNR
+                    << "," << fs::relative(sample.file, evalDir) << ","
                     << fs::relative(testCase.noise.file, evalDir) << "," << testCase.noise.rmsDb
-                    << "," << fs::relative(outWavName, evalDir) << "\n";
+                    << "," << fs::relative(outWavName, evalDir) << "," << testCase.id << "\n";
 
-            if (argInstanceCount.has_value()) {
+            if (argTestCaseId.has_value()) {
                 std::cout << csvLine.str();
             }
 
-            results[idx] = TestResult{testCase.index,
+            results[idx] = TestResult{testCase.id,
                                       std::move(testFileEstimates),
                                       cents,
                                       FPR,
@@ -374,10 +415,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     // Aggregate results (sequential)
     std::vector<testUtils::ProcessEstimate> estimatesForRoc;
     std::vector<std::optional<testUtils::Cents>> allTestFileEstimates;
-
-    // Sort results by index to maintain deterministic output order
-    std::sort(results.begin(), results.end(),
-              [](const TestResult& a, const TestResult& b) { return a.index < b.index; });
 
     for (const auto& result : results) {
         if (csvFile)
@@ -403,7 +440,7 @@ TEST(PitchDetectorImpl, benchmarking) {
         errorsFile << "]";
     }
 
-    if (argInstanceCount.has_value() || argSampleFile.has_value()) {
+    if (argTestCaseId.has_value()) {
         return;
     }
 
