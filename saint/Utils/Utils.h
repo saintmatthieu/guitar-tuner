@@ -32,11 +32,18 @@ constexpr float FastLog2(float x) {
     return log_2;
 }
 
+constexpr float FastDb(float power) {
+    const auto log10 = FastLog2(power) / 3.321928094887362f;
+    return 10.f * log10;
+}
+
 /**
  * @param count `spectrum` and `out` have the same FFT format, but only the first `count`
  * bins are transformed, to save computation.
  */
-void getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out, int count);
+void getDbSpectrum(const std::vector<std::complex<float>>& spectrum, float* out, int count);
+
+float getApproximateGcd(const std::vector<float>& values);
 
 /**
  * @brief assuming y to be of size 3 with y[1] the maximum and the x coordinates -1, 0, 1,
@@ -46,6 +53,20 @@ void getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out
  * @return float
  */
 float quadFit(const float* y);
+
+float doubleCheckEstimate(float priorFreq, const std::vector<float>& dbSpectrum, int sampleRate,
+                          int fftSize, float minFreq);
+
+/**
+ * @brief Same as above, but using bins - easier for testing.
+ *
+ * @param priorIndex still a floating-point, even though in index domain.
+ */
+float doubleCheckEstimate(float priorIndex, const std::vector<float>& dbSpectrum, int minBin,
+                          int N);
+
+float estimateFundamentalFrequency(float priorIndex, const std::vector<float>& dbSpectrum,
+                                   int minBin, int N, int windowMainLobeWidth);
 
 template <typename F>
 struct Finally {

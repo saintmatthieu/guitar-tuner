@@ -126,11 +126,10 @@ float testUtils::getTrueFrequency(const std::filesystem::path& filePath) {
     // File name in the form of <note name><note octave>:
     const auto noteName = filename.substr(0, filename.size() - 1);
     const auto noteOctave = filename.back() - '0';
-    const std::vector<std::string> noteNames{
-        "C", "D", "E", "F", "G", "A", "B",
-    };
+    const std::vector<std::string> noteNames{"C", "D", "E", "F",
+                                             "G", "A", "B", "OneKiloHz" /*for testing*/};
     const std::vector<int> noteOffsets{
-        0, 2, 4, 5, 7, 9, 11,
+        0, 2, 4, 5, 7, 9, 11, 0 /*for testing*/,
     };
     const auto it =
         std::find_if(noteNames.begin(), noteNames.end(), [&noteName](const std::string& name) {

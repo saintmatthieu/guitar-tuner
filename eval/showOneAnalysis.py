@@ -11,7 +11,7 @@ t0 = pdl.audioIndex / pdl.sampleRate
 t = np.array([i / pdl.sampleRate for i in range(len(pdl.inputAudio))])
 cepstrumT = [i / pdl.sampleRate for i in range(len(pdl.cepstrum))]
 hzPerBin = pdl.sampleRate / pdl.fftSize
-F = len(pdl.windowedLogSpec) // 2
+F = len(pdl.windowedDbSpec) // 2
 f = [i * hzPerBin for i in range(F)]
 fig = 0
 
@@ -32,18 +32,18 @@ plt.gcf().canvas.manager.set_window_title("Windowed Audio Signal")
 fig += 1
 plt.figure(fig)
 plt.subplot(2, 1, 1)
-plt.plot(f, pdl.logSpectrum[:F])
+plt.plot(f, pdl.dbSpectrum[:F])
 plt.xlabel("Frequency (Hz)")
-plt.ylabel("Log Magnitude")
+plt.ylabel("dB")
 plt.grid(True)
 plt.subplot(2, 1, 2)
-plt.plot(pdl.logSpectrum[:F])
+plt.plot(pdl.dbSpectrum[:F])
 plt.xlabel("Frequency Bin")
-plt.ylabel("Log Magnitude")
+plt.ylabel("dB")
 plt.grid(True)
 # plt.xlim(0, 2000 / hzPerBin)
-plt.suptitle("Log Magnitude Spectrum")
-plt.gcf().canvas.manager.set_window_title("Log Magnitude Spectrum")
+plt.suptitle("dB Spectrum")
+plt.gcf().canvas.manager.set_window_title("dB Spectrum")
 
 fig += 1
 plt.figure(fig)
@@ -59,18 +59,18 @@ plt.gcf().canvas.manager.set_window_title("Autocorrelation")
 fig += 1
 plt.figure(fig)
 plt.subplot(2, 1, 1)
-plt.plot(f, pdl.windowedLogSpec[:F])
+plt.plot(f, pdl.windowedDbSpec[:F])
 plt.xlabel("Frequency (Hz)")
-plt.ylabel("Log Magnitude")
+plt.ylabel("dB")
 plt.grid(True)
 plt.subplot(2, 1, 2)
-plt.plot(pdl.windowedLogSpec[:F])
+plt.plot(pdl.windowedDbSpec[:F])
 plt.xlabel("Frequency Bin")
-plt.ylabel("Log Magnitude")
+plt.ylabel("dB")
 plt.grid(True)
 # plt.xlim(0, 2000 / hzPerBin)
-plt.suptitle("Windowed Log Magnitude Spectrum")
-plt.gcf().canvas.manager.set_window_title("Windowed Log Magnitude Spectrum")
+plt.suptitle("Windowed dB Spectrum")
+plt.gcf().canvas.manager.set_window_title("Windowed dB Spectrum")
 
 fig += 1
 plt.figure(fig)

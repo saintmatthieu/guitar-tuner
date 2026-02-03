@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <numeric>
 
 namespace saint {
 std::string utils::getEnvironmentVariable(const char* var) {
@@ -90,19 +91,17 @@ std::vector<float> utils::getAnalysisWindow(int windowSize, WindowType type) {
     return window;
 }
 
-void utils::getLogSpectrum(const std::vector<std::complex<float>>& spectrum, float* out,
-                           int count) {
+void utils::getDbSpectrum(const std::vector<std::complex<float>>& spectrum, float* out, int count) {
     if (count <= 0) {
         return;
     }
 
     // First bin is DC only.
-    out[0] = utils::FastLog2(spectrum[0].real() * spectrum[0].real());
-    auto k = 1;
+    out[0] = utils::FastDb(spectrum[0].real() * spectrum[0].real());
     std::transform(spectrum.data() + 1, spectrum.data() + count, out + 1,
                    [&](const std::complex<float>& X) {
                        const auto power = X.real() * X.real() + X.imag() * X.imag();
-                       return utils::FastLog2(power);
+                       return utils::FastDb(power);
                    });
 }
 
@@ -110,5 +109,139 @@ float utils::quadFit(const float* y) {
     // vertex at x = 0.5 * (y[-1] - y[1]) / (y[-1] - 2 * y[0] + y[1])
     const auto delta = 0.5f * (y[0] - y[2]) / (y[2] - 2 * y[1] + y[0]);
     return delta;
+}
+
+float utils::getApproximateGcd(const std::vector<float>& values) {
+    if (values.size() < 2) {
+        return 0.f;
+    }
+
+    // Use a histogram approach to find the approximate GCD.
+    const float minValue = *std::min_element(values.begin(), values.end());
+    const float maxValue = *std::max_element(values.begin(), values.end());
+    const int numBins = 100;
+    std::vector<int> histogram(numBins, 0);
+    const float binSize = (maxValue - minValue) / numBins;
+
+    for (const auto value : values) {
+        for (float factor = 1.f; factor * value <= maxValue; factor += 1.f) {
+            const float scaledValue = factor * value;
+            const int binIndex = static_cast<int>((scaledValue - minValue) / binSize);
+            if (binIndex >= 0 && binIndex < numBins) {
+                histogram[binIndex]++;
+            }
+        }
+    }
+
+    // Find the bin with the maximum count.
+    int maxCount = 0;
+    int bestBinIndex = 0;
+    for (int i = 0; i < numBins; ++i) {
+        if (histogram[i] >= maxCount) {
+            maxCount = histogram[i];
+            bestBinIndex = i;
+        }
+    }
+
+    // The approximate GCD is the center of the best bin.
+    return minValue + (bestBinIndex + 0.5f) * binSize;
+}
+
+namespace {
+std::vector<int> getHighestLocalMaxima(const float* dbValues, size_t size, int offset, int N) {
+    std::vector<int> localMaxima;
+    const int intSize = static_cast<int>(size);
+    for (int i = 1 + offset; i < intSize - 1; ++i) {
+        // Also check that the absolute value is larger than -60dB (may need some tuning)
+        if (dbValues[i] > -60.f && dbValues[i] > dbValues[i - 1] && dbValues[i] > dbValues[i + 1]) {
+            localMaxima.push_back(i);
+        }
+    }
+    std::sort(localMaxima.begin(), localMaxima.end(),
+              [dbValues](int a, int b) { return dbValues[a] > dbValues[b]; });
+    if (localMaxima.size() > static_cast<size_t>(N)) {
+        localMaxima.resize(N);
+    }
+    return localMaxima;
+}
+}  // namespace
+
+float utils::estimateFundamentalFrequency(float priorIndex, const std::vector<float>& dbSpectrum,
+                                          int minBin, int N, int windowMainLobeWidth) {
+    // clang-format off
+
+    // `priorIndex` is likely a good approximation, but could also be the actual value by 2, 3 or 4 (harmonics
+    // being interpreted as fundamental).
+    //
+    // * For each hypothesis, look for the local maxima within `k*f0 + [-B, B]`, where `k \in [1, 2, ..., N]`
+    //   and `B` with the main lobe width. These must exceed -60dB or they are ignored.
+    // * Get the error vector with values (fk - k * f0)², where fk is the frequency (estimated with quadratic fit) of the `k`th peak.
+    // * Derive a vector of weights `w = dBk / 60 + 1`, where dBk is the value of the `k`th peak.
+    // * The score is the inner product of the error and weight vectors.
+
+    // clang-format on
+
+    for (auto divisor = 1; divisor <= 4; ++divisor) {
+    }
+}
+
+float utils::doubleCheckEstimate(float priorIndex, const std::vector<float>& dbSpectrum, int minBin,
+                                 int N) {
+    // clang-format off
+
+    // `priorIndex` is likely correct but could also be the actual value by 2, 3 or 4 (harmonics
+    // being interpreted as fundamental). Disambiguate this:
+    // * Take the `N` (TBD) top peaks, ignoring anything less than `minBin`.
+    // * Calculate a vector of weights. They must be based on the dB values, not the linear ones, to account for
+    //   human perception.
+    // For each 4 hypotheses (including the one that `prior` is correct):
+    // * Let the hypothesis fundamental frequency be f0,
+    // * derive the harmonic number `k` of each peak: k = f / f0
+    // * estimate the error vector of size `N`: e(i) = k(i) - round(k(i))
+    // * store the weighted sum of squares of this vector.
+    // Return the most likely hypothesis.
+
+    // clang-format on
+
+    const std::vector<int> localMaxima =
+        getHighestLocalMaxima(dbSpectrum.data(), dbSpectrum.size(), minBin, N);
+
+    std::vector<float> weights;
+    weights.reserve(localMaxima.size());
+    for (int lm : localMaxima) {
+        // Map dBs to linear domain
+        const auto w = std::max(dbSpectrum[lm] / 60.f + 1.f, 0.f);
+        weights.push_back(w);
+    }
+
+    float bestScore = std::numeric_limits<float>::max();
+    float bestEstimate = priorIndex;
+    for (auto divisor = 1; divisor <= 4; ++divisor) {
+        const auto f0 = static_cast<float>(priorIndex) / divisor;
+        std::vector<float> errors(localMaxima.size());
+        std::transform(localMaxima.begin(), localMaxima.end(), errors.begin(), [f0](int peakBin) {
+            const auto k = peakBin / f0;
+            const auto kRounded = std::round(k);
+            const auto e = k - kRounded;
+            return e;
+        });
+        const auto score =
+            std::inner_product(errors.begin(), errors.end(), weights.begin(), 0.f, std::plus<>(),
+                               [](float e, float w) { return w * e * e; });
+        if (score < bestScore) {
+            bestScore = score;
+            bestEstimate = f0;
+        }
+    }
+
+    return bestEstimate;
+}
+
+float utils::doubleCheckEstimate(float prior, const std::vector<float>& dbSpectrum, int sampleRate,
+                                 int fftSize, float minFreq) {
+    const auto binFreq = static_cast<float>(sampleRate) / fftSize;
+    const auto minBin = static_cast<int>(minFreq / binFreq + .5f);
+    const auto estimate = doubleCheckEstimate(prior / binFreq, dbSpectrum, minBin, 5);
+    return estimate * sampleRate / fftSize;
 }
 }  // namespace saint

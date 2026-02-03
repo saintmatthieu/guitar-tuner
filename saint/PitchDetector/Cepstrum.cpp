@@ -7,33 +7,33 @@
 
 void saint::takeCepstrum(const std::vector<std::complex<float>>& spectrum,
                          CepstrumData& cepstrumData, PitchDetectorLoggerInterface& logger) {
-    Aligned<std::vector<float>> windowedLogSpecAligned;
-    auto& windowedLogSpec = windowedLogSpecAligned.value;
-    windowedLogSpec.resize(cepstrumData.fft.size);
+    Aligned<std::vector<float>> windowedDbSpecAligned;
+    auto& windowedDbSpec = windowedDbSpecAligned.value;
+    windowedDbSpec.resize(cepstrumData.fft.size);
 
     const auto halfWindowSize = cepstrumData.halfWindow.size();
 
-    utils::getLogSpectrum(spectrum, windowedLogSpec.data(), halfWindowSize);
+    utils::getDbSpectrum(spectrum, windowedDbSpec.data(), halfWindowSize);
 
     // Apply half-windowing to reduce spectral leakage in the cepstrum.
-    std::transform(windowedLogSpec.begin(), windowedLogSpec.begin() + halfWindowSize,
-                   cepstrumData.halfWindow.begin(), windowedLogSpec.begin(),
+    std::transform(windowedDbSpec.begin(), windowedDbSpec.begin() + halfWindowSize,
+                   cepstrumData.halfWindow.begin(), windowedDbSpec.begin(),
                    [](float x, float w) { return x * w; });
 
     // Fill the rest with zeros
     const auto k = cepstrumData.fft.size / 2 - halfWindowSize + 1;
-    std::fill(windowedLogSpec.begin() + halfWindowSize, windowedLogSpec.end(), 0.f);
+    std::fill(windowedDbSpec.begin() + halfWindowSize, windowedDbSpec.end(), 0.f);
 
     // Now we mirror about the half
-    std::reverse_copy(windowedLogSpec.begin() + 1, windowedLogSpec.begin() + k - 1,
-                      windowedLogSpec.end() - (k - 2));
+    std::reverse_copy(windowedDbSpec.begin() + 1, windowedDbSpec.begin() + k - 1,
+                      windowedDbSpec.end() - (k - 2));
 
-    logger.Log(windowedLogSpec.data(), windowedLogSpec.size(), "windowedLogSpec");
+    logger.Log(windowedDbSpec.data(), windowedDbSpec.size(), "windowedDbSpec");
 
-    cepstrumData.fft.forward(windowedLogSpec.data(), cepstrumData.ptr());
+    cepstrumData.fft.forward(windowedDbSpec.data(), cepstrumData.ptr());
 
     // PFFFT wrote cepstrumData.vec.size() / 2 complex values in cepstrumData.
-    // Since windowedLogSpec is symmetric, the imaginary parts will be (approximately)
+    // Since windowedDbSpec is symmetric, the imaginary parts will be (approximately)
     // zero. We collapse the data into real values.
 
     // For convenience, we reinterpret the cepstrum data as complex.

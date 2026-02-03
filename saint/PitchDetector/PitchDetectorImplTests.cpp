@@ -178,10 +178,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::ofstream logFile(logFilePath);
     testUtils::TeeStream tee(std::cout, logFile);
 
-    const auto csvFilePath = testUtils::getOutDir() / "benchmarking.csv";
-    std::ofstream csvFile(csvFilePath);
-    csvFile << "index,AVG,RMS,FPR,FNR,testFile,noiseFile,noiseDb,mix\n";
-
     std::optional<int> argInstanceCount;
     const auto& argv = ::testing::internal::GetArgvs();
     for (size_t i = 1; i < argv.size(); ++i) {
@@ -199,6 +195,14 @@ TEST(PitchDetectorImpl, benchmarking) {
         if (argStr.find(prefix) == 0) {
             argSampleFile = fs::path(argStr.substr(prefix.size()));
         }
+    }
+
+    std::optional<std::ofstream> csvFile;
+
+    if (!argInstanceCount.has_value() && !argSampleFile.has_value()) {
+        const auto csvFilePath = testUtils::getOutDir() / "benchmarking.csv";
+        csvFile.emplace(csvFilePath);
+        *csvFile << "index,AVG,RMS,FPR,FNR,testFile,noiseFile,noiseDb,mix\n";
     }
 
     // Build all test cases upfront
@@ -309,7 +313,8 @@ TEST(PitchDetectorImpl, benchmarking) {
               [](const TestResult& a, const TestResult& b) { return a.index < b.index; });
 
     for (const auto& result : results) {
-        csvFile << result.csvLine;
+        if (csvFile)
+            *csvFile << result.csvLine;
         allTestFileEstimates.push_back(result.cents);
         estimatesForRoc.insert(estimatesForRoc.end(), result.estimates.begin(),
                                result.estimates.end());
@@ -319,6 +324,15 @@ TEST(PitchDetectorImpl, benchmarking) {
         // For histogram
         std::ofstream errorsFile(testUtils::getOutDir() / "errors.py");
         errorsFile << "errors = [";
+        for (const auto& result : results) {
+            if (result.cents.has_value()) {
+                for (const auto& estimate : result.estimates) {
+                    if (estimate.f > 0.f) {
+                        errorsFile << estimate.e << ",";
+                    }
+                }
+            }
+        }
         errorsFile << "]";
     }
 
@@ -349,7 +363,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 67.61210419531332;
+    constexpr auto previousRmsError = 64.04810566642929;
     constexpr auto previousAuc = 0.902510855252703;
 
     constexpr auto comparisonTolerance = 0.01;

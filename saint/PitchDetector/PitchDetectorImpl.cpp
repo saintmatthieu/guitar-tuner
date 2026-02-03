@@ -14,7 +14,6 @@ namespace saint {
 namespace {
 constexpr auto cutoffFreq = 1500;
 
-constexpr float log2ToDb = 20 / 3.321928094887362f;
 constexpr float defaultLeastFrequencyToDetect = /* A0 */ 27.5f;
 
 int getFftOrder(int windowSize) {
@@ -27,6 +26,9 @@ int getFftSizeSamples(int windowSize) {
 }
 
 float pitchToFrequency(const Pitch& pitch) {
+    if (PitchClass::OneKiloHz == pitch.pitchClass) {
+        return 1000 * (1 << pitch.octave);
+    }
     const std::unordered_map<PitchClass, int> semitonesFromA{
         {PitchClass::C, -9},  {PitchClass::Db, -8}, {PitchClass::D, -7},  {PitchClass::Eb, -6},
         {PitchClass::E, -5},  {PitchClass::F, -4},  {PitchClass::Gb, -3}, {PitchClass::G, -2},
@@ -143,29 +145,41 @@ std::optional<int> takeThisIndexInstead(const std::vector<float>& cepstrum, int 
     }
 }
 
-float getCepstrumPeakFrequency(const CepstrumData& cepstrumData, int sampleRate, float minFreq,
-                               float maxFreq) {
+int getIndexOfClosestLocalMaximum(const std::vector<float>& values, int startIndex) {
+    // go up
+    auto i = startIndex;
+    while (i + 1 < values.size() && values[i + 1] >= values[i]) {
+        ++i;
+    }
+    // go down
+    while (i - 1 >= 0 && values[i - 1] > values[i]) {
+        --i;
+    }
+    return i;
+}
+}  // namespace
+
+float PitchDetectorImpl::getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const {
     const auto& vec = cepstrumData.vec();
 
     // We're using this for a tuner, so look between 30Hz (a detuned E0 on a bass
     // guitar) and 500Hz (Ukulele high A is 440Hz)
-    const auto maxPeriod = 1. / minFreq;
-    const auto minPeriod = 1. / maxFreq;
-    const auto leftmost = static_cast<int>(minPeriod * sampleRate);
-    const auto rightmost = std::min<int>(maxPeriod * sampleRate, vec.size() / 2);
+    const auto maxPeriod = 1. / _minFreq;
+    const auto minPeriod = 1. / _maxFreq;
+    const auto leftmost = static_cast<int>(minPeriod * _sampleRate);
+    const auto rightmost = std::min<int>(maxPeriod * _sampleRate, vec.size() / 2);
     const auto it = std::max_element(vec.begin() + leftmost, vec.begin() + rightmost);
     auto maxCepstrumIndex = std::distance(vec.begin(), it);
     if (maxCepstrumIndex == 0)
         return 0.f;
     else if (maxCepstrumIndex == vec.size())
-        return static_cast<float>(sampleRate) / maxCepstrumIndex;
+        return static_cast<float>(_sampleRate) / maxCepstrumIndex;
 
     const auto bestIndex =
         takeThisIndexInstead(vec, leftmost, maxCepstrumIndex).value_or(maxCepstrumIndex);
 
-    return static_cast<float>(sampleRate) / bestIndex;
+    return static_cast<float>(_sampleRate) / bestIndex;
 }
-}  // namespace
 
 PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat,
                                      int samplesPerBlockPerChannel,
@@ -179,6 +193,7 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, _windowType, config),
                                        _windowType)),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
+      _binFreq(static_cast<float>(sampleRate) / _fftSize),
       _fwdFft(_fftSize),
       _cepstrumData(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
@@ -193,28 +208,28 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
     _logger->SamplesRead(-_latencySamples);
 }
 
-float getFrequencyOfClosestPeak(const std::vector<float>& logSpectrum, int sampleRate, int fftSize,
-                                float targetFreq) {
-    const auto binFreq = static_cast<float>(sampleRate) / fftSize;
-    const auto targetBin = static_cast<int>(targetFreq / binFreq + 0.5f);
-    // go up
-    auto peakBin = targetBin;
-    while (peakBin + 1 < logSpectrum.size() && logSpectrum[peakBin + 1] >= logSpectrum[peakBin]) {
-        ++peakBin;
+float PitchDetectorImpl::refineEstimateBasedOnStrongestHarmonic(
+    const std::vector<float>& logSpectrum, float targetFreq) const {
+    constexpr auto numHarmonics = 5;
+    std::vector<int> peakBins(numHarmonics);
+    for (auto k = 1; k <= numHarmonics; ++k) {
+        const auto targetBin = static_cast<int>(targetFreq * k / _binFreq + 0.5f);
+        const auto peakBin = getIndexOfClosestLocalMaximum(logSpectrum, targetBin);
+        peakBins[k - 1] = peakBin;
     }
-    // go down
-    while (peakBin - 1 >= 0 && logSpectrum[peakBin - 1] > logSpectrum[peakBin]) {
-        --peakBin;
-    }
+    const auto it = std::max_element(peakBins.begin(), peakBins.end(),
+                                     [&](int i, int j) { return logSpectrum[i] < logSpectrum[j]; });
+    const int k = std::distance(peakBins.begin(), it) + 1;
+    const int peakBin{*it};  // make sure there is no narrowing conversion
 
     // parabolic interpolation
     if (peakBin <= 0 || peakBin >= logSpectrum.size() - 1) {
-        return static_cast<float>(peakBin) * binFreq;
+        return static_cast<float>(peakBin) * _binFreq / k;
     }
 
     const auto delta = utils::quadFit(&logSpectrum[peakBin - 1]);
 
-    return (static_cast<float>(peakBin) + delta) * binFreq;
+    return (static_cast<float>(peakBin) + delta) * _binFreq / k;
 }
 
 float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
@@ -269,10 +284,12 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
 
     // Forward FFT
     std::vector<std::complex<float>> freq = getSpectrum(_fwdFft, time.data());
+    _logger->Log(freq.data(), freq.size(), "spectrum",
+                 [](const std::complex<float>& X) { return std::abs(X); });
 
-    std::vector<float> logSpectrum(freq.size());
-    utils::getLogSpectrum(freq, logSpectrum.data(), freq.size());
-    _logger->Log(logSpectrum.data(), logSpectrum.size(), "logSpectrum");
+    std::vector<float> dbSpectrum(freq.size());
+    utils::getDbSpectrum(freq, dbSpectrum.data(), freq.size());
+    _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
     // Cepstrum analysis
     takeCepstrum(freq, _cepstrumData, *_logger);
@@ -305,11 +322,10 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         return 0.f;
     }
 
-    const auto cepstrumEstimate =
-        getCepstrumPeakFrequency(_cepstrumData, _sampleRate, _minFreq, _maxFreq);
+    const auto cepstrumEstimate = getCepstrumPeakFrequency(_cepstrumData);
 
     const auto finalEstimateFreq =
-        getFrequencyOfClosestPeak(logSpectrum, _sampleRate, _fftSize, cepstrumEstimate);
+        refineEstimateBasedOnStrongestHarmonic(dbSpectrum, cepstrumEstimate);
 
     return finalEstimateFreq;
 }
