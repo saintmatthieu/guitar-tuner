@@ -13,15 +13,17 @@ target_include_directories(Utils
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-add_executable(UtilsTests)
+if(NOT NO_GTEST)
+  add_executable(UtilsTests)
 
-target_sources(UtilsTests
-  PRIVATE
-    UtilsTests.cpp
-)
+  target_sources(UtilsTests
+    PRIVATE
+      UtilsTests.cpp
+  )
 
-target_link_libraries(UtilsTests
-  PRIVATE
-    Utils
-    gtest_main
-)
+  target_link_libraries(UtilsTests
+    PRIVATE
+      Utils
+      gtest_main
+  )
+endif()
