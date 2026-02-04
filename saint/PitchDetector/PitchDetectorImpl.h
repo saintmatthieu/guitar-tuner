@@ -31,7 +31,12 @@ class PitchDetectorImpl : public PitchDetector {
    private:
     float refineEstimateBasedOnStrongestHarmonic(const std::vector<float>& logSpectrum,
                                                  float targetFreq) const;
+
+    float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum) const;
+
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
+
+    void toIdealSpectrum(std::vector<float>& logSpectrum);
 
     const int _sampleRate;
     const ChannelFormat _channelFormat;
@@ -42,7 +47,8 @@ class PitchDetectorImpl : public PitchDetector {
     const int _fftSize;
     const float _binFreq;
     RealFft _fwdFft;
-    CepstrumData _cepstrumData;
+    RealFft _cepstrumFft;
+    CepstrumData _lifteredCepstrumData;
     const std::vector<float> _lpWindow;
     const float _minFreq;
     const float _maxFreq;

@@ -6,8 +6,11 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <numeric>
 #include <optional>
+#include <unordered_set>
 
+#include "PitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
@@ -145,39 +148,115 @@ std::optional<int> takeThisIndexInstead(const std::vector<float>& cepstrum, int 
     }
 }
 
-int getIndexOfClosestLocalMaximum(const std::vector<float>& values, int startIndex) {
-    // go up
-    auto i = startIndex;
-    while (i + 1 < values.size() && values[i + 1] >= values[i]) {
-        ++i;
+std::vector<std::pair<int, int>> primeCombinations(int K) {
+    // If K == 4, returns {(1,2), (1,3), (1,4), (2,3), (3,4)}, i.e., all tuples with elements in [1,
+    // K] whose GCD is 1.
+    std::vector<std::pair<int, int>> combinations;
+    for (auto i = 1; i <= K; ++i) {
+        for (auto j = i + 1; j <= K; ++j) {
+            if (std::gcd(i, j) == 1) {
+                combinations.emplace_back(i, j);
+            }
+        }
     }
-    // go down
-    while (i - 1 >= 0 && values[i - 1] > values[i]) {
-        --i;
+    return combinations;
+}
+
+float disambiguateFundamentalIndex(float priorIndex, const std::vector<float>& idealSpectrum,
+                                   float minF0) {
+    auto& spec = idealSpectrum;
+
+    constexpr auto K = 15;  // Number of harmonics used
+
+    constexpr auto numAlternatives = 6;
+    constexpr std::array<float, numAlternatives> alternatives{4.f,     2.f,     1.f,
+                                                              1 / 2.f, 1 / 3.f, 1 / 4.f};
+
+    std::vector<float> scores(numAlternatives, 0.f);
+    std::vector<std::vector<float>> indicesVector(numAlternatives);
+    std::vector<std::pair<int, int>> combinations = primeCombinations(K);
+
+    std::vector<int> harmonicNumbers(K);
+    std::iota(harmonicNumbers.begin(), harmonicNumbers.end(), 1);
+
+    for (auto d = 0; d < numAlternatives; ++d) {
+        const auto multiplier = alternatives[d];
+        const auto f0 = priorIndex * multiplier;
+
+        if (f0 < minF0) {
+            scores[d] = 0.f;
+            continue;
+        }
+
+        auto& indices = indicesVector[d];
+        indices.reserve(K);
+        std::vector<float> peakValues(K);
+
+        for (const auto k : harmonicNumbers) {
+            const auto fk = k * f0;
+            const auto peakIndex =
+                utils::getIndexOfClosestLocalMaximum(spec, static_cast<int>(fk + .5f));
+            const float fractionalPart = utils::quadFit(spec.data() + peakIndex - 1);
+            peakValues[k - 1] = std::max(spec[peakIndex], 0.f);
+            indices.push_back(peakIndex + fractionalPart);
+        }
+
+        std::unordered_set<float> uniqueIndices(indices.begin(), indices.end());
+        if (uniqueIndices.size() < indices.size()) {
+            // Duplicates - search is degenerate. Break.
+            scores[d] = 0.f;
+            break;
+        }
+
+        if (std::all_of(peakValues.begin(), peakValues.end(), [](float w) { return w == 0.f; })) {
+            scores[d] = 0.f;
+            continue;
+        }
+
+        std::vector<float> perceptualProducts(combinations.size());
+        std::transform(combinations.begin(), combinations.end(), perceptualProducts.begin(),
+                       [&peakValues](const std::pair<int, int>& combination) {
+                           const auto& [k1, k2] = combination;
+                           return peakValues[k1 - 1] * peakValues[k2 - 1];
+                       });
+
+        const auto sum = std::accumulate(perceptualProducts.begin(), perceptualProducts.end(), 0.f);
+        scores[d] = sum;
     }
-    return i;
+
+    const auto it = std::max_element(scores.begin(), scores.end());
+    const auto d = std::distance(scores.begin(), it);
+    const auto a = utils::leastSquareFit(harmonicNumbers, indicesVector[d]);
+
+    return a;
 }
 }  // namespace
 
+float PitchDetectorImpl::disambiguateEstimate(float priorEstimate,
+                                              const std::vector<float>& idealSpectrum) const {
+    const auto priorIndex = priorEstimate / _binFreq;
+    const auto minF0 = _minFreq / _binFreq;
+    return disambiguateFundamentalIndex(priorIndex, idealSpectrum, minF0) * _binFreq;
+}
+
 float PitchDetectorImpl::getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const {
-    const auto& vec = cepstrumData.vec();
+    const auto cepstrum = cepstrumData.vec();
 
     // We're using this for a tuner, so look between 30Hz (a detuned E0 on a bass
     // guitar) and 500Hz (Ukulele high A is 440Hz)
     const auto maxPeriod = 1. / _minFreq;
     const auto minPeriod = 1. / _maxFreq;
     const auto leftmost = static_cast<int>(minPeriod * _sampleRate);
-    const auto rightmost = std::min<int>(maxPeriod * _sampleRate, vec.size() / 2);
-    const auto it = std::max_element(vec.begin() + leftmost, vec.begin() + rightmost);
-    auto maxCepstrumIndex = std::distance(vec.begin(), it);
+    const auto rightmost = std::min<int>(maxPeriod * _sampleRate, cepstrum.size());
+    const auto it = std::max_element(cepstrum.begin() + leftmost, cepstrum.begin() + rightmost);
+    auto maxCepstrumIndex = std::distance(cepstrum.begin(), it);
     if (maxCepstrumIndex == 0)
         return 0.f;
-    else if (maxCepstrumIndex == vec.size())
+    else if (maxCepstrumIndex == cepstrum.size())
         return static_cast<float>(_sampleRate) / maxCepstrumIndex;
 
     const auto bestIndex =
-        takeThisIndexInstead(vec, leftmost, maxCepstrumIndex).value_or(maxCepstrumIndex);
-
+        takeThisIndexInstead(cepstrum, leftmost, maxCepstrumIndex).value_or(maxCepstrumIndex);
     return static_cast<float>(_sampleRate) / bestIndex;
 }
 
@@ -195,7 +274,8 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
       _binFreq(static_cast<float>(sampleRate) / _fftSize),
       _fwdFft(_fftSize),
-      _cepstrumData(_fftSize),
+      _cepstrumFft(_fftSize),
+      _lifteredCepstrumData(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)),
@@ -210,11 +290,11 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
 
 float PitchDetectorImpl::refineEstimateBasedOnStrongestHarmonic(
     const std::vector<float>& logSpectrum, float targetFreq) const {
-    constexpr auto numHarmonics = 5;
+    constexpr auto numHarmonics = 10;
     std::vector<int> peakBins(numHarmonics);
     for (auto k = 1; k <= numHarmonics; ++k) {
         const auto targetBin = static_cast<int>(targetFreq * k / _binFreq + 0.5f);
-        const auto peakBin = getIndexOfClosestLocalMaximum(logSpectrum, targetBin);
+        const auto peakBin = utils::getIndexOfClosestLocalMaximum(logSpectrum, targetBin);
         peakBins[k - 1] = peakBin;
     }
     const auto it = std::max_element(peakBins.begin(), peakBins.end(),
@@ -229,7 +309,8 @@ float PitchDetectorImpl::refineEstimateBasedOnStrongestHarmonic(
 
     const auto delta = utils::quadFit(&logSpectrum[peakBin - 1]);
 
-    return (static_cast<float>(peakBin) + delta) * _binFreq / k;
+    const auto refined = (static_cast<float>(peakBin) + delta) * _binFreq / k;
+    return refined;
 }
 
 float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
@@ -268,7 +349,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     _logger->SamplesRead(_blockSize);
     _logger->Log(_sampleRate, "sampleRate");
     _logger->Log(_fftSize, "fftSize");
-    _logger->Log(_cepstrumData.fft.size, "cepstrumFftSize");
+    _logger->Log(_lifteredCepstrumData.fft.size, "cepstrumFftSize");
     _logger->Log(time.data(), time.size(), "inputAudio");
 
     // zero all samples below -60dB
@@ -292,14 +373,14 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
     // Cepstrum analysis
-    takeCepstrum(freq, _cepstrumData, *_logger);
+    toCepstrum(freq, _lifteredCepstrumData, *_logger);
 
     // Compute cross-correlation
     getXCorr(_fwdFft, time, freq, _lpWindow);
     _logger->Log(time.data(), time.size(), "xcorr");
     _logger->Log(time.data(), time.size(), "xcorrFlattened", _xcorrTransform);
 
-    _logger->EndNewEstimate(nullptr, 0);
+    utils::Finally finally([this]() { _logger->EndNewEstimate(nullptr, 0); });
 
     auto maxIndex = 0;
     auto wentNegative = false;
@@ -322,11 +403,66 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         return 0.f;
     }
 
-    const auto cepstrumEstimate = getCepstrumPeakFrequency(_cepstrumData);
+    const auto cepstrumEstimate = getCepstrumPeakFrequency(_lifteredCepstrumData);
 
-    const auto finalEstimateFreq =
+    const auto refinedEstimate =
         refineEstimateBasedOnStrongestHarmonic(dbSpectrum, cepstrumEstimate);
 
-    return finalEstimateFreq;
+    auto idealSpectrum = dbSpectrum;
+    toIdealSpectrum(idealSpectrum);
+
+    const auto disambiguatedEstimate = disambiguateEstimate(refinedEstimate, idealSpectrum);
+
+    return disambiguatedEstimate;
 }
+
+void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
+    assert(logSpectrum.size() == _fftSize / 2);
+    auto& spec = logSpectrum;
+
+    if (spec.size() == _fftSize / 2) {
+        // Not symmetric - let's fix this
+        spec.reserve(_fftSize);
+        std::reverse_copy(spec.begin() + 1, spec.end(), std::back_inserter(spec));
+    }
+    Aligned<std::vector<float>> cepstrumAligned;
+    toCepstrum(spec, _cepstrumFft, cepstrumAligned);
+    spec.resize(_fftSize / 2);
+
+    const std::vector<float>& cepstrum = cepstrumAligned.value;
+    std::vector<float> lifteredCepstrum = cepstrum;
+    const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
+    std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
+              0.f);
+
+    const std::vector<float> spectrumEnvelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
+    _logger->Log(spectrumEnvelope.data(), spectrumEnvelope.size(), "spectrumEnvelope");
+
+    std::transform(spec.begin(), spec.end(), spectrumEnvelope.begin(), spec.begin(),
+                   std::minus<float>());
+
+    // Calculate the variance from 5kHz to the Nyquist
+    const auto minFreq = 5000.f;
+    const auto minBin = static_cast<int>(minFreq / _binFreq);
+    const auto N = static_cast<float>(static_cast<int>(spec.size()) - minBin);
+
+    // Expected value E
+    const auto E = std::accumulate(spec.begin() + minBin, spec.end(), 0.f,
+                                   [](float acc, float val) { return acc + val; }) /
+                   N;
+
+    const auto variance =
+        std::accumulate(spec.begin(), spec.end(), 0.f,
+                        [E](float acc, float val) { return acc + (val - E) * (val - E); }) /
+        N;
+
+    const auto stdDev = std::sqrt(variance);
+    const auto noiseThreshold = stdDev * 1.5f;
+
+    std::transform(spec.begin(), spec.end(), spec.begin(),
+                   [noiseThreshold](float x) { return x - noiseThreshold; });
+
+    _logger->Log(spec.data(), spec.size(), "idealSpectrum");
+}
+
 }  // namespace saint

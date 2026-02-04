@@ -18,6 +18,10 @@ class RealFft {
         work.value.resize(size);
     }
 
+    ~RealFft() {
+        pffft_destroy_setup(setup);
+    }
+
     void forward(const float* input, float* output) {
         pffft_transform_ordered(setup, input, output, work.value.data(), PFFFT_FORWARD);
     }

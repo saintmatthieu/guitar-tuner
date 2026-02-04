@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <complex>
 #include <optional>
 #include <string>
@@ -54,8 +55,31 @@ float getApproximateGcd(const std::vector<float>& values);
  */
 float quadFit(const float* y);
 
+std::pair<float, float> polyFit(const std::vector<float>& x, const std::vector<float>& y,
+                                const std::vector<float>& weights = {});
+
+template <typename X, typename Y>
+double leastSquareFit(const std::vector<X>& x, const std::vector<Y>& y, std::vector<Y> w = {}) {
+    assert(x.size() == y.size());
+    if (w.size() != x.size()) {
+        w.resize(x.size(), 1.f);
+    }
+
+    auto num = 0.;
+    auto den = 0.;
+    for (auto i = 0; i < x.size(); ++i) {
+        num += x[i] * y[i] * w[i];
+        den += x[i] * x[i] * w[i];
+    }
+    const auto a = num / den;
+
+    return a;
+}
+
 float doubleCheckEstimate(float priorFreq, const std::vector<float>& dbSpectrum, int sampleRate,
                           int fftSize, float minFreq);
+
+int getIndexOfClosestLocalMaximum(const std::vector<float>& values, int startIndex);
 
 /**
  * @brief Same as above, but using bins - easier for testing.
@@ -64,9 +88,6 @@ float doubleCheckEstimate(float priorFreq, const std::vector<float>& dbSpectrum,
  */
 float doubleCheckEstimate(float priorIndex, const std::vector<float>& dbSpectrum, int minBin,
                           int N);
-
-float estimateFundamentalFrequency(float priorIndex, const std::vector<float>& dbSpectrum,
-                                   int minBin, int N, int windowMainLobeWidth);
 
 template <typename F>
 struct Finally {

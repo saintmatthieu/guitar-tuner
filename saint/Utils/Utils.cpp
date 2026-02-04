@@ -166,23 +166,35 @@ std::vector<int> getHighestLocalMaxima(const float* dbValues, size_t size, int o
 }
 }  // namespace
 
-float utils::estimateFundamentalFrequency(float priorIndex, const std::vector<float>& dbSpectrum,
-                                          int minBin, int N, int windowMainLobeWidth) {
-    // clang-format off
-
-    // `priorIndex` is likely a good approximation, but could also be the actual value by 2, 3 or 4 (harmonics
-    // being interpreted as fundamental).
-    //
-    // * For each hypothesis, look for the local maxima within `k*f0 + [-B, B]`, where `k \in [1, 2, ..., N]`
-    //   and `B` with the main lobe width. These must exceed -60dB or they are ignored.
-    // * Get the error vector with values (fk - k * f0)², where fk is the frequency (estimated with quadratic fit) of the `k`th peak.
-    // * Derive a vector of weights `w = dBk / 60 + 1`, where dBk is the value of the `k`th peak.
-    // * The score is the inner product of the error and weight vectors.
-
-    // clang-format on
-
-    for (auto divisor = 1; divisor <= 4; ++divisor) {
+std::pair<float, float> utils::polyFit(const std::vector<float>& x, const std::vector<float>& y,
+                                       const std::vector<float>& weights) {
+    assert(x.size() == y.size());
+    const size_t n = x.size();
+    std::vector<float> w = weights;
+    ;
+    if (w.size() != n) {
+        w.resize(n, 1.f);
     }
+    float S = 0.f;
+    float Sx = 0.f;
+    float Sy = 0.f;
+    float Sxx = 0.f;
+    float Sxy = 0.f;
+    for (size_t i = 0; i < n; ++i) {
+        const float wi = w[i];
+        S += wi;
+        Sx += wi * x[i];
+        Sy += wi * y[i];
+        Sxx += wi * x[i] * x[i];
+        Sxy += wi * x[i] * y[i];
+    }
+    const float denom = S * Sxx - Sx * Sx;
+    if (denom == 0.f) {
+        return {0.f, 0.f};
+    }
+    const float a = (S * Sxy - Sx * Sy) / denom;
+    const float b = (Sxx * Sy - Sx * Sxy) / denom;
+    return {a, b};
 }
 
 float utils::doubleCheckEstimate(float priorIndex, const std::vector<float>& dbSpectrum, int minBin,
@@ -243,5 +255,18 @@ float utils::doubleCheckEstimate(float prior, const std::vector<float>& dbSpectr
     const auto minBin = static_cast<int>(minFreq / binFreq + .5f);
     const auto estimate = doubleCheckEstimate(prior / binFreq, dbSpectrum, minBin, 5);
     return estimate * sampleRate / fftSize;
+}
+
+int utils::getIndexOfClosestLocalMaximum(const std::vector<float>& values, int startIndex) {
+    // go up
+    auto i = startIndex;
+    while (i + 1 < values.size() && values[i + 1] >= values[i]) {
+        ++i;
+    }
+    // go down
+    while (i - 1 >= 0 && values[i - 1] > values[i]) {
+        --i;
+    }
+    return i;
 }
 }  // namespace saint

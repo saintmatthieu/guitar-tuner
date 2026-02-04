@@ -11,9 +11,9 @@
       "program": "${command:cmake.launchTargetPath}",
       "stopOnEntry": false,
       "args": [
-        // "instanceCount=544",
-        // "indexOfProcessToLog=150"
-        // "sample=/home/matthieu/github/saintmatthieu/guitar-tuner/eval/testFiles/notes/debug/A3.wav"
+        // "testWithMedianFilter=false",
+        // "indexOfProcessToLog=51",
+        // "testCaseId=testFiles/notes/Fender_Stratocaster_unplugged/iPhone_11/E2.wav | testFiles/noise/Fender_Stratocaster_noise.wav | -60"
       ],
       "cwd": "${workspaceFolder}"
     },
