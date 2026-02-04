@@ -44,12 +44,12 @@ class PitchDetectorImpl : public PitchDetector {
     RealFft _fwdFft;
     CepstrumData _cepstrumData;
     const std::vector<float> _lpWindow;
-    const std::vector<float> _windowXcor;
-    const int _latencySamples;
-    std::vector<float> _audioBuffer;
     const float _minFreq;
     const float _maxFreq;
     const int _lastSearchIndex;
+    const std::vector<float> _windowXcor;
+    const int _latencySamples;
+    std::vector<float> _audioBuffer;
     bool _bufferErrorLoggedAlready = false;
     const std::function<float(float)> _xcorrTransform = [this, i = 0](float x) mutable {
         return x / std::max(_windowXcor[i++], 1e-6f);
