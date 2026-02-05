@@ -49,9 +49,12 @@ void saint::toCepstrum(const std::vector<float>& logSpectrum, RealFft& fft,
     // For convenience, we reinterpret the cepstrum data as complex.
     const auto complexCepstrum = reinterpret_cast<std::complex<float>*>(cepstrum.data());
     // Now we collapse.
-    for (auto i = 1; i < fft.size / 2 + 1; ++i) {
+    cepstrum[0] = complexCepstrum[0].real();
+    const auto nyquist = complexCepstrum[0].imag();
+    for (auto i = 1; i < fft.size / 2; ++i) {
         cepstrum[i] = complexCepstrum[i].real();
     }
+    cepstrum[fft.size / 2] = nyquist;
     // Now mirror the rest.
     std::reverse_copy(cepstrum.begin() + 1, cepstrum.begin() + fft.size / 2,
                       cepstrum.end() - (fft.size / 2 - 1));
@@ -64,10 +67,14 @@ std::vector<float> saint::fromCepstrum(RealFft& fft, const float* cepstrumPtr) {
     fft.forward(cepstrumPtr, spectrum.data());
     const auto scale = 1.f / fft.size;
     // Because the cepstrum is symmetric, the imaginary parts are zero.
-    for (auto i = 0; i < fft.size / 2 + 1; ++i) {
+    // Except for the first one, which is the Nyquist value.
+    spectrum[0] = spectrum[0] * scale;
+    const auto nyquist = spectrum[1] * scale;
+    for (auto i = 1; i < fft.size / 2; ++i) {
         spectrum[i] = spectrum[2 * i] * scale;
     }
-    spectrum.resize(fft.size / 2);
+    spectrum[fft.size / 2] = nyquist;
+    spectrum.resize(fft.size / 2 + 1);
     return spectrum;
 }
 

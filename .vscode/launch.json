@@ -11,11 +11,15 @@
       "program": "${command:cmake.launchTargetPath}",
       "stopOnEntry": false,
       "args": [
-        // "indexOfProcessToLog=211",
+        // "indexOfProcessToLog=210",
         // "testWithMedianFilter=false",
-        // "testCaseId=testFiles/notes/Admira_Classic/E4.wav | testFiles/noise/Fender_Stratocaster_noise.wav | -40"
+        // "testCaseId=testFiles/notes/Admira_Classic/E4.wav | testFiles/noise/CS_Telecaster_noise.wav | -60"
       ],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=0",
+        "LSAN_OPTIONS": "verbosity=1:log_threads=1"
+      }
     },
     {
       "name": "Launch (Windows)",
