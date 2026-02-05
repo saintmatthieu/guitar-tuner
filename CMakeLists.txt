@@ -23,27 +23,36 @@ endif()
 add_subdirectory(pffft)
 add_subdirectory(saint)
 
-target_compile_options(pf_conv_dispatcher PRIVATE -w)
-target_compile_options(pf_conv_arch_none PRIVATE -w)
-target_compile_options(pf_conv_arch_dflt PRIVATE -w)
+set(_silence_targets
+  pf_conv_dispatcher
+  pf_conv_arch_none
+  pf_conv_arch_dflt
+  pf_conv_arch_avx2
+  pf_conv_arch_avx
+  FFTPACK_DOUBLE
+  PFFASTCONV
+  PFFFT
+  PFDSP
+  FFTPACK_FLOAT
+)
 
-if(TARGET pf_conv_arch_avx2)
-  target_compile_options(pf_conv_arch_avx2 PRIVATE -w)
-endif()
-
-if(TARGET pf_conv_arch_avx)
-  target_compile_options(pf_conv_arch_avx PRIVATE -w)
-endif()
+foreach(tgt IN LISTS _silence_targets)
+  if(TARGET ${tgt})
+    target_compile_options(${tgt} PRIVATE -w)
+  endif()
+endforeach()
 
 if(NOT NO_GTEST)
-  target_compile_options(gmock_main PRIVATE -w)
-  target_compile_options(gtest_main PRIVATE -w)
-  target_compile_options(gtest PRIVATE -w)
-  target_compile_options(gmock PRIVATE -w)
-endif()
+  set(_gtest_targets
+    gmock_main
+    gtest_main
+    gtest
+    gmock
+  )
 
-target_compile_options(FFTPACK_DOUBLE PRIVATE -w)
-target_compile_options(PFFASTCONV PRIVATE -w)
-target_compile_options(PFFFT PRIVATE -w)
-target_compile_options(PFDSP PRIVATE -w)
-target_compile_options(FFTPACK_FLOAT PRIVATE -w)
+  foreach(tgt IN LISTS _gtest_targets)
+    if(TARGET ${tgt})
+      target_compile_options(${tgt} PRIVATE -w)
+    endif()
+  endforeach()
+endif()

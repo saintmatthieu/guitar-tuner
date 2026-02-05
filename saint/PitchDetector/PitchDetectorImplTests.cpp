@@ -2,10 +2,16 @@
 
 #include <algorithm>
 #include <atomic>
-#include <execution>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+
+#if defined(__APPLE__)
+  #include <tbb/parallel_for.h>
+  #include <tbb/blocked_range.h>
+#else
+  #include <execution>
+#endif
 
 #include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
@@ -216,91 +222,113 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::mutex progressMutex;
 
     std::cout << std::endl << "Evaluating samples..." << std::endl;
-    // Process test cases in parallel
-    std::for_each(
-        std::execution::par, testCases.begin(), testCases.end(),
-        [&results, &testCases, &completedCount, &progressMutex,
-         numEvaluations](const TestCase& testCase) {
-            const auto idx = static_cast<size_t>(&testCase - testCases.data());  // Get index
-            const auto& sample = testCase.sample;
-            const auto& noisy = testCase.noisy;
-            const auto blockSize = testCase.blockSize;
+    
+    auto processOne = [&](size_t idx) {
+        const auto& testCase = testCases[idx];
+        const auto& sample = testCase.sample;
+        const auto& noisy = testCase.noisy;
+        const auto blockSize = testCase.blockSize;
 
-            auto logger = std::make_unique<DummyPitchDetectorLogger>();
+        auto logger = std::make_unique<DummyPitchDetectorLogger>();
 
-            auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                noisy.sampleRate, noisy.channelFormat, blockSize, config, std::move(logger));
-            PitchDetectorMedianFilter sut(noisy.sampleRate, blockSize,
-                                          std::move(internalAlgorithm));
+        auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
+            noisy.sampleRate, noisy.channelFormat, blockSize, config, std::move(logger));
+        PitchDetectorMedianFilter sut(noisy.sampleRate, blockSize,
+                                      std::move(internalAlgorithm));
 
-            auto negativeCount = 0;
-            auto falseNegativeCount = 0;
-            auto positiveCount = 0;
-            auto falsePositiveCount = 0;
-            const auto numChannels = noisy.channelFormat == ChannelFormat::Mono ? 1 : 2;
-            const auto numFrames = noisy.interleaved.size() / numChannels;
-            const auto* noisyData = noisy.interleaved.data();
+        auto negativeCount = 0;
+        auto falseNegativeCount = 0;
+        auto positiveCount = 0;
+        auto falsePositiveCount = 0;
+        const auto numChannels = noisy.channelFormat == ChannelFormat::Mono ? 1 : 2;
+        const auto numFrames = noisy.interleaved.size() / numChannels;
+        const auto* noisyData = noisy.interleaved.data();
 
-            std::vector<testUtils::ProcessEstimate> testFileEstimates;
+        std::vector<testUtils::ProcessEstimate> testFileEstimates;
 
-            for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
-                auto presenceScore = 0.f;
-                auto result = sut.process(noisyData + i * numChannels, &presenceScore);
-                const auto currentTime =
-                    static_cast<double>(i + blockSize - sut.delaySamples()) / noisy.sampleRate;
-                const auto truth = (currentTime >= sample.truth.startTime) &&
-                                   (currentTime <= sample.truth.endTime);
-                if (truth) {
-                    ++positiveCount;
-                    if (result == 0.f)
-                        ++falseNegativeCount;
-                } else {
-                    ++negativeCount;
-                    if (result != 0.f)
-                        ++falsePositiveCount;
-                }
-                const auto errorCents =
-                    result > 0.f ? 1200.f * std::log2(result / sample.truth.frequency) : 0.f;
-                testFileEstimates.emplace_back(truth, presenceScore, result, errorCents);
+        for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
+            auto presenceScore = 0.f;
+            auto result = sut.process(noisyData + i * numChannels, &presenceScore);
+            const auto currentTime =
+                static_cast<double>(i + blockSize - sut.delaySamples()) / noisy.sampleRate;
+            const auto truth = (currentTime >= sample.truth.startTime) &&
+                               (currentTime <= sample.truth.endTime);
+
+            if (truth) {
+                ++positiveCount;
+                if (result == 0.f)
+                    ++falseNegativeCount;
+            } else {
+                ++negativeCount;
+                if (result != 0.f)
+                    ++falsePositiveCount;
             }
 
-            const auto FPR = 1. * falsePositiveCount / negativeCount;
-            const auto FNR = 1. * falseNegativeCount / positiveCount;
+            const auto errorCents =
+                result > 0.f ? 1200.f * std::log2(result / sample.truth.frequency) : 0.f;
 
-            const std::optional<testUtils::Cents> cents =
-                testUtils::getError(sample, testFileEstimates);
+            testFileEstimates.emplace_back(truth, presenceScore, result, errorCents);
+        }
 
-            const fs::path cleanFile = testUtils::getFileShortName(sample.file);
-            const auto filename = cleanFile.string() + "_with_" +
-                                  testCase.noise.file.stem().string() + "_at_" +
-                                  testCase.noise.rmsDb + "dB";
-            const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
+        const auto FPR = 1. * falsePositiveCount / negativeCount;
+        const auto FNR = 1. * falseNegativeCount / positiveCount;
 
-            const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
-            const auto evalDir = testUtils::getEvalDir();
-            std::stringstream csvLine;
-            csvLine << testCase.index << "," << displayCents.avg << "," << displayCents.rms << ","
-                    << FPR << "," << FNR << "," << fs::relative(sample.file, evalDir) << ","
-                    << fs::relative(testCase.noise.file, evalDir) << "," << testCase.noise.rmsDb
-                    << "," << fs::relative(outWavName, evalDir) << "\n";
+        const std::optional<testUtils::Cents> cents =
+            testUtils::getError(sample, testFileEstimates);
 
-            results[idx] = TestResult{testCase.index,
-                                      std::move(testFileEstimates),
-                                      cents,
-                                      FPR,
-                                      FNR,
-                                      csvLine.str(),
-                                      sample.file,
-                                      testCase.noise.file,
-                                      testCase.noise.rmsDb};
+        const fs::path cleanFile = testUtils::getFileShortName(sample.file);
+        const auto filename = cleanFile.string() + "_with_" +
+                              testCase.noise.file.stem().string() + "_at_" +
+                              testCase.noise.rmsDb + "dB";
+        const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
 
-            // Progress reporting (thread-safe)
-            const auto completed = ++completedCount;
-            {
-                std::lock_guard<std::mutex> lock(progressMutex);
-                std::cout << "\r" << completed << "/" << numEvaluations << std::flush;
+        const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
+        const auto evalDir = testUtils::getEvalDir();
+
+        std::stringstream csvLine;
+        csvLine << testCase.index << "," << displayCents.avg << "," << displayCents.rms << ","
+                << FPR << "," << FNR << "," << fs::relative(sample.file, evalDir) << ","
+                << fs::relative(testCase.noise.file, evalDir) << "," << testCase.noise.rmsDb
+                << "," << fs::relative(outWavName, evalDir) << "\n";
+
+        results[idx] = TestResult{
+            testCase.index,
+            std::move(testFileEstimates),
+            cents,
+            FPR,
+            FNR,
+            csvLine.str(),
+            sample.file,
+            testCase.noise.file,
+            testCase.noise.rmsDb
+        };
+
+        const auto completed = ++completedCount;
+        {
+            std::lock_guard<std::mutex> lock(progressMutex);
+            std::cout << "\r" << completed << "/" << numEvaluations << std::flush;
+        }
+    };
+
+    // Process test cases in parallel
+    #if defined(__APPLE__)
+    // macOS: oneTBB
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, testCases.size()),
+        [&](const tbb::blocked_range<size_t>& r) {
+            for (size_t i = r.begin(); i != r.end(); ++i) {
+                processOne(i);
             }
         });
+    #else
+    // Windows / Linux: std::execution::par
+    std::for_each(
+        std::execution::par,
+        size_t{0}, testCases.size(),
+        [&](size_t i) {
+            processOne(i);
+        });
+    #endif
 
     std::cout << "\n";
 

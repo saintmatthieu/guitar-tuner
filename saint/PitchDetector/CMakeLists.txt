@@ -28,19 +28,20 @@ target_include_directories(PitchDetector SYSTEM
     ${GUITAR_TUNER_ROOT}/pffft
 )
 
-add_executable(PitchDetectorImplTests
-  PitchDetectorImplTests.cpp
-)
+if(NOT NO_GTEST)
+  add_executable(PitchDetectorImplTests
+    PitchDetectorImplTests.cpp
+  )
 
-target_compile_options(PitchDetectorImplTests PRIVATE ${SAINT_ANNOYING_WARNINGS})
+  target_compile_options(PitchDetectorImplTests PRIVATE ${SAINT_ANNOYING_WARNINGS})
+  find_package(TBB REQUIRED)
 
-find_package(TBB REQUIRED)
-
-target_link_libraries(PitchDetectorImplTests
-  PRIVATE
-    PitchDetector
-    TestUtils
-    gtest_main
-    gmock
-    TBB::tbb
-)
+  target_link_libraries(PitchDetectorImplTests
+    PRIVATE
+      PitchDetector
+      TestUtils
+      gtest_main
+      gmock
+      TBB::tbb
+  )
+endif()
