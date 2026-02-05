@@ -164,19 +164,21 @@ std::vector<std::pair<int, int>> primeCombinations(int K) {
 
 float disambiguateFundamentalIndex(float priorIndex, const std::vector<float>& idealSpectrum,
                                    float minF0) {
-    auto& spec = idealSpectrum;
+    const auto& spec = idealSpectrum;
 
     constexpr auto K = 15;  // Number of harmonics used
 
     constexpr auto numAlternatives = 6;
-    constexpr std::array<float, numAlternatives> alternatives{4.f,     2.f,     1.f,
-                                                              1 / 2.f, 1 / 3.f, 1 / 4.f};
+    constexpr std::array<float, numAlternatives> alternatives{
+        1.f,           // Keep 1 in front in case all estimates are zero
+        2.f,     4.f,  //
+        1 / 2.f, 1 / 3.f, 1 / 4.f};
 
     std::vector<float> scores(numAlternatives, 0.f);
-    std::vector<std::vector<float>> indicesVector(numAlternatives);
+    std::vector<std::array<float, K>> indicesVector(numAlternatives);
     std::vector<std::pair<int, int>> combinations = primeCombinations(K);
 
-    std::vector<int> harmonicNumbers(K);
+    std::array<int, K> harmonicNumbers;
     std::iota(harmonicNumbers.begin(), harmonicNumbers.end(), 1);
 
     for (auto d = 0; d < numAlternatives; ++d) {
@@ -189,7 +191,6 @@ float disambiguateFundamentalIndex(float priorIndex, const std::vector<float>& i
         }
 
         auto& indices = indicesVector[d];
-        indices.reserve(K);
         std::vector<float> peakValues(K);
 
         for (const auto k : harmonicNumbers) {
@@ -198,7 +199,7 @@ float disambiguateFundamentalIndex(float priorIndex, const std::vector<float>& i
                 utils::getIndexOfClosestLocalMaximum(spec, static_cast<int>(fk + .5f));
             const float fractionalPart = utils::quadFit(spec.data() + peakIndex - 1);
             peakValues[k - 1] = std::max(spec[peakIndex], 0.f);
-            indices.push_back(peakIndex + fractionalPart);
+            indices[k - 1] = peakIndex + fractionalPart;
         }
 
         std::unordered_set<float> uniqueIndices(indices.begin(), indices.end());
@@ -368,8 +369,8 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     _logger->Log(freq.data(), freq.size(), "spectrum",
                  [](const std::complex<float>& X) { return std::abs(X); });
 
-    std::vector<float> dbSpectrum(freq.size());
-    utils::getDbSpectrum(freq, dbSpectrum.data(), freq.size());
+    std::vector<float> dbSpectrum(freq.size() + 1);
+    utils::getDbSpectrum(freq, dbSpectrum);
     _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
     // Cepstrum analysis
@@ -378,7 +379,8 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     // Compute cross-correlation
     getXCorr(_fwdFft, time, freq, _lpWindow);
     _logger->Log(time.data(), time.size(), "xcorr");
-    _logger->Log(time.data(), time.size(), "xcorrFlattened", _xcorrTransform);
+    _logger->Log(time.data(), time.size(), "xcorrFlattened",
+                 [this, i = 0](float x) mutable { return x / std::max(_windowXcor[i++], 1e-6f); });
 
     utils::Finally finally([this]() { _logger->EndNewEstimate(nullptr, 0); });
 
@@ -417,17 +419,16 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
 }
 
 void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
-    assert(logSpectrum.size() == _fftSize / 2);
+    assert(logSpectrum.size() == _fftSize / 2 + 1);
     auto& spec = logSpectrum;
 
-    if (spec.size() == _fftSize / 2) {
-        // Not symmetric - let's fix this
-        spec.reserve(_fftSize);
-        std::reverse_copy(spec.begin() + 1, spec.end(), std::back_inserter(spec));
+    spec.resize(_fftSize);
+    for (auto i = _fftSize / 2 + 1; i < _fftSize; ++i) {
+        spec[i] = spec[_fftSize - i];
     }
     Aligned<std::vector<float>> cepstrumAligned;
     toCepstrum(spec, _cepstrumFft, cepstrumAligned);
-    spec.resize(_fftSize / 2);
+    spec.resize(_fftSize / 2 + 1);
 
     const std::vector<float>& cepstrum = cepstrumAligned.value;
     std::vector<float> lifteredCepstrum = cepstrum;

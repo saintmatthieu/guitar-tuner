@@ -91,18 +91,22 @@ std::vector<float> utils::getAnalysisWindow(int windowSize, WindowType type) {
     return window;
 }
 
-void utils::getDbSpectrum(const std::vector<std::complex<float>>& spectrum, float* out, int count) {
-    if (count <= 0) {
+void utils::getDbSpectrum(const std::vector<std::complex<float>>& spectrum, std::vector<float>& out,
+                          int count) {
+    // First bin is DC ...
+    const auto upTo = count < 0 ? spectrum.size() : static_cast<size_t>(count);
+    assert(out.size() >= upTo);
+    if (upTo == 0) {
         return;
     }
-
-    // First bin is DC only.
     out[0] = utils::FastDb(spectrum[0].real() * spectrum[0].real());
-    std::transform(spectrum.data() + 1, spectrum.data() + count, out + 1,
+    std::transform(spectrum.data() + 1, spectrum.data() + upTo, out.data() + 1,
                    [&](const std::complex<float>& X) {
                        const auto power = X.real() * X.real() + X.imag() * X.imag();
                        return utils::FastDb(power);
                    });
+    // ... and Nyquist.
+    out.back() = utils::FastDb(spectrum[0].imag() * spectrum[0].imag());
 }
 
 float utils::quadFit(const float* y) {

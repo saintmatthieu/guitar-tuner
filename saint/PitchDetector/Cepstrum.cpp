@@ -13,7 +13,7 @@ void saint::toCepstrum(const std::vector<std::complex<float>>& spectrum, Cepstru
 
     const auto halfWindowSize = cepstrumData.halfWindow.size();
 
-    utils::getDbSpectrum(spectrum, windowedDbSpec.data(), halfWindowSize);
+    utils::getDbSpectrum(spectrum, windowedDbSpec, halfWindowSize);
 
     // Apply half-windowing to reduce spectral leakage in the cepstrum.
     std::transform(windowedDbSpec.begin(), windowedDbSpec.begin() + halfWindowSize,

@@ -191,15 +191,15 @@ void testUtils::writeLogMarks(const fs::path& filenameStem, int sampleRate, Mark
               << static_cast<double>(marking.endSample) / sampleRate << "\n";
 }
 
-std::optional<testUtils::Cents> testUtils::getError(const Sample& sample,
-                                                    const std::vector<ProcessEstimate>& results) {
+std::optional<testUtils::Cents> testUtils::getError(float truePitchHz,
+                                                    const std::vector<float>& estimates) {
     float avg = 0.f;
     float rms = 0.f;
 
     auto count = 0;
-    for (const auto& r : results) {
-        if (r.f > 0.) {
-            const auto e = 1200. * std::log2(r.f / sample.truth.frequency);
+    for (const auto& estimate : estimates) {
+        if (estimate > 0.) {
+            const auto e = 1200. * std::log2(estimate / truePitchHz);
             avg += e;
             rms += e * e;
             ++count;

@@ -42,7 +42,8 @@ constexpr float FastDb(float power) {
  * @param count `spectrum` and `out` have the same FFT format, but only the first `count`
  * bins are transformed, to save computation.
  */
-void getDbSpectrum(const std::vector<std::complex<float>>& spectrum, float* out, int count);
+void getDbSpectrum(const std::vector<std::complex<float>>& spectrum, std::vector<float>& out,
+                   int count = -1);
 
 float getApproximateGcd(const std::vector<float>& values);
 
@@ -58,18 +59,13 @@ float quadFit(const float* y);
 std::pair<float, float> polyFit(const std::vector<float>& x, const std::vector<float>& y,
                                 const std::vector<float>& weights = {});
 
-template <typename X, typename Y>
-double leastSquareFit(const std::vector<X>& x, const std::vector<Y>& y, std::vector<Y> w = {}) {
-    assert(x.size() == y.size());
-    if (w.size() != x.size()) {
-        w.resize(x.size(), 1.f);
-    }
-
+template <typename T, typename U>
+double leastSquareFit(const T& x, const U& y) {
     auto num = 0.;
     auto den = 0.;
     for (auto i = 0; i < x.size(); ++i) {
-        num += x[i] * y[i] * w[i];
-        den += x[i] * x[i] * w[i];
+        num += x[i] * y[i];
+        den += x[i] * x[i];
     }
     const auto a = num / den;
 

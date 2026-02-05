@@ -11,9 +11,9 @@
       "program": "${command:cmake.launchTargetPath}",
       "stopOnEntry": false,
       "args": [
+        // "indexOfProcessToLog=211",
         // "testWithMedianFilter=false",
-        // "indexOfProcessToLog=51",
-        // "testCaseId=testFiles/notes/Fender_Stratocaster_unplugged/iPhone_11/E2.wav | testFiles/noise/Fender_Stratocaster_noise.wav | -60"
+        // "testCaseId=testFiles/notes/Admira_Classic/E4.wav | testFiles/noise/Fender_Stratocaster_noise.wav | -40"
       ],
       "cwd": "${workspaceFolder}"
     },

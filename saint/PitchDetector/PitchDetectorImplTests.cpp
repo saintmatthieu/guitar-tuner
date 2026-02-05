@@ -2,11 +2,10 @@
 
 #include <algorithm>
 #include <atomic>
-#include <execution>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <mutex>
+#include <thread>
 
 #include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
@@ -112,7 +111,7 @@ std::vector<testUtils::Sample> loadSamples() {
     return samples;
 }
 
-std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath) {
+std::vector<Noise> loadNoiseData(int numFrames, const fs::path& silenceFilePath) {
     std::vector<fs::path> noiseFiles;
     for (const auto& entry :
          fs::recursive_directory_iterator(testUtils::getEvalDir() / "testFiles" / "noise")) {
@@ -125,19 +124,20 @@ std::vector<Noise> loadNoiseData(int numSamples, const fs::path& silenceFilePath
 
     std::vector<Noise> noiseData;
 
-    const auto silenceAudio = testUtils::fromWavFile(silenceFilePath, numSamples);
+    const auto silenceAudio = testUtils::fromWavFile(silenceFilePath, numFrames);
     noiseData.push_back(Noise{silenceFilePath, "-inf", silenceAudio->interleaved});
 
     const std::vector<std::string> noiseRmsDb{"-40", "-50", "-60"};
     for (const auto& noiseFile : noiseFiles) {
-        auto noiseAudio = testUtils::fromWavFile(noiseFile, numSamples);
+        const auto noiseAudio = testUtils::fromWavFile(noiseFile, numFrames);
         if (!noiseAudio.has_value()) {
             continue;
         }
         for (const auto& rmsDb : noiseRmsDb) {
             const float dB = std::stof(rmsDb);
-            testUtils::scaleToRms(noiseAudio->interleaved, dB);
-            noiseData.push_back(Noise{noiseFile, rmsDb, noiseAudio->interleaved});
+            auto copy = noiseAudio->interleaved;
+            testUtils::scaleToRms(copy, dB);
+            noiseData.push_back(Noise{noiseFile, rmsDb, std::move(copy)});
         }
     }
 
@@ -182,7 +182,9 @@ std::optional<TestCase> createTestCaseFromId(const std::string& testCaseId) {
         // Silence
         noiseData.resize(clean->interleaved.size(), 0.f);
     } else {
-        auto noiseAudio = testUtils::fromWavFile(parsed->noiseFile, clean->interleaved.size());
+        // Note: fromWavFile expects number of frames, not samples
+        const auto numFrames = clean->numFrames();
+        auto noiseAudio = testUtils::fromWavFile(parsed->noiseFile, numFrames);
         if (!noiseAudio.has_value()) {
             std::cerr << "Could not read noise file: " << parsed->noiseFile << "\n";
             return std::nullopt;
@@ -240,7 +242,7 @@ std::vector<TestCase> prepareTestCases(const std::optional<std::string>& argTest
         const auto blockSize = clean->sampleRate / 100;
         testUtils::scaleToPeak(clean->interleaved, -10.f);
 
-        const auto noiseData = loadNoiseData(clean->interleaved.size(), silenceFilePath);
+        const auto noiseData = loadNoiseData(clean->numFrames(), silenceFilePath);
 
         for (const auto& noise : noiseData) {
             const auto id = computeTestCaseId(testFile, noise.file, noise.rmsDb);
@@ -296,9 +298,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     // Build all test cases upfront
     const std::vector<TestCase> testCases = prepareTestCases(argTestCaseId);
 
-    // std::cerr << testCases[0].sample.file << ", " << testCases[0].noise.file << ", "
-    //           << testCases[0].noise.rmsDb << "\n";
-
     const auto numEvaluations = testCases.size();
 
     // Pre-allocate results vector for thread-safe indexed access
@@ -308,18 +307,10 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     std::cout << std::endl << "Evaluating samples..." << std::endl;
 
-#ifndef NDEBUG
-    const auto exec = std::execution::seq;
-#else
-    const auto exec = std::execution::par;
-#endif
-
-    // Process test cases in parallel
-    std::for_each(
-        exec, testCases.begin(), testCases.end(),
-        [&results, &testCases, &completedCount, &progressMutex, &argIndexOfProcessToLog,
-         &argTestWithMedianFilter, &argTestCaseId, numEvaluations](const TestCase& testCase) {
-            const auto idx = static_cast<size_t>(&testCase - testCases.data());  // Get index
+    // Worker function that processes a range of test cases
+    auto processTestCases = [&](size_t startIdx, size_t endIdx) {
+        for (size_t idx = startIdx; idx < endIdx; ++idx) {
+            const auto& testCase = testCases[idx];
             const auto& sample = testCase.sample;
             const auto& noisy = testCase.noisy;
             const auto blockSize = testCase.blockSize;
@@ -378,8 +369,13 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto FPR = 1. * falsePositiveCount / negativeCount;
             const auto FNR = 1. * falseNegativeCount / positiveCount;
 
+            std::vector<float> frequencyEstimates(testFileEstimates.size());
+            std::transform(testFileEstimates.begin(), testFileEstimates.end(),
+                           frequencyEstimates.begin(),
+                           [](const testUtils::ProcessEstimate& e) { return e.f; });
+
             const std::optional<testUtils::Cents> cents =
-                testUtils::getError(sample, testFileEstimates);
+                testUtils::getError(sample.truth.frequency, frequencyEstimates);
 
             const fs::path cleanFile = testUtils::getFileShortName(sample.file);
             const auto filename = cleanFile.string() + "_with_" +
@@ -413,7 +409,25 @@ TEST(PitchDetectorImpl, benchmarking) {
                 std::lock_guard<std::mutex> lock(progressMutex);
                 std::cout << "\r" << completed << "/" << numEvaluations << std::flush;
             }
-        });
+        }
+    };
+
+    // Manual threading: split work across available cores
+    const auto numThreads = std::thread::hardware_concurrency();
+    const auto chunkSize = (testCases.size() + numThreads - 1) / numThreads;
+
+    std::vector<std::thread> threads;
+    for (size_t t = 0; t < numThreads; ++t) {
+        const auto startIdx = t * chunkSize;
+        const auto endIdx = std::min(startIdx + chunkSize, testCases.size());
+        if (startIdx < testCases.size()) {
+            threads.emplace_back(processTestCases, startIdx, endIdx);
+        }
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
+    }
 
     std::cout << "\n";
 

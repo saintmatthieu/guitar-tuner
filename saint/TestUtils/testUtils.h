@@ -100,7 +100,7 @@ struct Cents {
     float rms = 0.f;
     float avg = 0.f;
 };
-std::optional<Cents> getError(const Sample& sample, const std::vector<ProcessEstimate>& results);
+std::optional<Cents> getError(float truePitchHz, const std::vector<float>& estimates);
 
 // Value comparison utility
 template <typename T>
