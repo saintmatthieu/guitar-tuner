@@ -9,7 +9,7 @@ class PitchDetectorLoggerInterface;
 
 class CepstrumData {
    public:
-    CepstrumData(int fftSize);
+    CepstrumData(int fftSize, int sampleRate);
 
     RealFft fft;
     const std::vector<float> halfWindow;

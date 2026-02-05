@@ -73,18 +73,20 @@ std::vector<float> saint::fromCepstrum(RealFft& fft, const float* cepstrumPtr) {
 
 namespace saint {
 namespace {
-std::vector<float> getHalfWindow(int fftSize) {
+std::vector<float> getHalfWindow(int fftSize, int sampleRate) {
     // We'll only be keeping the lower part of the spectrum - the rest is just too
     // noisy. The rest will be zeroed and it will act as zero-padding.
-    std::vector<float> window = utils::getAnalysisWindow(fftSize / 8, utils::WindowType::Hann);
+    constexpr float cutoffFreq = 5000.f;
+    const auto cutoffBin = std::min<int>(fftSize / 2, fftSize * cutoffFreq / sampleRate);
+    std::vector<float> window = utils::getAnalysisWindow(cutoffBin * 2, utils::WindowType::Hann);
     window.erase(window.begin(), window.begin() + window.size() / 2 - 1);
     return window;
 }
 
 }  // namespace
 
-CepstrumData::CepstrumData(int fftSize)
-    : fft(RealFft(fftSize)), halfWindow(getHalfWindow(fftSize)) {
+CepstrumData::CepstrumData(int fftSize, int sampleRate)
+    : fft(RealFft(fftSize)), halfWindow(getHalfWindow(fftSize, sampleRate)) {
     _cepstrum.value.resize(this->fft.size);
 }
 }  // namespace saint

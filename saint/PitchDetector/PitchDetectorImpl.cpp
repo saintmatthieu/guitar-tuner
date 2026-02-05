@@ -276,7 +276,7 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _binFreq(static_cast<float>(sampleRate) / _fftSize),
       _fwdFft(_fftSize),
       _cepstrumFft(_fftSize),
-      _lifteredCepstrumData(_fftSize),
+      _lifteredCepstrumData(_fftSize, sampleRate),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)),
