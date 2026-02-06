@@ -1,6 +1,7 @@
 #include "Cepstrum.h"
 
 #include <algorithm>
+#include <cassert>
 
 #include "PitchDetectorLoggerInterface.h"
 #include "Utils.h"
@@ -13,12 +14,12 @@ void saint::toCepstrum(const std::vector<std::complex<float>>& spectrum, Cepstru
 
     const auto halfWindowSize = cepstrumData.halfWindow.size();
 
-    utils::getDbSpectrum(spectrum, windowedDbSpec, halfWindowSize);
+    utils::getPowerSpectrum(spectrum, windowedDbSpec);
 
     // Apply half-windowing to reduce spectral leakage in the cepstrum.
     std::transform(windowedDbSpec.begin(), windowedDbSpec.begin() + halfWindowSize,
                    cepstrumData.halfWindow.begin(), windowedDbSpec.begin(),
-                   [](float x, float w) { return x * w; });
+                   [](float x, float w) { return utils::FastDb(x) * w; });
 
     // Fill the rest with zeros
     const auto k = cepstrumData.fft.size / 2 - halfWindowSize + 1;
@@ -37,6 +38,9 @@ void saint::toCepstrum(const std::vector<std::complex<float>>& spectrum, Cepstru
 
 void saint::toCepstrum(const std::vector<float>& logSpectrum, RealFft& fft,
                        Aligned<std::vector<float>>& cepstrumAligned) {
+    assert(logSpectrum.size() == static_cast<size_t>(fft.size));
+    assert(utils::isSymmetric(logSpectrum));
+
     auto& cepstrum = cepstrumAligned.value;
     cepstrum.resize(fft.size);
 
@@ -58,6 +62,7 @@ void saint::toCepstrum(const std::vector<float>& logSpectrum, RealFft& fft,
     // Now mirror the rest.
     std::reverse_copy(cepstrum.begin() + 1, cepstrum.begin() + fft.size / 2,
                       cepstrum.end() - (fft.size / 2 - 1));
+    assert(utils::isSymmetric(cepstrum));
 }
 
 std::vector<float> saint::fromCepstrum(RealFft& fft, const float* cepstrumPtr) {
@@ -74,7 +79,10 @@ std::vector<float> saint::fromCepstrum(RealFft& fft, const float* cepstrumPtr) {
         spectrum[i] = spectrum[2 * i] * scale;
     }
     spectrum[fft.size / 2] = nyquist;
-    spectrum.resize(fft.size / 2 + 1);
+    for (auto i = fft.size / 2 + 1; i < fft.size; ++i) {
+        spectrum[i] = spectrum[fft.size - i];
+    }
+    assert(utils::isSymmetric(spectrum));
     return spectrum;
 }
 

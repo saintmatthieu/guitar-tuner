@@ -38,12 +38,34 @@ constexpr float FastDb(float power) {
     return 10.f * log10;
 }
 
+constexpr bool isPowerOfTwo(int x) {
+    return (x & (x - 1)) == 0 && x > 0;
+}
+static_assert(isPowerOfTwo(2));
+static_assert(!isPowerOfTwo(3));
+static_assert(isPowerOfTwo(1024));
+static_assert(!isPowerOfTwo(1024 + 96));
+
 /**
- * @param count `spectrum` and `out` have the same FFT format, but only the first `count`
- * bins are transformed, to save computation.
+ * @brief Checks for symmetry in a hermitian sense: vec[i] == vec[size - i]
+ * Only valid for containers of non-complex types.
  */
-void getDbSpectrum(const std::vector<std::complex<float>>& spectrum, std::vector<float>& out,
-                   int count = -1);
+template <typename T>
+constexpr bool isSymmetric(const T& vec) {
+    for (size_t i = 1; i < vec.size() / 2; ++i) {
+        if (std::complex(vec[i]) != vec[vec.size() - i]) {
+            return false;
+        }
+    }
+    return true;
+}
+static_assert(isSymmetric(std::array<int, 8>{0, 1, 2, 3, 4, 3, 2, 1}));
+
+/**
+ * @brief Get full power spectrum (including symmetric part) from the half-spectrum returned by the
+ * FFT.
+ */
+void getPowerSpectrum(const std::vector<std::complex<float>>& spectrum, std::vector<float>& out);
 
 float getApproximateGcd(const std::vector<float>& values);
 
@@ -60,7 +82,7 @@ std::pair<float, float> polyFit(const std::vector<float>& x, const std::vector<f
                                 const std::vector<float>& weights = {});
 
 template <typename T, typename U>
-double leastSquareFit(const T& x, const U& y) {
+constexpr double leastSquareFit(const T& x, const U& y) {
     auto num = 0.;
     auto den = 0.;
     for (auto i = 0; i < x.size(); ++i) {

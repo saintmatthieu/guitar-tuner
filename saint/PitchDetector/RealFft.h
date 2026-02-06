@@ -3,6 +3,7 @@
 #include <complex>
 #include <vector>
 
+#include "Utils.h"
 #include "pffft.h"
 
 namespace saint {
@@ -15,6 +16,7 @@ struct alignas(16) Aligned {
 class RealFft {
    public:
     RealFft(int size) : setup(pffft_new_setup(size, PFFFT_REAL)), size(size) {
+        assert(utils::isPowerOfTwo(size));
         work.value.resize(size);
     }
 

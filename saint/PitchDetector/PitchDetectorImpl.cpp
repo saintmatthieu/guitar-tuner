@@ -367,8 +367,11 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     _logger->Log(freq.data(), freq.size(), "spectrum",
                  [](const std::complex<float>& X) { return std::abs(X); });
 
-    std::vector<float> dbSpectrum(freq.size() + 1);
-    utils::getDbSpectrum(freq, dbSpectrum);
+    std::vector<float> dbSpectrum(_fftSize);
+    utils::getPowerSpectrum(freq, dbSpectrum);
+    std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
+                   [](float power) { return utils::FastDb(power); });
+    assert(utils::isSymmetric(dbSpectrum));
     _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
     // Compute cross-correlation
@@ -415,16 +418,10 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
 }
 
 void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
-    assert(logSpectrum.size() == _fftSize / 2 + 1);
     auto& spec = logSpectrum;
 
-    spec.resize(_fftSize);
-    for (auto i = _fftSize / 2 + 1; i < _fftSize; ++i) {
-        spec[i] = spec[_fftSize - i];
-    }
     Aligned<std::vector<float>> cepstrumAligned;
     toCepstrum(spec, _cepstrumFft, cepstrumAligned);
-    spec.resize(_fftSize / 2 + 1);
 
     const std::vector<float>& cepstrum = cepstrumAligned.value;
     std::vector<float> lifteredCepstrum = cepstrum;
@@ -460,6 +457,9 @@ void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
                    [noiseThreshold](float x) { return x - noiseThreshold; });
 
     _logger->Log(spec.data(), spec.size(), "idealSpectrum");
+
+    assert(utils::isSymmetric(spec));
+    assert(utils::isPowerOfTwo(spec.size()));
 }
 
 }  // namespace saint

@@ -91,22 +91,23 @@ std::vector<float> utils::getAnalysisWindow(int windowSize, WindowType type) {
     return window;
 }
 
-void utils::getDbSpectrum(const std::vector<std::complex<float>>& spectrum, std::vector<float>& out,
-                          int count) {
+void utils::getPowerSpectrum(const std::vector<std::complex<float>>& spectrum,
+                             std::vector<float>& out) {
     // First bin is DC ...
-    const auto upTo = count < 0 ? spectrum.size() : static_cast<size_t>(count);
-    assert(out.size() >= upTo);
-    if (upTo == 0) {
-        return;
-    }
-    out[0] = utils::FastDb(spectrum[0].real() * spectrum[0].real());
-    std::transform(spectrum.data() + 1, spectrum.data() + upTo, out.data() + 1,
-                   [&](const std::complex<float>& X) {
-                       const auto power = X.real() * X.real() + X.imag() * X.imag();
-                       return utils::FastDb(power);
-                   });
+    const auto fftSize = spectrum.size() * 2;
+    assert(isPowerOfTwo(fftSize));
+    out.resize(fftSize);
+    out[0] = spectrum[0].real() * spectrum[0].real();
+    std::transform(spectrum.begin() + 1, spectrum.end(), out.begin() + 1, [&](const auto& X) {
+        const auto power = X.real() * X.real() + X.imag() * X.imag();
+        return power;
+    });
     // ... and Nyquist.
-    out.back() = utils::FastDb(spectrum[0].imag() * spectrum[0].imag());
+    out[fftSize / 2] = spectrum[0].imag() * spectrum[0].imag();
+    for (auto i = fftSize / 2 + 1; i < fftSize; ++i) {
+        out[i] = out[fftSize - i];
+    }
+    assert(isSymmetric(out));
 }
 
 float utils::quadFit(const float* y) {
