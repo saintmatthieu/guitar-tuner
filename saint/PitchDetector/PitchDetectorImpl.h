@@ -48,7 +48,6 @@ class PitchDetectorImpl : public PitchDetector {
     const float _binFreq;
     RealFft _fwdFft;
     RealFft _cepstrumFft;
-    CepstrumData _lifteredCepstrumData;
     const std::vector<float> _lpWindow;
     const float _minFreq;
     const float _maxFreq;

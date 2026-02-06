@@ -20,6 +20,7 @@ bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 zero_bin_index = np.argmin(np.abs(bin_centers))
 percentage_at_zero = counts[zero_bin_index]
 
+plt.figure(1)
 plt.xlabel('Error (Cents)')
 plt.ylabel('Percents (%)')
 plt.xlim(-2500, 2500)
@@ -27,5 +28,15 @@ plt.xlim(-2500, 2500)
 plt.xticks([-2400, -1200, 0, 1200, 2400], ['-2 Octaves', '-1 Octave', '0', '1 Octave', '2 Octaves'])
 plt.title('Error histogram : {:.2f}% within +/- 50 cents'.format(percentage_at_zero))
 plt.grid(True)
-plt.show()
 plt.gcf().canvas.manager.set_window_title("Error histogram")
+
+plt.figure(2)
+# meaningful if only one file was tested
+plt.plot(errors.errors)
+plt.xlabel('Frame Index')
+plt.ylabel('Error (Cents)')
+plt.title('Error over time')
+plt.grid(True)
+plt.gcf().canvas.manager.set_window_title("Error over time")
+
+plt.show()

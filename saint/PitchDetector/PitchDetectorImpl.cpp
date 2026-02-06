@@ -276,7 +276,6 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _binFreq(static_cast<float>(sampleRate) / _fftSize),
       _fwdFft(_fftSize),
       _cepstrumFft(_fftSize),
-      _lifteredCepstrumData(_fftSize, sampleRate),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)),
@@ -350,7 +349,6 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     _logger->SamplesRead(_blockSize);
     _logger->Log(_sampleRate, "sampleRate");
     _logger->Log(_fftSize, "fftSize");
-    _logger->Log(_lifteredCepstrumData.fft.size, "cepstrumFftSize");
     _logger->Log(time.data(), time.size(), "inputAudio");
 
     // zero all samples below -60dB
@@ -372,9 +370,6 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     std::vector<float> dbSpectrum(freq.size() + 1);
     utils::getDbSpectrum(freq, dbSpectrum);
     _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
-
-    // Cepstrum analysis
-    toCepstrum(freq, _lifteredCepstrumData, *_logger);
 
     // Compute cross-correlation
     getXCorr(_fwdFft, time, freq, _lpWindow);
@@ -405,15 +400,16 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         return 0.f;
     }
 
-    const auto cepstrumEstimate = getCepstrumPeakFrequency(_lifteredCepstrumData);
+    const auto xcorrEstimate = static_cast<float>(_sampleRate) / maxIndex;
 
-    const auto refinedEstimate =
-        refineEstimateBasedOnStrongestHarmonic(dbSpectrum, cepstrumEstimate);
+    const auto refinedEstimate = refineEstimateBasedOnStrongestHarmonic(dbSpectrum, xcorrEstimate);
 
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
 
     const auto disambiguatedEstimate = disambiguateEstimate(refinedEstimate, idealSpectrum);
+
+    _logger->EndNewEstimate(nullptr, 0);
 
     return disambiguatedEstimate;
 }
