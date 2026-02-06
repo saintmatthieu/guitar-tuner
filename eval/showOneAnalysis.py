@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 
 t0 = pdl.audioIndex / pdl.sampleRate
 t = np.array([i / pdl.sampleRate for i in range(len(pdl.inputAudio))])
-cepstrumT = [i / pdl.sampleRate for i in range(len(pdl.cepstrum))]
 hzPerBin = pdl.sampleRate / pdl.fftSize
-F = len(pdl.windowedDbSpec) // 2
+F = len(pdl.dbSpectrum) // 2
 f = [i * hzPerBin for i in range(F)]
 fig = 0
 
@@ -55,35 +54,6 @@ plt.plot(pdl.xcorr)
 plt.grid(True)
 plt.suptitle("Autocorrelation")
 plt.gcf().canvas.manager.set_window_title("Autocorrelation")
-
-fig += 1
-plt.figure(fig)
-plt.subplot(2, 1, 1)
-plt.plot(f, pdl.windowedDbSpec[:F])
-plt.xlabel("Frequency (Hz)")
-plt.ylabel("dB")
-plt.grid(True)
-plt.subplot(2, 1, 2)
-plt.plot(pdl.windowedDbSpec[:F])
-plt.xlabel("Frequency Bin")
-plt.ylabel("dB")
-plt.grid(True)
-# plt.xlim(0, 2000 / hzPerBin)
-plt.suptitle("Windowed dB Spectrum")
-plt.gcf().canvas.manager.set_window_title("Windowed dB Spectrum")
-
-fig += 1
-plt.figure(fig)
-plt.subplot(2, 1, 1)
-plt.plot(cepstrumT, pdl.cepstrum)
-plt.xlabel("Quefrency (s)")
-plt.grid(True)
-plt.subplot(2, 1, 2)
-plt.plot(pdl.cepstrum)
-plt.xlabel("Cepstrum Bin")
-plt.grid(True)
-plt.suptitle("Cepstrum")
-plt.gcf().canvas.manager.set_window_title("Cepstrum")
 
 fig += 1
 plt.figure(fig)

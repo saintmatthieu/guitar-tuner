@@ -30,13 +30,13 @@ plt.title('Error histogram : {:.2f}% within +/- 50 cents'.format(percentage_at_z
 plt.grid(True)
 plt.gcf().canvas.manager.set_window_title("Error histogram")
 
-plt.figure(2)
-# meaningful if only one file was tested
-plt.plot(errors.errors)
-plt.xlabel('Frame Index')
-plt.ylabel('Error (Cents)')
-plt.title('Error over time')
-plt.grid(True)
-plt.gcf().canvas.manager.set_window_title("Error over time")
+# # meaningful if only one file was tested
+# plt.figure(2)
+# plt.plot(errors.errors)
+# plt.xlabel('Frame Index')
+# plt.ylabel('Error (Cents)')
+# plt.title('Error over time')
+# plt.grid(True)
+# plt.gcf().canvas.manager.set_window_title("Error over time")
 
 plt.show()

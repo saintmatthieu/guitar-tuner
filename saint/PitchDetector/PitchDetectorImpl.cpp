@@ -168,11 +168,11 @@ float disambiguateFundamentalIndex(float priorIndex, const std::vector<float>& i
 
     constexpr auto K = 15;  // Number of harmonics used
 
-    constexpr auto numAlternatives = 6;
+    constexpr auto numAlternatives = 5;
     constexpr std::array<float, numAlternatives> alternatives{
-        1.f,           // Keep 1 in front in case all estimates are zero
-        2.f,     4.f,  //
-        1 / 2.f, 1 / 3.f, 1 / 4.f};
+        1.f,            // Keep 1 in front in case all estimates are zero
+        2.f, 3.f, 4.f,  //
+        1 / 2.f};
 
     std::vector<float> scores(numAlternatives, 0.f);
     std::vector<std::array<float, K>> indicesVector(numAlternatives);
