@@ -37,6 +37,7 @@ class PitchDetectorImpl : public PitchDetector {
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
 
     void toIdealSpectrum(std::vector<float>& logSpectrum);
+    void updateNoiseProfile(const std::vector<float>& dbSpectrum, float presenceScore);
 
     const int _sampleRate;
     const ChannelFormat _channelFormat;
@@ -56,5 +57,6 @@ class PitchDetectorImpl : public PitchDetector {
     const int _latencySamples;
     std::vector<float> _audioBuffer;
     bool _bufferErrorLoggedAlready = false;
+    std::vector<float> _noiseProfile;  // Running estimate of the noise spectral envelope
 };
 }  // namespace saint

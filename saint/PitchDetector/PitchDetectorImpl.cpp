@@ -398,6 +398,8 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         *presenceScore = maximum;
     }
 
+    updateNoiseProfile(dbSpectrum, maximum);
+
     constexpr auto threshold = 0.88f;
     if (maximum < threshold) {
         return 0.f;
@@ -417,6 +419,42 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     return disambiguatedEstimate;
 }
 
+void PitchDetectorImpl::updateNoiseProfile(const std::vector<float>& dbSpectrum,
+                                           float presenceScore) {
+    // Adaptation rate depends on presence score:
+    // - presenceScore = 0 -> alpha = maxAlpha (fast adaptation, confident it's noise)
+    // - presenceScore = threshold -> alpha = 0 (no adaptation, pitch is present)
+    constexpr auto threshold = 0.88f;
+    constexpr float maxAlpha = 0.15f;
+
+    // Linear interpolation: alpha decreases as presence score increases
+    const float alpha = std::max(0.f, maxAlpha * (1.f - presenceScore / threshold));
+
+    if (alpha == 0.f) {
+        return;  // No adaptation when pitch is detected
+    }
+
+    // Compute spectral envelope from cepstrum
+    Aligned<std::vector<float>> cepstrumAligned;
+    toCepstrum(dbSpectrum, _cepstrumFft, cepstrumAligned);
+
+    const std::vector<float>& cepstrum = cepstrumAligned.value;
+    std::vector<float> lifteredCepstrum = cepstrum;
+    const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
+    std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
+              0.f);
+
+    const std::vector<float> envelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
+
+    if (_noiseProfile.empty()) {
+        _noiseProfile = envelope;
+    } else {
+        for (size_t i = 0; i < _noiseProfile.size(); ++i) {
+            _noiseProfile[i] = alpha * envelope[i] + (1.f - alpha) * _noiseProfile[i];
+        }
+    }
+}
+
 void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
     auto& spec = logSpectrum;
 
@@ -432,7 +470,11 @@ void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
     const std::vector<float> spectrumEnvelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
     _logger->Log(spectrumEnvelope.data(), spectrumEnvelope.size(), "spectrumEnvelope");
 
-    std::transform(spec.begin(), spec.end(), spectrumEnvelope.begin(), spec.begin(),
+    // If we have a noise profile, use it; otherwise fall back to current envelope
+    const std::vector<float>& profileToSubtract =
+        _noiseProfile.empty() ? spectrumEnvelope : _noiseProfile;
+
+    std::transform(spec.begin(), spec.end(), profileToSubtract.begin(), spec.begin(),
                    std::minus<float>());
 
     // Calculate the variance from 5kHz to the Nyquist
