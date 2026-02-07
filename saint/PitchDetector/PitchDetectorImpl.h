@@ -36,8 +36,9 @@ class PitchDetectorImpl : public PitchDetector {
 
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
 
-    void toIdealSpectrum(std::vector<float>& logSpectrum);
-    void updateNoiseProfile(const std::vector<float>& dbSpectrum, float presenceScore);
+    void toIdealSpectrum(std::vector<float>& logSpectrum, const std::vector<float>& cepstrum);
+    void updateNoiseProfile(const std::vector<float>& dbSpectrum,
+                            const std::vector<float>& cepstrum, float presenceScore);
 
     const int _sampleRate;
     const ChannelFormat _channelFormat;

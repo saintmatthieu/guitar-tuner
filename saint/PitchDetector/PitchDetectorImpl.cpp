@@ -399,7 +399,10 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
         *presenceScore = maximum;
     }
 
-    updateNoiseProfile(dbSpectrum, maximum);
+    Aligned<std::vector<float>> cepstrumAligned;
+    toCepstrum(dbSpectrum, _cepstrumFft, cepstrumAligned);
+
+    updateNoiseProfile(dbSpectrum, cepstrumAligned.value, maximum);
 
     if (maximum < _threshold) {
         return 0.f;
@@ -410,7 +413,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
     const auto refinedEstimate = refineEstimateBasedOnStrongestHarmonic(dbSpectrum, xcorrEstimate);
 
     auto idealSpectrum = dbSpectrum;
-    toIdealSpectrum(idealSpectrum);
+    toIdealSpectrum(idealSpectrum, cepstrumAligned.value);
 
     const auto disambiguatedEstimate = disambiguateEstimate(refinedEstimate, idealSpectrum);
 
@@ -420,6 +423,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
 }
 
 void PitchDetectorImpl::updateNoiseProfile(const std::vector<float>& dbSpectrum,
+                                           const std::vector<float>& cepstrum,
                                            float presenceScore) {
     // Adaptation rate depends on presence score:
     // - presenceScore = 0 -> alpha = maxAlpha (fast adaptation, confident it's noise)
@@ -432,11 +436,6 @@ void PitchDetectorImpl::updateNoiseProfile(const std::vector<float>& dbSpectrum,
         return;  // No adaptation when pitch is detected
     }
 
-    // Compute spectral envelope from cepstrum
-    Aligned<std::vector<float>> cepstrumAligned;
-    toCepstrum(dbSpectrum, _cepstrumFft, cepstrumAligned);
-
-    const std::vector<float>& cepstrum = cepstrumAligned.value;
     std::vector<float> lifteredCepstrum = cepstrum;
     const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
     std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
@@ -453,13 +452,10 @@ void PitchDetectorImpl::updateNoiseProfile(const std::vector<float>& dbSpectrum,
     }
 }
 
-void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
+void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum,
+                                        const std::vector<float>& cepstrum) {
     auto& spec = logSpectrum;
 
-    Aligned<std::vector<float>> cepstrumAligned;
-    toCepstrum(spec, _cepstrumFft, cepstrumAligned);
-
-    const std::vector<float>& cepstrum = cepstrumAligned.value;
     std::vector<float> lifteredCepstrum = cepstrum;
     const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
     std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
