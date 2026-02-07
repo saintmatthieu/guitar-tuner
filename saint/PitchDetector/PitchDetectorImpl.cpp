@@ -282,7 +282,8 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / _minFreq))),
       _windowXcor(getWindowXCorr(_fwdFft, _window, _lpWindow)),
       _latencySamples(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0)),
-      _audioBuffer(_latencySamples, 0.f) {
+      _audioBuffer(_latencySamples, 0.f),
+      _maxAlpha(0.0015f * sampleRate / samplesPerBlockPerChannel) {
     //
     _audioBuffer.reserve(_window.size());
     _logger->SamplesRead(-_latencySamples);
@@ -400,8 +401,7 @@ float PitchDetectorImpl::process(const float* audio, float* presenceScore) {
 
     updateNoiseProfile(dbSpectrum, maximum);
 
-    constexpr auto threshold = 0.88f;
-    if (maximum < threshold) {
+    if (maximum < _threshold) {
         return 0.f;
     }
 
@@ -424,11 +424,9 @@ void PitchDetectorImpl::updateNoiseProfile(const std::vector<float>& dbSpectrum,
     // Adaptation rate depends on presence score:
     // - presenceScore = 0 -> alpha = maxAlpha (fast adaptation, confident it's noise)
     // - presenceScore = threshold -> alpha = 0 (no adaptation, pitch is present)
-    constexpr auto threshold = 0.88f;
-    constexpr float maxAlpha = 0.15f;
 
     // Linear interpolation: alpha decreases as presence score increases
-    const float alpha = std::max(0.f, maxAlpha * (1.f - presenceScore / threshold));
+    const float alpha = std::max(0.f, _maxAlpha * (1.f - presenceScore / _threshold));
 
     if (alpha == 0.f) {
         return;  // No adaptation when pitch is detected

@@ -58,5 +58,7 @@ class PitchDetectorImpl : public PitchDetector {
     std::vector<float> _audioBuffer;
     bool _bufferErrorLoggedAlready = false;
     std::vector<float> _noiseProfile;  // Running estimate of the noise spectral envelope
+    const float _threshold = 0.88f;
+    const float _maxAlpha;
 };
 }  // namespace saint
