@@ -67,7 +67,12 @@ static_assert(isSymmetric(std::array<int, 8>{0, 1, 2, 3, 4, 3, 2, 1}));
  */
 void getPowerSpectrum(const std::vector<std::complex<float>>& spectrum, std::vector<float>& out);
 
-float getApproximateGcd(const std::vector<float>& values);
+struct GcdEstimate {
+    float value = 1.f;
+    float rms = -1.f;
+};
+
+GcdEstimate getApproximateGcd(const std::vector<float>& values);
 
 /**
  * @brief assuming y to be of size 3 with y[1] the maximum and the x coordinates -1, 0, 1,

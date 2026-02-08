@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <numeric>
 
 namespace saint {
@@ -114,42 +115,6 @@ float utils::quadFit(const float* y) {
     // vertex at x = 0.5 * (y[-1] - y[1]) / (y[-1] - 2 * y[0] + y[1])
     const auto delta = 0.5f * (y[0] - y[2]) / (y[2] - 2 * y[1] + y[0]);
     return delta;
-}
-
-float utils::getApproximateGcd(const std::vector<float>& values) {
-    if (values.size() < 2) {
-        return 0.f;
-    }
-
-    // Use a histogram approach to find the approximate GCD.
-    const float minValue = *std::min_element(values.begin(), values.end());
-    const float maxValue = *std::max_element(values.begin(), values.end());
-    const int numBins = 100;
-    std::vector<int> histogram(numBins, 0);
-    const float binSize = (maxValue - minValue) / numBins;
-
-    for (const auto value : values) {
-        for (float factor = 1.f; factor * value <= maxValue; factor += 1.f) {
-            const float scaledValue = factor * value;
-            const int binIndex = static_cast<int>((scaledValue - minValue) / binSize);
-            if (binIndex >= 0 && binIndex < numBins) {
-                histogram[binIndex]++;
-            }
-        }
-    }
-
-    // Find the bin with the maximum count.
-    int maxCount = 0;
-    int bestBinIndex = 0;
-    for (int i = 0; i < numBins; ++i) {
-        if (histogram[i] >= maxCount) {
-            maxCount = histogram[i];
-            bestBinIndex = i;
-        }
-    }
-
-    // The approximate GCD is the center of the best bin.
-    return minValue + (bestBinIndex + 0.5f) * binSize;
 }
 
 namespace {
@@ -273,5 +238,51 @@ int utils::getIndexOfClosestLocalMaximum(const std::vector<float>& values, int s
         --i;
     }
     return i;
+}
+
+utils::GcdEstimate utils::getApproximateGcd(const std::vector<float>& values) {
+    if (values.size() < 2) {
+        return {0.f, -1.f};
+    }
+
+    // Find the minimum positive value to use as a starting point
+    float minVal = std::numeric_limits<float>::max();
+    for (const auto v : values) {
+        if (v > 0.f && v < minVal) {
+            minVal = v;
+        }
+    }
+
+    if (minVal == std::numeric_limits<float>::max() || minVal == 0.f) {
+        return {0.f, -1.f};
+    }
+
+    GcdEstimate best{minVal, std::numeric_limits<float>::max()};
+
+    // Try divisors from 1 up to a reasonable maximum
+    // The GCD cannot be larger than the smallest value
+    const int maxDivisor = static_cast<int>(minVal) + 1;
+    for (int divisor = 1; divisor <= std::min(maxDivisor, 10); ++divisor) {
+        const float candidate = minVal / divisor;
+        if (candidate <= 0.f) {
+            continue;
+        }
+
+        // Compute RMS error: how close each value is to being an integer multiple of candidate
+        float sumSquaredError = 0.f;
+        for (const auto v : values) {
+            const float ratio = v / candidate;
+            const float nearestInt = std::round(ratio);
+            const float error = ratio - nearestInt;
+            sumSquaredError += error * error;
+        }
+        const float rms = std::sqrt(sumSquaredError / values.size());
+
+        if (rms < best.rms) {
+            best = {candidate, rms};
+        }
+    }
+
+    return best;
 }
 }  // namespace saint
