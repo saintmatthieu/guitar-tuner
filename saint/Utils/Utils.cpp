@@ -171,7 +171,7 @@ std::vector<int> getHighestLocalMaxima(const float* dbValues, size_t size, int o
 }
 }  // namespace
 
-std::pair<float, float> utils::polyFit(const std::vector<float>& x, const std::vector<float>& y,
+std::pair<float, float> utils::lineFit(const std::vector<float>& x, const std::vector<float>& y,
                                        const std::vector<float>& weights) {
     assert(x.size() == y.size());
     const size_t n = x.size();

@@ -78,16 +78,19 @@ float getApproximateGcd(const std::vector<float>& values);
  */
 float quadFit(const float* y);
 
-std::pair<float, float> polyFit(const std::vector<float>& x, const std::vector<float>& y,
+std::pair<float, float> lineFit(const std::vector<float>& x, const std::vector<float>& y,
                                 const std::vector<float>& weights = {});
 
 template <typename T, typename U>
-constexpr double leastSquareFit(const T& x, const U& y) {
-    auto num = 0.;
-    auto den = 0.;
+constexpr typename U::value_type leastSquareFit(const T& x, const U& y, U w = {}) {
+    if (w.size() != y.size()) {
+        w.resize(y.size(), 1.f);
+    }
+    typename U::value_type num = 0;
+    typename U::value_type den = 0;
     for (auto i = 0; i < x.size(); ++i) {
-        num += x[i] * y[i];
-        den += x[i] * x[i];
+        num += x[i] * y[i] * w[i];
+        den += x[i] * x[i] * w[i];
     }
     const auto a = num / den;
 
