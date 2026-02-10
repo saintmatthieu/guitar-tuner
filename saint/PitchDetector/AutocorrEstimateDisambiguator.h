@@ -21,9 +21,6 @@ class AutocorrEstimateDisambiguator {
     float process(float xcorrEstimate, const std::vector<std::complex<float>>& spectrum);
 
    private:
-    float refineEstimateBasedOnStrongestHarmonic(const std::vector<float>& logSpectrum,
-                                                 float targetFreq) const;
-
     float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum) const;
 
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;

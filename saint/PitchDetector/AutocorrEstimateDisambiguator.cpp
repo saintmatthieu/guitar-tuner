@@ -275,31 +275,6 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)) {}
 
-float AutocorrEstimateDisambiguator::refineEstimateBasedOnStrongestHarmonic(
-    const std::vector<float>& logSpectrum, float targetFreq) const {
-    constexpr auto numHarmonics = 10;
-    std::vector<int> peakBins(numHarmonics);
-    for (auto k = 1; k <= numHarmonics; ++k) {
-        const auto targetBin = static_cast<int>(targetFreq * k / _binFreq + 0.5f);
-        const auto peakBin = utils::getIndexOfClosestLocalMaximum(logSpectrum, targetBin);
-        peakBins[k - 1] = peakBin;
-    }
-    const auto it = std::max_element(peakBins.begin(), peakBins.end(),
-                                     [&](int i, int j) { return logSpectrum[i] < logSpectrum[j]; });
-    const int k = std::distance(peakBins.begin(), it) + 1;
-    const int peakBin{*it};  // make sure there is no narrowing conversion
-
-    // parabolic interpolation
-    if (peakBin <= 0 || peakBin >= logSpectrum.size() - 1) {
-        return static_cast<float>(peakBin) * _binFreq / k;
-    }
-
-    const auto delta = utils::quadFit(&logSpectrum[peakBin - 1]);
-
-    const auto refined = (static_cast<float>(peakBin) + delta) * _binFreq / k;
-    return refined;
-}
-
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
                                              const std::vector<std::complex<float>>& spectrum) {
     std::vector<float> dbSpectrum(_fftSize);
@@ -309,12 +284,10 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
     assert(utils::isSymmetric(dbSpectrum));
     _logger.Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
-    const auto refinedEstimate = refineEstimateBasedOnStrongestHarmonic(dbSpectrum, xcorrEstimate);
-
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
 
-    const auto disambiguatedEstimate = disambiguateEstimate(refinedEstimate, idealSpectrum);
+    const auto disambiguatedEstimate = disambiguateEstimate(xcorrEstimate, idealSpectrum);
 
     return disambiguatedEstimate;
 }
