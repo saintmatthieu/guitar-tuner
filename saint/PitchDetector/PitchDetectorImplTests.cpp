@@ -330,8 +330,11 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                    minFreq, *logger);
             AutocorrPitchDetector autocorrPitchDetector(noisy.sampleRate, transformer.fftSize(),
                                                         transformer.window(), minFreq, *logger);
+            AutocorrEstimateDisambiguator disambiguator(noisy.sampleRate, transformer.fftSize(),
+                                                        config, *logger);
+
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                std::move(transformer), std::move(autocorrPitchDetector), noisy.sampleRate, config,
+                std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
                 std::move(logger));
             PitchDetector* pitchDetector = internalAlgorithm.get();
             std::unique_ptr<PitchDetectorMedianFilter> medianFilter;

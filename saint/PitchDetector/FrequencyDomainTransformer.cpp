@@ -8,7 +8,6 @@
 #include <iostream>
 
 #include "PitchDetectorLoggerInterface.h"
-#include "PitchDetectorUtils.h"
 
 namespace saint {
 namespace {
@@ -33,37 +32,6 @@ void applyWindow(const std::vector<float>& window, std::vector<float>& input) {
     for (auto i = 0u; i < window.size(); ++i) {
         input[i] *= window[i];
     }
-}
-
-void getXCorr(RealFft& fft, std::vector<float>& time, std::vector<std::complex<float>> freq,
-              const std::vector<float>& lpWindow) {
-    auto timeData = time.data();
-
-    for (auto i = 0u; i < lpWindow.size(); ++i) {
-        auto& X = freq[i];
-        X *= lpWindow[i] * std::complex<float>{X.real(), -X.imag()};
-    }
-    std::fill(freq.data() + lpWindow.size(), freq.data() + fft.size / 2, 0.f);
-    fft.inverse(freq.data(), timeData);
-    if (timeData[0] < 1e-6f) {
-        return;
-    }
-    const auto normalizer = 1.f / timeData[0];
-    for (auto i = 0; i < fft.size; ++i) {
-        timeData[i] *= normalizer;
-    }
-}
-
-std::vector<float> getLpWindow(int sampleRate, int fftSize) {
-    std::vector<float> window(fftSize / 2);
-    const int cutoffBin = std::min(fftSize / 2, fftSize * cutoffFreq / sampleRate);
-    const int rollOffSize = fftSize * 200 / sampleRate;
-    std::fill(window.begin(), window.begin() + cutoffBin, 1.f);
-    for (auto i = 0; i < rollOffSize && cutoffBin + rollOffSize < fftSize / 2; ++i) {
-        window[cutoffBin + i] = 1.f - i / static_cast<float>(rollOffSize);
-    }
-    std::fill(window.begin() + cutoffBin + rollOffSize, window.end(), 0.f);
-    return window;
 }
 
 std::vector<std::complex<float>> getSpectrum(RealFft& fft, const float* timeData) {

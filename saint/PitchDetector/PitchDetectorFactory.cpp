@@ -1,5 +1,6 @@
 #include "PitchDetectorFactory.h"
 
+#include "AutocorrEstimateDisambiguator.h"
 #include "DummyPitchDetectorLogger.h"
 #include "FrequencyDomainTransformer.h"
 #include "PitchDetectorImpl.h"
@@ -21,9 +22,11 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
     AutocorrPitchDetector autocorrPitchDetector(sampleRate, transformer.fftSize(),
                                                 transformer.window(), minFreq, *logger);
 
+    AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.fftSize(), config, *logger);
+
     auto impl = std::make_unique<PitchDetectorImpl>(std::move(transformer),
-                                                    std::move(autocorrPitchDetector), sampleRate,
-                                                    config, std::move(logger));
+                                                    std::move(autocorrPitchDetector),
+                                                    std::move(disambiguator), std::move(logger));
 
     return std::make_unique<PitchDetectorMedianFilter>(sampleRate, samplesPerBlockPerChannel,
                                                        std::move(impl));

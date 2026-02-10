@@ -5,6 +5,7 @@ target_compile_options(PitchDetector PRIVATE ${SAINT_ANNOYING_WARNINGS})
 target_sources(PitchDetector
   PUBLIC
     Cepstrum.cpp
+    AutocorrEstimateDisambiguator.cpp
     AutocorrPitchDetector.cpp
     PitchDetectorFactory.cpp
     PitchDetectorImpl.cpp

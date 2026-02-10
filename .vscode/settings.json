@@ -4,5 +4,5 @@
   ],
   "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}",
   "cmake.generator": "Ninja",
-  "cSpell.words": ["Autocorr", "Disambiguator"]
+  "cSpell.words": ["Autocorr", "Disambiguator", "xcorr"]
 }
