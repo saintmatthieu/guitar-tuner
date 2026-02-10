@@ -21,7 +21,28 @@ class RealFft {
     }
 
     ~RealFft() {
-        pffft_destroy_setup(setup);
+        if (setup)
+            pffft_destroy_setup(setup);
+    }
+
+    RealFft(const RealFft&) = delete;
+    RealFft& operator=(const RealFft&) = delete;
+
+    RealFft(RealFft&& other) noexcept
+        : setup(other.setup), size(other.size), work(std::move(other.work)) {
+        other.setup = nullptr;
+    }
+
+    RealFft& operator=(RealFft&& other) noexcept {
+        if (this != &other) {
+            if (setup)
+                pffft_destroy_setup(setup);
+            setup = other.setup;
+            size = other.size;
+            work = std::move(other.work);
+            other.setup = nullptr;
+        }
+        return *this;
     }
 
     void forward(const float* input, float* output) {
@@ -42,8 +63,8 @@ class RealFft {
                                 work.value.data(), PFFFT_BACKWARD);
     }
 
-    PFFFT_Setup* const setup;
-    const int size;
+    PFFFT_Setup* setup = nullptr;
+    int size = 0;
 
    private:
     Aligned<std::vector<float>> work;

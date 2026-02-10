@@ -4,7 +4,9 @@
 #include <optional>
 #include <vector>
 
+#include "AutocorrPitchDetector.h"
 #include "Cepstrum.h"
+#include "FrequencyDomainTransformer.h"
 #include "PitchDetector.h"
 #include "RealFft.h"
 #include "Utils.h"
@@ -14,8 +16,8 @@ class PitchDetectorLoggerInterface;
 namespace saint {
 class PitchDetectorImpl : public PitchDetector {
    public:
-    PitchDetectorImpl(int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel,
-                      const std::optional<Config>& config,
+    PitchDetectorImpl(FrequencyDomainTransformer, AutocorrPitchDetector, int sampleRate,
+                      const std::optional<PitchDetectorConfig>& config,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
     ~PitchDetectorImpl() override = default;
 
@@ -25,7 +27,7 @@ class PitchDetectorImpl : public PitchDetector {
     }
 
     int windowSizeSamples() const {
-        return static_cast<int>(_window.size());
+        return _frequencyDomainTransformer.windowSizeSamples();
     }
 
    private:
@@ -38,23 +40,15 @@ class PitchDetectorImpl : public PitchDetector {
 
     void toIdealSpectrum(std::vector<float>& logSpectrum);
 
+    FrequencyDomainTransformer _frequencyDomainTransformer;
+    AutocorrPitchDetector _autocorrPitchDetector;
+
     const int _sampleRate;
-    const ChannelFormat _channelFormat;
-    const int _blockSize;
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
-    const utils::WindowType _windowType;
-    const std::vector<float> _window;
     const int _fftSize;
     const float _binFreq;
-    RealFft _fwdFft;
     RealFft _cepstrumFft;
-    const std::vector<float> _lpWindow;
     const float _minFreq;
     const float _maxFreq;
-    const int _lastSearchIndex;
-    const std::vector<float> _windowXcor;
-    const int _latencySamples;
-    std::vector<float> _audioBuffer;
-    bool _bufferErrorLoggedAlready = false;
 };
 }  // namespace saint

@@ -7,10 +7,12 @@
 #include <mutex>
 #include <thread>
 
+#include "AutocorrPitchDetector.h"
 #include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorLogger.h"
 #include "PitchDetectorMedianFilter.h"
+#include "PitchDetectorUtils.h"
 #include "Utils.h"
 #include "testUtils.h"
 
@@ -148,7 +150,7 @@ std::vector<Noise> loadNoiseData(int numFrames, const fs::path& silenceFilePath)
 // - min note accounts for a drop-D tuning and an additional tone to account for
 // pitch changes while tuning
 // - max note is the high E on the first string, adding a tone for margin
-constexpr PitchDetector::Config config{
+constexpr PitchDetectorConfig config{
     Pitch{PitchClass::Db, 2},
     Pitch{PitchClass::Gb, 4},
 };
@@ -323,8 +325,14 @@ TEST(PitchDetectorImpl, benchmarking) {
                 logger = std::make_unique<DummyPitchDetectorLogger>();
             }
 
+            const auto minFreq = getMinFreq(config);
+            FrequencyDomainTransformer transformer(noisy.sampleRate, noisy.channelFormat, blockSize,
+                                                   minFreq, *logger);
+            AutocorrPitchDetector autocorrPitchDetector(noisy.sampleRate, transformer.fftSize(),
+                                                        transformer.window(), minFreq, *logger);
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                noisy.sampleRate, noisy.channelFormat, blockSize, config, std::move(logger));
+                std::move(transformer), std::move(autocorrPitchDetector), noisy.sampleRate, config,
+                std::move(logger));
             PitchDetector* pitchDetector = internalAlgorithm.get();
             std::unique_ptr<PitchDetectorMedianFilter> medianFilter;
 

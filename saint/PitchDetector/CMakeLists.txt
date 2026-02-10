@@ -5,10 +5,13 @@ target_compile_options(PitchDetector PRIVATE ${SAINT_ANNOYING_WARNINGS})
 target_sources(PitchDetector
   PUBLIC
     Cepstrum.cpp
+    AutocorrPitchDetector.cpp
     PitchDetectorFactory.cpp
     PitchDetectorImpl.cpp
+    PitchDetectorUtils.cpp
     PitchDetectorMedianFilter.cpp
     DummyPitchDetectorLogger.cpp
+    FrequencyDomainTransformer.cpp
 )
 
 target_link_libraries(PitchDetector
