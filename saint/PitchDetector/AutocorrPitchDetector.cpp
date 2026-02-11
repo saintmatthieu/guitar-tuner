@@ -98,11 +98,6 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         *presenceScore = maximum;
     }
 
-    constexpr auto threshold = 0.88f;
-    if (maximum < threshold) {
-        return 0.f;
-    } else {
-        return static_cast<float>(_sampleRate) / maxIndex;
-    }
+    return maxIndex == 0 ? 0.f : static_cast<float>(_sampleRate) / maxIndex;
 }
 }  // namespace saint

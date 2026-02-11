@@ -357,7 +357,8 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 auto presenceScore = 0.f;
-                auto result = pitchDetector->process(noisyData + i * numChannels, &presenceScore);
+                const auto finalEstimate =
+                    pitchDetector->process(noisyData + i * numChannels, &presenceScore);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -365,16 +366,17 @@ TEST(PitchDetectorImpl, benchmarking) {
                                    (currentTime <= sample.truth.endTime);
                 if (truth) {
                     ++positiveCount;
-                    if (result == 0.f)
+                    if (finalEstimate == 0.f)
                         ++falseNegativeCount;
                 } else {
                     ++negativeCount;
-                    if (result != 0.f)
+                    if (finalEstimate != 0.f)
                         ++falsePositiveCount;
                 }
                 const auto errorCents =
-                    result > 0.f ? 1200.f * std::log2(result / sample.truth.frequency) : 0.f;
-                testFileEstimates.emplace_back(truth, presenceScore, result, errorCents);
+                    finalEstimate > 0.f ? 1200.f * std::log2(finalEstimate / sample.truth.frequency)
+                                        : 0.f;
+                testFileEstimates.emplace_back(truth, presenceScore, finalEstimate, errorCents);
             }
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
@@ -457,17 +459,20 @@ TEST(PitchDetectorImpl, benchmarking) {
     {
         // For histogram
         std::ofstream errorsFile(testUtils::getOutDir() / "errors.py");
-        errorsFile << "errors = [";
+        std::vector<float> errors;
+        std::vector<float> scores;
         for (const auto& result : results) {
             if (result.cents.has_value()) {
                 for (const auto& estimate : result.estimates) {
                     if (estimate.f > 0.f) {
-                        errorsFile << estimate.e << ",";
+                        errors.push_back(estimate.e);
+                        scores.push_back(estimate.s);
                     }
                 }
             }
         }
-        errorsFile << "]";
+        testUtils::PrintPythonVector(errorsFile, errors, "errors");
+        testUtils::PrintPythonVector(errorsFile, scores, "scores");
     }
 
     if (argTestCaseId.has_value()) {
@@ -497,7 +502,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 55.49948004552637;
+    constexpr auto previousRmsError = 32.89689278231708;
     constexpr auto previousAuc = 0.902510855252703;
 
     constexpr auto comparisonTolerance = 0.01;

@@ -43,7 +43,7 @@ struct ProcessEstimate {
         : t(truth), e(errorCents), s(score), f(frequencyEstimate) {}
     bool t = false;
     float e = 0.f;
-    float s = 0.0;
+    float s = 0.f;
     float f = 0.f;
 };
 
