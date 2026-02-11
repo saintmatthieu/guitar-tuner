@@ -22,9 +22,7 @@ class AutocorrEstimateDisambiguator {
 
    private:
     float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum) const;
-
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
-
     void toIdealSpectrum(std::vector<float>& logSpectrum);
 
     const int _sampleRate;

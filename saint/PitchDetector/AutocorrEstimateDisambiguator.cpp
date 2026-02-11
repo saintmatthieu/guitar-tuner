@@ -231,6 +231,7 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
 
     // Step 3: Evaluate each candidate and find the best one
     std::optional<LineFitResult> bestFit;
+    auto bestCandidate = 0.f;
     for (auto c = 0; c < candidates.size(); ++c) {
         const auto candidate = candidates[c];
         // Skip candidates below the minimum detectable frequency
@@ -250,10 +251,11 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
 
         if (!bestFit.has_value() || candidateFit.meanSquaredError < bestFit->meanSquaredError) {
             bestFit = candidateFit;
+            bestCandidate = candidate;
         }
     }
 
-    return bestFit.has_value() ? bestFit->slope : octaviatedIndex;
+    return bestCandidate > 0.f ? bestCandidate : octaviatedIndex;
 }
 }  // namespace
 
