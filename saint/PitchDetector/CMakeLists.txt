@@ -11,7 +11,6 @@ target_sources(PitchDetector
     PitchDetectorImpl.cpp
     PitchDetectorUtils.cpp
     PitchDetectorMedianFilter.cpp
-    PitchDetectorImplTestWrapper.cpp
     DummyPitchDetectorLogger.cpp
     FrequencyDomainTransformer.cpp
 )
@@ -33,16 +32,4 @@ target_include_directories(PitchDetector SYSTEM
     ${GUITAR_TUNER_ROOT}/pffft
 )
 
-add_executable(PitchDetectorImplTests
-  PitchDetectorImplTests.cpp
-)
-
-target_compile_options(PitchDetectorImplTests PRIVATE ${SAINT_ANNOYING_WARNINGS})
-
-target_link_libraries(PitchDetectorImplTests
-  PRIVATE
-    PitchDetector
-    TestUtils
-    gtest_main
-    gmock
-)
+add_subdirectory(Test)
