@@ -542,13 +542,6 @@ TEST(PitchDetectorImpl, benchmarking) {
         testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt",
                                     previousAuc, rocInfo.areaUnderCurve, comparisonTolerance);
 
-    {
-        const auto thresholdFilePath =
-            testUtils::getEvalDir() / "BenchmarkingOutput" / "threshold.txt";
-        std::ofstream thresholdFile{thresholdFilePath};
-        thresholdFile << rocInfo.threshold;
-    }
-
     // If it changes and it's for the better, then it's probably a good thing, but
     // let's keep an eye on it anyway. If it's for the worse, then either there is
     // a good reason or we have a regression.
