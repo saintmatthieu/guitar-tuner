@@ -406,6 +406,16 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             if (argTestCaseId.has_value()) {
                 std::cout << csvLine.str();
+
+                std::vector<float> presenceSores(testFileEstimates.size());
+                std::transform(
+                    testFileEstimates.begin(), testFileEstimates.end(), presenceSores.begin(),
+                    [](const testUtils::ProcessEstimate& estimate) { return estimate.s; });
+                testUtils::toWavFile(
+                    testUtils::getOutDir() / "presenceScores.wav",
+                    testUtils::Audio{std::move(presenceSores), noisy.sampleRate / blockSize,
+                                     ChannelFormat::Mono},
+                    &tee, "Presence");
             }
 
             results[idx] = TestResult{testCase.id,
@@ -504,7 +514,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 28.16572834352964;
+    constexpr auto previousRmsError = 29.01080780884441;
     constexpr auto previousAuc = 0.902510855252703;
 
     constexpr auto comparisonTolerance = 0.01;

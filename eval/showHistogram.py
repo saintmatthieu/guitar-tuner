@@ -26,7 +26,7 @@ plt.ylabel('Percents (%)')
 plt.xlim(-2500, 2500)
 # ticks every octave (1200 cents)
 plt.xticks([-2400, -1200, 0, 1200, 2400], ['-2 Octaves', '-1 Octave', '0', '1 Octave', '2 Octaves'])
-plt.title('Error histogram : {:.2f}% within +/- 50 cents'.format(percentage_at_zero))
+plt.title('Error histogram : {:.1f}% within +/- 50 cents'.format(percentage_at_zero))
 plt.grid(True)
 plt.gcf().canvas.manager.set_window_title("Error histogram")
 

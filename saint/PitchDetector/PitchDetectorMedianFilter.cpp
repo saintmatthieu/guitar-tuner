@@ -35,10 +35,11 @@ int PitchDetectorMedianFilter::delaySamples() const {
 float PitchDetectorMedianFilter::process(const float* input, float* presenceScore,
                                          float* unfilteredEstimate) {
     _buffer.erase(_buffer.begin());
-    const auto raw = _impl->process(input, presenceScore);
+    float rawPresenceScore = 0.f;
+    const auto raw = _impl->process(input, &rawPresenceScore);
 
     if (presenceScore != nullptr) {
-        _delayedScores.push_back(*presenceScore);
+        _delayedScores.push_back(rawPresenceScore);
         *presenceScore = _delayedScores.front();
         _delayedScores.erase(_delayedScores.begin());
     }
@@ -51,13 +52,19 @@ float PitchDetectorMedianFilter::process(const float* input, float* presenceScor
     std::sort(sortedBuffer.begin(), sortedBuffer.end());
     const auto medianFiltered = sortedBuffer[sortedBuffer.size() / 2];
 
-    // Feed back the median-filtered estimate to constrain future searches.
-    // When locked (non-zero output), the autocorrelation and disambiguator will
-    // limit their search to within a major third of this estimate.
-    if (medianFiltered > 0.f) {
-        _impl->setEstimateConstraint(medianFiltered);
-    } else {
+    // Onset/offset detection based on presence score.
+    // Unlock only when presence score drops below threshold (note offset).
+    constexpr auto unlockThreshold = 0.7f;
+    if (_locked && rawPresenceScore < unlockThreshold) {
+        _locked = false;
         _impl->setEstimateConstraint(std::nullopt);
+    }
+
+    // Lock when median filter outputs a non-zero estimate (note onset).
+    // Update the constraint while locked to track the current pitch.
+    if (medianFiltered > 0.f) {
+        _locked = true;
+        _impl->setEstimateConstraint(medianFiltered);
     }
 
     return medianFiltered;

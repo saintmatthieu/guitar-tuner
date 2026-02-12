@@ -105,9 +105,9 @@ float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
     // clang-format on
     const double probNotOctaviated = probabilityNotOctaviated(presenceScore);
 
-    // At the time of writing, achieves 99.15% of estimates within +/-50 cents of the ground truth
-    // and 9% of the test cases failing by no-pitch-detected.
-    constexpr auto threshold = 0.9475;
+    // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
+    // and 8% of the test cases failing by no-pitch-detected.
+    constexpr auto threshold = 0.94;
     if (probNotOctaviated < threshold) {
         return 0.f;
     }
