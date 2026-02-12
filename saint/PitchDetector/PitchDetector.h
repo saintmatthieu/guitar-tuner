@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 
 #include "PitchDetectorTypes.h"
 
@@ -21,17 +20,6 @@ class PitchDetector {
      */
     virtual float process(const float* input, float* presenceScore = nullptr) = 0;
     virtual int delaySamples() const = 0;
-
-    /**
-     * @brief Sets a constraint on the pitch search range. When set, the search
-     * is limited to the given frequency +/- a major third.
-     *
-     * @param constraint The frequency to constrain around, or nullopt to unlock.
-     */
-    virtual void setEstimateConstraint(std::optional<float> constraint) {
-        (void)constraint;  // Base implementation does nothing
-    }
-
     virtual ~PitchDetector() = default;
 };
 }  // namespace saint

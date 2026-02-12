@@ -1,26 +1,26 @@
 #pragma once
 
+#include <memory>
+#include <optional>
+
 #include "AutocorrEstimateDisambiguator.h"
 #include "AutocorrPitchDetector.h"
 #include "FrequencyDomainTransformer.h"
-#include "PitchDetector.h"
-
-class PitchDetectorLoggerInterface;
+#include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
-class PitchDetectorImpl : public PitchDetector {
+class PitchDetectorImpl {
    public:
     PitchDetectorImpl(FrequencyDomainTransformer, AutocorrPitchDetector,
                       AutocorrEstimateDisambiguator,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
-    ~PitchDetectorImpl() override = default;
 
-    float process(const float*, float* presenceScore) override;
-    int delaySamples() const override {
+    float process(const float*, float* presenceScore);
+    int delaySamples() const {
         return windowSizeSamples() / 2;
     }
 
-    void setEstimateConstraint(std::optional<float> constraint) override {
+    void setEstimateConstraint(std::optional<float> constraint) {
         _estimateConstraint = constraint;
     }
 

@@ -1,14 +1,16 @@
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "PitchDetector.h"
+#include "PitchDetectorImpl.h"
 
 namespace saint {
 class PitchDetectorMedianFilter : public PitchDetector {
    public:
     PitchDetectorMedianFilter(int sampleRate, int blockSize,
-                              std::unique_ptr<PitchDetector> innerDetector);
+                              std::unique_ptr<PitchDetectorImpl> impl);
 
     ~PitchDetectorMedianFilter() override = default;
 
@@ -18,7 +20,7 @@ class PitchDetectorMedianFilter : public PitchDetector {
 
    private:
     const int _blockSize = 0;
-    const std::unique_ptr<PitchDetector> _innerDetector;
+    const std::unique_ptr<PitchDetectorImpl> _impl;
     std::vector<float> _buffer;
     std::vector<float> _delayedScores;
 };

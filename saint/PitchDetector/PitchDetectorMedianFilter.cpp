@@ -18,9 +18,9 @@ constexpr int getFilterSize(int sampleRate, int blockSize) {
 }  // namespace
 
 PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSize,
-                                                     std::unique_ptr<PitchDetector> innerDetector)
+                                                     std::unique_ptr<PitchDetectorImpl> impl)
     : _blockSize(blockSize),
-      _innerDetector(std::move(innerDetector)),
+      _impl(std::move(impl)),
       _buffer(getFilterSize(sampleRate, blockSize), 0.f),
       _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
 
@@ -29,13 +29,13 @@ float PitchDetectorMedianFilter::process(const float* input, float* presenceScor
 }
 
 int PitchDetectorMedianFilter::delaySamples() const {
-    return _delayedScores.size() * _blockSize + _innerDetector->delaySamples();
+    return _delayedScores.size() * _blockSize + _impl->delaySamples();
 }
 
 float PitchDetectorMedianFilter::process(const float* input, float* presenceScore,
                                          float* unfilteredEstimate) {
     _buffer.erase(_buffer.begin());
-    const auto raw = _innerDetector->process(input, presenceScore);
+    const auto raw = _impl->process(input, presenceScore);
 
     if (presenceScore != nullptr) {
         _delayedScores.push_back(*presenceScore);
@@ -55,9 +55,9 @@ float PitchDetectorMedianFilter::process(const float* input, float* presenceScor
     // When locked (non-zero output), the autocorrelation and disambiguator will
     // limit their search to within a major third of this estimate.
     if (medianFiltered > 0.f) {
-        _innerDetector->setEstimateConstraint(medianFiltered);
+        _impl->setEstimateConstraint(medianFiltered);
     } else {
-        _innerDetector->setEstimateConstraint(std::nullopt);
+        _impl->setEstimateConstraint(std::nullopt);
     }
 
     return medianFiltered;

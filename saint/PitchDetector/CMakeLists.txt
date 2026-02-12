@@ -11,6 +11,7 @@ target_sources(PitchDetector
     PitchDetectorImpl.cpp
     PitchDetectorUtils.cpp
     PitchDetectorMedianFilter.cpp
+    PitchDetectorImplTestWrapper.cpp
     DummyPitchDetectorLogger.cpp
     FrequencyDomainTransformer.cpp
 )

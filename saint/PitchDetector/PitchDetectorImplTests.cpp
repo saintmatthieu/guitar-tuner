@@ -10,6 +10,7 @@
 #include "AutocorrPitchDetector.h"
 #include "DummyPitchDetectorLogger.h"
 #include "PitchDetectorImpl.h"
+#include "PitchDetectorImplTestWrapper.h"
 #include "PitchDetectorLogger.h"
 #include "PitchDetectorMedianFilter.h"
 #include "PitchDetectorUtils.h"
@@ -336,13 +337,14 @@ TEST(PitchDetectorImpl, benchmarking) {
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
                 std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
                 std::move(logger));
-            PitchDetector* pitchDetector = internalAlgorithm.get();
-            std::unique_ptr<PitchDetectorMedianFilter> medianFilter;
+            std::unique_ptr<PitchDetector> pitchDetector;
 
             if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {
-                medianFilter = std::make_unique<PitchDetectorMedianFilter>(
+                pitchDetector = std::make_unique<PitchDetectorMedianFilter>(
                     noisy.sampleRate, blockSize, std::move(internalAlgorithm));
-                pitchDetector = medianFilter.get();
+            } else {
+                pitchDetector =
+                    std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));
             }
 
             auto negativeCount = 0;
@@ -502,7 +504,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 28.25148302597706;
+    constexpr auto previousRmsError = 28.16572834352964;
     constexpr auto previousAuc = 0.902510855252703;
 
     constexpr auto comparisonTolerance = 0.01;
