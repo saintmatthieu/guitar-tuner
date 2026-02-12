@@ -18,10 +18,12 @@ class AutocorrEstimateDisambiguator {
                                   const std::optional<PitchDetectorConfig>& config,
                                   PitchDetectorLoggerInterface& logger);
 
-    float process(float xcorrEstimate, const std::vector<std::complex<float>>& spectrum);
+    float process(float xcorrEstimate, const std::vector<std::complex<float>>& spectrum,
+                  std::optional<float> constraint = std::nullopt);
 
    private:
-    float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum) const;
+    float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum,
+                               std::optional<float> constraint) const;
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
     void toIdealSpectrum(std::vector<float>& logSpectrum);
 

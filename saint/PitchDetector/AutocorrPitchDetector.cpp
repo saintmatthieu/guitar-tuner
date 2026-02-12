@@ -75,19 +75,35 @@ AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
       _windowXcor(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)) {}
 
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
-                                     float* presenceScore) {
+                                     float* presenceScore, std::optional<float> constraint) {
     std::vector<float> time(_fftSize);
 
     // Compute cross-correlation
     getXCorr(_fwdFft, time, freq, _lpWindow);
     _logger.Log(time.data(), time.size(), "xcorr");
 
+    // Determine search range based on constraint
+    // A major third is a ratio of 5/4 = 1.26 (up) or 4/5 = 0.8 (down)
+    constexpr auto majorThirdRatio = 1.26f;
+    int firstSearchIndex = 0;
+    int lastSearchIndex = _lastSearchIndex;
+
+    if (constraint.has_value() && constraint.value() > 0.f) {
+        const auto constraintFreq = constraint.value();
+        const auto minFreq = constraintFreq / majorThirdRatio;
+        const auto maxFreq = constraintFreq * majorThirdRatio;
+        // Convert frequencies to lag indices (frequency = sampleRate / lag)
+        // Higher frequency means smaller lag
+        firstSearchIndex = std::max(0, static_cast<int>(_sampleRate / maxFreq));
+        lastSearchIndex = std::min(_lastSearchIndex, static_cast<int>(_sampleRate / minFreq) + 1);
+    }
+
     auto maxIndex = 0;
     auto wentNegative = false;
     auto maximum = 0.f;
-    for (auto i = 0; i < _lastSearchIndex; ++i) {
+    for (auto i = 0; i < lastSearchIndex; ++i) {
         wentNegative |= time[i] < 0;
-        if (wentNegative && time[i] > maximum) {
+        if (wentNegative && i >= firstSearchIndex && time[i] > maximum) {
             maximum = time[i];
             maxIndex = i;
         }

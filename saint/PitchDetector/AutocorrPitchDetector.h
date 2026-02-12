@@ -18,7 +18,8 @@ class AutocorrPitchDetector {
     AutocorrPitchDetector(int sampleRate, int fftSize, const std::vector<float>& fftWindow,
                           float minFreq, PitchDetectorLoggerInterface& logger);
 
-    float process(const std::vector<std::complex<float>>& dft, float* presenceScore);
+    float process(const std::vector<std::complex<float>>& dft, float* presenceScore,
+                  std::optional<float> constraint = std::nullopt);
 
    private:
     const int _sampleRate;

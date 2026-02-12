@@ -181,7 +181,7 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold, P
 }
 
 float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<float>& idealSpectrum,
-                                   float minF0) {
+                                   float minF0, std::optional<float> constraintIndex) {
     const auto& spec = idealSpectrum;
     // `octaviatedIndex` is the fundamental frequency estimate based on autocorrelation.
     // At the time of writing, the parent commit yields an accuracy histogram where
@@ -191,8 +191,28 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
     // * 0.13% are an octave and a fifth too low.
     // * other "octaviation" mistakes are less than 1 per mil - we neglect them.
     // The candidates are hence
-    const std::array<float, 4> candidates{octaviatedIndex, octaviatedIndex * 2, octaviatedIndex / 2,
-                                          octaviatedIndex / 3};
+    const std::array<float, 4> allCandidates{octaviatedIndex, octaviatedIndex * 2,
+                                             octaviatedIndex / 2, octaviatedIndex / 3};
+
+    // If constrained, filter candidates to those within a major third of the constraint
+    constexpr auto majorThirdRatio = 1.26f;
+    std::vector<float> candidates;
+    for (const auto& c : allCandidates) {
+        if (!constraintIndex.has_value()) {
+            candidates.push_back(c);
+        } else {
+            const auto minIndex = constraintIndex.value() / majorThirdRatio;
+            const auto maxIndex = constraintIndex.value() * majorThirdRatio;
+            if (c >= minIndex && c <= maxIndex) {
+                candidates.push_back(c);
+            }
+        }
+    }
+
+    // If no candidates remain after filtering, just return the original estimate
+    if (candidates.empty()) {
+        return octaviatedIndex;
+    }
 
     // Here is the idea:
     // 1. get a vector of the peaks in the whitened spectrum: `peakIndices` and `peakValues`.
@@ -259,11 +279,15 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
 }
 }  // namespace
 
-float AutocorrEstimateDisambiguator::disambiguateEstimate(
-    float priorEstimate, const std::vector<float>& idealSpectrum) const {
+float AutocorrEstimateDisambiguator::disambiguateEstimate(float priorEstimate,
+                                                          const std::vector<float>& idealSpectrum,
+                                                          std::optional<float> constraint) const {
     const auto priorIndex = priorEstimate / _binFreq;
     const auto minF0 = _minFreq / _binFreq;
-    return disambiguateFundamentalIndex(priorIndex, idealSpectrum, minF0) * _binFreq;
+    const auto constraintIndex =
+        constraint.has_value() ? std::optional<float>(constraint.value() / _binFreq) : std::nullopt;
+    return disambiguateFundamentalIndex(priorIndex, idealSpectrum, minF0, constraintIndex) *
+           _binFreq;
 }
 
 AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
@@ -278,7 +302,8 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
       _maxFreq(getMaxFreq(config)) {}
 
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
-                                             const std::vector<std::complex<float>>& spectrum) {
+                                             const std::vector<std::complex<float>>& spectrum,
+                                             std::optional<float> constraint) {
     std::vector<float> dbSpectrum(_fftSize);
     utils::getPowerSpectrum(spectrum, dbSpectrum);
     std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
@@ -289,7 +314,8 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
 
-    const auto disambiguatedEstimate = disambiguateEstimate(xcorrEstimate, idealSpectrum);
+    const auto disambiguatedEstimate =
+        disambiguateEstimate(xcorrEstimate, idealSpectrum, constraint);
 
     return disambiguatedEstimate;
 }

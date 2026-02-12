@@ -20,6 +20,10 @@ class PitchDetectorImpl : public PitchDetector {
         return windowSizeSamples() / 2;
     }
 
+    void setEstimateConstraint(std::optional<float> constraint) override {
+        _estimateConstraint = constraint;
+    }
+
     int windowSizeSamples() const {
         return _frequencyDomainTransformer.windowSizeSamples();
     }
@@ -30,5 +34,6 @@ class PitchDetectorImpl : public PitchDetector {
     AutocorrEstimateDisambiguator _disambiguator;
 
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
+    std::optional<float> _estimateConstraint;
 };
 }  // namespace saint

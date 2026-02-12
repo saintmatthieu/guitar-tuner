@@ -49,7 +49,18 @@ float PitchDetectorMedianFilter::process(const float* input, float* presenceScor
     _buffer.push_back(raw);
     auto sortedBuffer = _buffer;
     std::sort(sortedBuffer.begin(), sortedBuffer.end());
-    return sortedBuffer[sortedBuffer.size() / 2];
+    const auto medianFiltered = sortedBuffer[sortedBuffer.size() / 2];
+
+    // Feed back the median-filtered estimate to constrain future searches.
+    // When locked (non-zero output), the autocorrelation and disambiguator will
+    // limit their search to within a major third of this estimate.
+    if (medianFiltered > 0.f) {
+        _innerDetector->setEstimateConstraint(medianFiltered);
+    } else {
+        _innerDetector->setEstimateConstraint(std::nullopt);
+    }
+
+    return medianFiltered;
 }
 
 }  // namespace saint

@@ -83,7 +83,8 @@ float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
     const std::vector<std::complex<float>> freq = _frequencyDomainTransformer.process(audio);
 
     auto presenceScore = 0.f;
-    const float xcorrEstimate = _autocorrPitchDetector.process(freq, &presenceScore);
+    const float xcorrEstimate =
+        _autocorrPitchDetector.process(freq, &presenceScore, _estimateConstraint);
     if (outPresenceScore) {
         *outPresenceScore = presenceScore;
     }
@@ -104,12 +105,15 @@ float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
     // clang-format on
     const double probNotOctaviated = probabilityNotOctaviated(presenceScore);
 
-    constexpr auto threshold = 0.96;
+    // At the time of writing, achieves 99.15% of estimates within +/-50 cents of the ground truth
+    // and 9% of the test cases failing by no-pitch-detected.
+    constexpr auto threshold = 0.9475;
     if (probNotOctaviated < threshold) {
         return 0.f;
     }
 
-    const auto disambiguatedEstimate = _disambiguator.process(xcorrEstimate, freq);
+    const auto disambiguatedEstimate =
+        _disambiguator.process(xcorrEstimate, freq, _estimateConstraint);
 
     return disambiguatedEstimate;
 }
