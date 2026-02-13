@@ -13,9 +13,8 @@ class PitchDetector {
      *
      * @param input pointer to exactly `samplesPerBlockPerChannel * numChannels` samples (as
      * specified at construction), interleaved if stereo.
-     * @param presenceScore if not null, on return contains a value between 0 and
-     * 1 indicating the confidence that a pitch is present in the audio. Meant for
-     * evaluation.
+     * @param presenceScore FOR TESTING - if not null, on return contains a value between 0 and
+     * 1 indicating the confidence that a pitch is present in the audio.
      * @return float 0 if no pitch detected, the value in Hz if pitch is detected.
      */
     virtual float process(const float* input, float* presenceScore = nullptr) = 0;

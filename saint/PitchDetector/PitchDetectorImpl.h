@@ -6,13 +6,14 @@
 #include "AutocorrEstimateDisambiguator.h"
 #include "AutocorrPitchDetector.h"
 #include "FrequencyDomainTransformer.h"
+#include "OnsetDetector.h"
 #include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
 class PitchDetectorImpl {
    public:
     PitchDetectorImpl(FrequencyDomainTransformer, AutocorrPitchDetector,
-                      AutocorrEstimateDisambiguator,
+                      AutocorrEstimateDisambiguator, OnsetDetector,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
 
     float process(const float*, float* presenceScore);
@@ -32,6 +33,7 @@ class PitchDetectorImpl {
     FrequencyDomainTransformer _frequencyDomainTransformer;
     AutocorrPitchDetector _autocorrPitchDetector;
     AutocorrEstimateDisambiguator _disambiguator;
+    OnsetDetector _onsetDetector;
 
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
     std::optional<float> _estimateConstraint;

@@ -9,6 +9,7 @@
 
 #include "AutocorrPitchDetector.h"
 #include "DummyPitchDetectorLogger.h"
+#include "OnsetDetector.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorImplTestWrapper.h"
 #include "PitchDetectorLogger.h"
@@ -333,10 +334,11 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                         transformer.window(), minFreq, *logger);
             AutocorrEstimateDisambiguator disambiguator(noisy.sampleRate, transformer.fftSize(),
                                                         config, *logger);
+            OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize);
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
                 std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
-                std::move(logger));
+                std::move(onsetDetector), std::move(logger));
             std::unique_ptr<PitchDetector> pitchDetector;
 
             if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {

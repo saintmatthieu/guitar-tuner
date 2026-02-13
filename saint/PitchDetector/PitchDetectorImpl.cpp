@@ -70,10 +70,12 @@ namespace saint {
 PitchDetectorImpl::PitchDetectorImpl(FrequencyDomainTransformer transformer,
                                      AutocorrPitchDetector autocorrPitchDetector,
                                      AutocorrEstimateDisambiguator disambiguator,
+                                     OnsetDetector onsetDetector,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger)
     : _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
+      _onsetDetector(std::move(onsetDetector)),
       _logger(std::move(logger)) {}
 
 float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
@@ -117,6 +119,9 @@ float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
 
     const auto disambiguatedEstimate =
         _disambiguator.process(xcorrEstimate, powerSpectrum, _estimateConstraint);
+
+    const auto isOnset = _onsetDetector.process(audio);
+    (void)isOnset;  // TODO: use onset information
 
     return disambiguatedEstimate;
 }

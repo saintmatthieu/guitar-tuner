@@ -16,7 +16,7 @@ namespace saint {
 namespace testUtils {
 
 struct Audio {
-    Audio(std::vector<float> data, int rate, ChannelFormat format)
+    Audio(std::vector<float> data, int rate, ChannelFormat format = ChannelFormat::Mono)
         : interleaved(std::move(data)), sampleRate(rate), channelFormat(format) {}
     std::vector<float> interleaved;
     const int sampleRate;

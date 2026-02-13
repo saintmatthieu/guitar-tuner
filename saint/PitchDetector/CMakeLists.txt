@@ -13,6 +13,7 @@ target_sources(PitchDetector
     PitchDetectorMedianFilter.cpp
     DummyPitchDetectorLogger.cpp
     FrequencyDomainTransformer.cpp
+    OnsetDetector.cpp
 )
 
 target_link_libraries(PitchDetector
