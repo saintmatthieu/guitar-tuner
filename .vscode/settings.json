@@ -4,5 +4,6 @@
   ],
   "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}",
   "cmake.generator": "Ninja",
-  "cSpell.words": ["Autocorr", "Disambiguator", "xcorr"]
+  "cSpell.words": ["Autocorr", "Disambiguator", "xcorr"],
+  "editor.defaultFormatter": "xaver.clang-format"
 }
