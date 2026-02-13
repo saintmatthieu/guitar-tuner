@@ -18,7 +18,7 @@ class AutocorrEstimateDisambiguator {
                                   const std::optional<PitchDetectorConfig>& config,
                                   PitchDetectorLoggerInterface& logger);
 
-    float process(float xcorrEstimate, const std::vector<std::complex<float>>& spectrum,
+    float process(float xcorrEstimate, const std::vector<float>& powerSpectrum,
                   std::optional<float> constraint = std::nullopt);
 
    private:

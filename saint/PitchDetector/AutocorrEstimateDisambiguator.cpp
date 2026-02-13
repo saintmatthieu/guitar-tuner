@@ -302,10 +302,9 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
       _maxFreq(getMaxFreq(config)) {}
 
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
-                                             const std::vector<std::complex<float>>& spectrum,
+                                             const std::vector<float>& powerSpectrum,
                                              std::optional<float> constraint) {
-    std::vector<float> dbSpectrum(_fftSize);
-    utils::getPowerSpectrum(spectrum, dbSpectrum);
+    std::vector<float> dbSpectrum = powerSpectrum;
     std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
                    [](float power) { return utils::FastDb(power); });
     assert(utils::isSymmetric(dbSpectrum));

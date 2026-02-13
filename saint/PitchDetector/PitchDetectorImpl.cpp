@@ -112,8 +112,11 @@ float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
         return 0.f;
     }
 
+    std::vector<float> powerSpectrum;
+    utils::getPowerSpectrum(freq, powerSpectrum);
+
     const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, freq, _estimateConstraint);
+        _disambiguator.process(xcorrEstimate, powerSpectrum, _estimateConstraint);
 
     return disambiguatedEstimate;
 }
