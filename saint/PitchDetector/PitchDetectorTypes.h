@@ -10,7 +10,10 @@ struct Pitch {
     const int octave;
 };
 
-enum class ChannelFormat { Mono, Stereo };
+enum class ChannelFormat { Mono = 1, Stereo = 2 };
+constexpr int numChannels(ChannelFormat format) {
+    return static_cast<int>(format);
+}
 
 struct PitchDetectorConfig {
     const std::optional<Pitch> lowestPitch;

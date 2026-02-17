@@ -25,7 +25,7 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
 
     AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.fftSize(), config, *logger);
 
-    OnsetDetector onsetDetector(sampleRate, channelFormat, samplesPerBlockPerChannel);
+    OnsetDetector onsetDetector(sampleRate, channelFormat, samplesPerBlockPerChannel, minFreq);
 
     auto impl = std::make_unique<PitchDetectorImpl>(
         std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),

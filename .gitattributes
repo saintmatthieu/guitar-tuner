@@ -1,1 +1,2 @@
 saint/**/*.wav filter=lfs diff=lfs merge=lfs -text
+saint/**/*.png filter=lfs diff=lfs merge=lfs -text

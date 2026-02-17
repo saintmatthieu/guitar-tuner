@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <complex>
@@ -9,16 +10,57 @@
 
 namespace saint {
 namespace utils {
-enum class WindowType { Hann, Hamming, MinimumThreeTerm, _count };
+enum class WindowType { Rectangular, Hann, Hamming, MinimumThreeTerm, _count };
 constexpr auto numWindowTypes = static_cast<size_t>(WindowType::_count);
-constexpr std::array<int, numWindowTypes> windowOrders = {1, 1, 2};
+constexpr std::array<int, numWindowTypes> windowOrders = {0, 1, 1, 2};
 
 std::string getEnvironmentVariable(const char*);
 bool getEnvironmentVariableAsBool(const char*);
 bool isDebugBuild();
 float getPitch(int noteNumber);
 float getCrotchetsPerSample(float crotchetsPerSecond, int samplesPerSecond);
-std::vector<float> getAnalysisWindow(int windowSize, WindowType type);
+
+template <typename T = float>
+std::vector<T> getCoefs(utils::WindowType type) {
+    switch (type) {
+        case WindowType::Rectangular:
+            return {static_cast<T>(1)};
+        case WindowType::Hann:
+            return {static_cast<T>(1), static_cast<T>(-1)};
+        case WindowType::Hamming:
+            // Found in PhD thesis Matthieu Hodgkinson @NUIM
+            // https://mural.maynoothuniversity.ie/id/eprint/3910/1/thesis.pdf
+            // Section 2.2.3, p90
+            return {static_cast<T>(1), static_cast<T>(-349) / 407};
+        case WindowType::MinimumThreeTerm:
+            // Same
+            return {static_cast<T>(1), static_cast<T>(-1152) / 983, static_cast<T>(515) / 2792};
+        default:
+            assert(false);
+            return getCoefs<T>(WindowType::Hann);
+    }
+}
+
+template <typename T = float>
+std::vector<T> getAnalysisWindow(int windowSize, WindowType type) {
+    std::vector<T> window((size_t)windowSize);
+    constexpr T twoPi = 6.283185307179586;
+    const T freq = twoPi / windowSize;
+
+    const auto coefs = getCoefs<T>(type);
+    T sum = 0;
+    for (auto i = 0u; i < windowSize; ++i) {
+        // i + 1 so that the tip of the window is at windowSize / 2, which is
+        // convenient when taking the second half of it.
+        window[i] = coefs[0];
+        for (size_t j = 1; j < coefs.size(); ++j) {
+            window[i] += coefs[j] * cosf((i + 1) * j * freq);
+        }
+        sum += window[i];
+    }
+    std::transform(window.begin(), window.end(), window.begin(), [sum](T x) { return x / sum; });
+    return window;
+}
 
 constexpr float FastLog2(float x) {
     static_assert(sizeof(float) == sizeof(int32_t));

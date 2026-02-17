@@ -1,6 +1,5 @@
 #include "Utils.h"
 
-#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cmath>
@@ -48,47 +47,6 @@ float utils::getPitch(int noteNumber) {
 float utils::getCrotchetsPerSample(float crotchetsPerSecond, int samplesPerSecond) {
     return (crotchetsPerSecond == 0 ? 120.f : crotchetsPerSecond) /
            static_cast<float>(samplesPerSecond);
-}
-
-namespace {
-std::vector<float> getCoefs(utils::WindowType type) {
-    switch (type) {
-        case utils::WindowType::Hann:
-            return {1.f, -1.f};
-        case utils::WindowType::Hamming:
-            // Found in PhD thesis Matthieu Hodgkinson @NUIM
-            // https://mural.maynoothuniversity.ie/id/eprint/3910/1/thesis.pdf
-            // Section 2.2.3, p90
-            return {1.f, -349.f / 407.f};
-        case utils::WindowType::MinimumThreeTerm:
-            // Same
-            return {1.f, -1152.f / 983.f, +515.f / 2792.f};
-        default:
-            assert(false);
-            return getCoefs(utils::WindowType::Hann);
-    }
-}
-}  // namespace
-
-std::vector<float> utils::getAnalysisWindow(int windowSize, WindowType type) {
-    std::vector<float> window((size_t)windowSize);
-    constexpr auto twoPi = 6.283185307179586f;
-    const auto freq = twoPi / (float)windowSize;
-
-    const auto coefs = getCoefs(type);
-    auto sum = 0.f;
-    for (auto i = 0u; i < windowSize; ++i) {
-        // i + 1 so that the tip of the window is at windowSize / 2, which is
-        // convenient when taking the second half of it.
-        window[i] = coefs[0];
-        for (size_t j = 1; j < coefs.size(); ++j) {
-            window[i] += coefs[j] * cosf((i + 1) * j * freq);
-        }
-        sum += window[i];
-    }
-    std::transform(window.begin(), window.end(), window.begin(),
-                   [sum](float x) { return x / sum; });
-    return window;
 }
 
 void utils::getPowerSpectrum(const std::vector<std::complex<float>>& spectrum,

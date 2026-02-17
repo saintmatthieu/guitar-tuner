@@ -10,22 +10,30 @@
 namespace saint {
 
 namespace {
-int getWindowSize(int sampleRate) {
-    // ~23ms window — shorter than pitch detection for better temporal resolution of onsets.
-    return static_cast<int>(sampleRate * 0.023);
+constexpr auto windowType = utils::WindowType::Hann;
+
+int getWindowSize(int sampleRate, float minFreq) {
+    const auto mainLobeWidth = utils::windowOrders.at(static_cast<size_t>(windowType)) * 2 + 1;
+    const auto numPeriods = mainLobeWidth;
+    const auto minPeriod = 1. / minFreq;
+    return numPeriods * minPeriod * sampleRate;
 }
 }  // namespace
 
 OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
-                             int samplesPerBlockPerChannel)
+                             int samplesPerBlockPerChannel, float minFreq)
     : _channelFormat(channelFormat),
       _blockSize(samplesPerBlockPerChannel),
-      _window(utils::getAnalysisWindow(getWindowSize(sampleRate), utils::WindowType::Hann)),
-      _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f) {
-    _audioBuffer.reserve(_window.size());
+      _window(utils::getAnalysisWindow<double>(getWindowSize(sampleRate, minFreq), windowType)),
+      _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f),
+      _avgFilterLength(1. * sampleRate / samplesPerBlockPerChannel * 0.25),
+      _pastPowers(_avgFilterLength, 0.f),
+      _avgWindow(utils::getAnalysisWindow<double>(_avgFilterLength, utils::WindowType::Hann)),
+      _alpha(0.7 * sampleRate / samplesPerBlockPerChannel / 100) {
+    _audioBuffer.reserve(std::max<size_t>(_window.size(), samplesPerBlockPerChannel));
 }
 
-bool OnsetDetector::process(const float* audio, float* onsetStrength) {
+bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
     // Append new audio samples, converting stereo to mono if needed.
     if (_channelFormat == ChannelFormat::Mono) {
         _audioBuffer.insert(_audioBuffer.end(), audio, audio + _blockSize);
@@ -38,32 +46,56 @@ bool OnsetDetector::process(const float* audio, float* onsetStrength) {
     }
 
     if (_audioBuffer.size() < _window.size()) {
-        assert(false);
-        if (onsetStrength)
-            *onsetStrength = 0.f;
         return false;
     }
 
-    std::vector<float> windowed(_window.size());
     const auto bufferStart = _audioBuffer.end() - _window.size();
+    std::vector<double> windowed(_window.size());
     std::transform(bufferStart, _audioBuffer.end(), _window.begin(), windowed.begin(),
-                   [](float x, float w) { return x * w; });
+                   [](double x, double w) { return x * w; });
 
     // Remove old samples, keeping only what's needed for the next window
-    const auto samplesToKeep = _window.size() - _blockSize;
+    const auto samplesToKeep = std::max(static_cast<int>(_window.size()) - _blockSize, 0);
     _audioBuffer.erase(_audioBuffer.begin(), _audioBuffer.end() - samplesToKeep);
 
-    const auto power = std::accumulate(audio, audio + _blockSize, 0.f,
-                                       [](float acc, float val) { return acc + val * val; }) /
-                       _blockSize;
-    const auto novelty = power / (_prevPower + 0.0001);
-    _prevPower = power;
-    if (onsetStrength) {
-        *onsetStrength = novelty;
+    const auto power = std::accumulate(windowed.begin(), windowed.end(), 0.f,
+                                       [](float acc, float val) { return acc + val * val; });
+
+    const auto novelty = std::max(_prevPower.has_value() ? power - *_prevPower : 0., 0.);
+    // const auto avg = updatePowerAverage(power);
+    // const auto onsetStrength = novelty - avg;
+    const auto onsetStrength = novelty;
+
+    _prevPower = power * (1 - _alpha) + _prevPower.value_or(power) * _alpha;
+
+    if (debugOutput) {
+        (*debugOutput)["power"] = power;
+        (*debugOutput)["novelty"] = novelty;
+        (*debugOutput)["powerAvg"] = _prevPower.value_or(0.);
+        (*debugOutput)["onsetStrength"] = onsetStrength;
     }
 
     // TBD
-    return novelty > 100;
+    return onsetStrength > 100;
+}
+
+double OnsetDetector::updatePowerAverage(double newPower) {
+    _pastPowers.erase(_pastPowers.begin());
+    _pastPowers.push_back(newPower);
+
+    auto avg = 0.;
+    for (auto i = 0; i < _avgFilterLength; ++i) {
+        avg += _pastPowers[i] * _avgWindow[i];
+    }
+    return avg;
+}
+
+bool OnsetDetector::process(const float* audio, DebugOutput* debugOutput) {
+    // For const-correctness, we can copy the input to a temporary buffer and call the non-const
+    // version.
+    std::vector<float> copy(audio,
+                            audio + _blockSize * (_channelFormat == ChannelFormat::Mono ? 1 : 2));
+    return process(copy.data(), debugOutput);
 }
 
 }  // namespace saint
