@@ -13,7 +13,7 @@
       "args": [
         // "testWithMedianFilter=false",
         // "indexOfProcessToLog=90",
-        // "testCaseId=testFiles/notes/Fender_(Acoustic)/iPhone_17/D3.wav | testFiles/noise/CS_Telecaster_noise.wav | -40"
+        // "testCaseId=testFiles/notes/Fender_Stratocaster_unplugged/iPhone_11/E4.wav | testFiles/noise/CS_Telecaster_noise.wav | -60"
       ],
       "cwd": "${workspaceFolder}",
       "env": {

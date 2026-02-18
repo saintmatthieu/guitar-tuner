@@ -16,12 +16,12 @@ class PitchDetectorImpl {
                       AutocorrEstimateDisambiguator, OnsetDetector,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
 
-    float process(const float*, float* presenceScore);
+    float process(const float*, DebugOutput*);
     int delaySamples() const {
         return windowSizeSamples() / 2;
     }
 
-    void setEstimateConstraint(std::optional<float> constraint) {
+    void setEstimateConstraint(float constraint) {
         _estimateConstraint = constraint;
     }
 

@@ -24,25 +24,28 @@ PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSi
       _buffer(getFilterSize(sampleRate, blockSize), 0.f),
       _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
 
-float PitchDetectorMedianFilter::process(const float* input, float* presenceScore) {
-    return process(input, presenceScore, nullptr);
+float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugOutput) {
+    return process(input, debugOutput, nullptr);
 }
 
 int PitchDetectorMedianFilter::delaySamples() const {
     return _delayedScores.size() * _blockSize + _impl->delaySamples();
 }
 
-float PitchDetectorMedianFilter::process(const float* input, float* presenceScore,
+float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugOutput,
                                          float* unfilteredEstimate) {
     _buffer.erase(_buffer.begin());
-    float rawPresenceScore = 0.f;
-    const auto raw = _impl->process(input, &rawPresenceScore);
 
-    if (presenceScore != nullptr) {
-        _delayedScores.push_back(rawPresenceScore);
-        *presenceScore = _delayedScores.front();
-        _delayedScores.erase(_delayedScores.begin());
+    if (debugOutput == nullptr) {
+        debugOutput = &_debugOutput;
     }
+
+    const auto raw = _impl->process(input, debugOutput);
+
+    const auto rawPresenceScore = debugOutput->at("presenceScore");
+    _delayedScores.push_back(rawPresenceScore);
+    (*debugOutput)["presenceScore"] = _delayedScores.front();
+    _delayedScores.erase(_delayedScores.begin());
 
     if (unfilteredEstimate != nullptr) {
         *unfilteredEstimate = raw;
@@ -51,14 +54,6 @@ float PitchDetectorMedianFilter::process(const float* input, float* presenceScor
     auto sortedBuffer = _buffer;
     std::sort(sortedBuffer.begin(), sortedBuffer.end());
     const auto medianFiltered = sortedBuffer[sortedBuffer.size() / 2];
-
-    // Onset/offset detection based on presence score.
-    // Unlock only when presence score drops below threshold (note offset).
-    constexpr auto unlockThreshold = 0.7f;
-    if (_locked && rawPresenceScore < unlockThreshold) {
-        _locked = false;
-        _impl->setEstimateConstraint(std::nullopt);
-    }
 
     // Lock when median filter outputs a non-zero estimate (note onset).
     // Update the constraint while locked to track the current pitch.

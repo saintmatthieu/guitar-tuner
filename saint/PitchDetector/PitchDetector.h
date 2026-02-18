@@ -1,7 +1,5 @@
 #pragma once
 
-#include <memory>
-
 #include "PitchDetectorTypes.h"
 
 namespace saint {
@@ -17,7 +15,7 @@ class PitchDetector {
      * 1 indicating the confidence that a pitch is present in the audio.
      * @return float 0 if no pitch detected, the value in Hz if pitch is detected.
      */
-    virtual float process(const float* input, float* presenceScore = nullptr) = 0;
+    virtual float process(const float* input, DebugOutput* = nullptr) = 0;
     virtual int delaySamples() const = 0;
     virtual ~PitchDetector() = default;
 };

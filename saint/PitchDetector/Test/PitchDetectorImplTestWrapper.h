@@ -17,7 +17,7 @@ class PitchDetectorImplTestWrapper : public PitchDetector {
     explicit PitchDetectorImplTestWrapper(std::unique_ptr<PitchDetectorImpl> impl);
     ~PitchDetectorImplTestWrapper() override = default;
 
-    float process(const float* input, float* presenceScore) override;
+    float process(const float* input, DebugOutput*) override;
     int delaySamples() const override;
 
    private:

@@ -1,8 +1,6 @@
 #pragma once
 
-#include <memory>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 #include "HighPassFilter.h"
@@ -14,8 +12,6 @@ class OnsetDetector {
    public:
     OnsetDetector(int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel,
                   float minFreq);
-
-    using DebugOutput = std::unordered_map<std::string, float>;
 
     bool process(const float* audio, DebugOutput* = nullptr);
     bool process(float* audio, DebugOutput* = nullptr);

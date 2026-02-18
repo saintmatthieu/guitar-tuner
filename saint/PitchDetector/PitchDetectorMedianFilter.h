@@ -14,13 +14,14 @@ class PitchDetectorMedianFilter : public PitchDetector {
 
     ~PitchDetectorMedianFilter() override = default;
 
-    float process(const float* input, float* presenceScore) override;
-    float process(const float* input, float* presenceScore, float* unfilteredEstimate);
+    float process(const float* input, DebugOutput*) override;
+    float process(const float* input, DebugOutput*, float* unfilteredEstimate);
     int delaySamples() const override;
 
    private:
     const int _blockSize = 0;
     const std::unique_ptr<PitchDetectorImpl> _impl;
+    DebugOutput _debugOutput;
     std::vector<float> _buffer;
     std::vector<float> _delayedScores;
     bool _locked = false;

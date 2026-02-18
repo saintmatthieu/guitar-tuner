@@ -61,22 +61,19 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
     const auto power = std::accumulate(windowed.begin(), windowed.end(), 0.f,
                                        [](float acc, float val) { return acc + val * val; });
 
-    const auto novelty = std::max(_prevPower.has_value() ? power - *_prevPower : 0., 0.);
-    // const auto avg = updatePowerAverage(power);
-    // const auto onsetStrength = novelty - avg;
-    const auto onsetStrength = novelty;
+    const auto onsetStrength = std::max(_prevPower.has_value() ? power - *_prevPower : 0., 0.);
 
     _prevPower = power * (1 - _alpha) + _prevPower.value_or(power) * _alpha;
 
     if (debugOutput) {
         (*debugOutput)["power"] = power;
-        (*debugOutput)["novelty"] = novelty;
         (*debugOutput)["powerAvg"] = _prevPower.value_or(0.);
         (*debugOutput)["onsetStrength"] = onsetStrength;
     }
 
-    // TBD
-    return onsetStrength > 100;
+    // To get this, we run OnsetDetectorCalibrationTests and then showOnsetDetectionHistograms.py.
+    // It is set so that there are no false negatives.
+    return onsetStrength > 1.75109e-07;
 }
 
 double OnsetDetector::updatePowerAverage(double newPower) {

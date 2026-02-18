@@ -1,8 +1,12 @@
 #pragma once
 
 #include <optional>
+#include <string>
+#include <unordered_map>
 
 namespace saint {
+using DebugOutput = std::unordered_map<std::string, float>;
+
 enum class PitchClass { C, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B, OneKiloHz /*for testing*/ };
 
 struct Pitch {

@@ -89,7 +89,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                         transformer.window(), minFreq, *logger);
             AutocorrEstimateDisambiguator disambiguator(noisy.sampleRate, transformer.fftSize(),
                                                         kTestConfig, *logger);
-            OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize);
+            OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize, minFreq);
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
                 std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
@@ -115,9 +115,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             std::vector<testUtils::ProcessEstimate> testFileEstimates;
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
-                auto presenceScore = 0.f;
+                DebugOutput debugOutput;
                 const auto finalEstimate =
-                    pitchDetector->process(noisyData + i * numChannels, &presenceScore);
+                    pitchDetector->process(noisyData + i * numChannels, &debugOutput);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -135,7 +135,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 const auto errorCents =
                     finalEstimate > 0.f ? 1200.f * std::log2(finalEstimate / sample.truth.frequency)
                                         : 0.f;
-                testFileEstimates.emplace_back(truth, presenceScore, finalEstimate, errorCents);
+                testFileEstimates.emplace_back(truth, debugOutput["presenceScore"], finalEstimate,
+                                               errorCents);
             }
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;

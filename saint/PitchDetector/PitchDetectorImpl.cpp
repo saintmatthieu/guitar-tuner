@@ -78,17 +78,22 @@ PitchDetectorImpl::PitchDetectorImpl(FrequencyDomainTransformer transformer,
       _onsetDetector(std::move(onsetDetector)),
       _logger(std::move(logger)) {}
 
-float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
+float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput) {
     _logger->StartNewEstimate();
     utils::Finally finally{[this] { _logger->EndNewEstimate(nullptr, 0); }};
+
+    if (const auto isOnset = _onsetDetector.process(audio, debugOutput)) {
+        // New attack is detected, likely a new note ; reset constraint
+        _estimateConstraint.reset();
+    }
 
     const std::vector<std::complex<float>> freq = _frequencyDomainTransformer.process(audio);
 
     auto presenceScore = 0.f;
     const float xcorrEstimate =
         _autocorrPitchDetector.process(freq, &presenceScore, _estimateConstraint);
-    if (outPresenceScore) {
-        *outPresenceScore = presenceScore;
+    if (debugOutput) {
+        (*debugOutput)["presenceScore"] = presenceScore;
     }
 
     if (xcorrEstimate == 0.f) {
@@ -119,9 +124,6 @@ float PitchDetectorImpl::process(const float* audio, float* outPresenceScore) {
 
     const auto disambiguatedEstimate =
         _disambiguator.process(xcorrEstimate, powerSpectrum, _estimateConstraint);
-
-    const auto isOnset = _onsetDetector.process(audio);
-    (void)isOnset;  // TODO: use onset information
 
     return disambiguatedEstimate;
 }
