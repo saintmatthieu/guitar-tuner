@@ -124,9 +124,14 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput) {
 
     std::vector<float> powerSpectrum;
     utils::getPowerSpectrum(freq, powerSpectrum);
+    std::vector<float> dbSpectrum = powerSpectrum;
+    std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
+                   [](float power) { return utils::FastDb(power); });
+    assert(utils::isSymmetric(dbSpectrum));
+    _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
     const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, powerSpectrum, _estimateConstraint);
+        _disambiguator.process(xcorrEstimate, dbSpectrum, _estimateConstraint);
 
     return disambiguatedEstimate;
 }

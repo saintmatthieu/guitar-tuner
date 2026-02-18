@@ -302,14 +302,8 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
       _maxFreq(getMaxFreq(config)) {}
 
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
-                                             const std::vector<float>& powerSpectrum,
+                                             const std::vector<float>& dbSpectrum,
                                              std::optional<float> constraint) {
-    std::vector<float> dbSpectrum = powerSpectrum;
-    std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
-                   [](float power) { return utils::FastDb(power); });
-    assert(utils::isSymmetric(dbSpectrum));
-    _logger.Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
-
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
 
