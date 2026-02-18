@@ -64,6 +64,11 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::atomic<int> completedCount{0};
     std::mutex progressMutex;
 
+    auto totalPositiveCount = 0;
+    auto totalNegativeCount = 0;
+    auto totalFalsePositiveCount = 0;
+    auto totalFalseNegativeCount = 0;
+
     std::cout << std::endl << "Evaluating samples..." << std::endl;
 
     // Worker function that processes a range of test cases
@@ -138,6 +143,11 @@ TEST(PitchDetectorImpl, benchmarking) {
                 testFileEstimates.emplace_back(truth, debugOutput["presenceScore"], finalEstimate,
                                                errorCents);
             }
+
+            totalPositiveCount += positiveCount;
+            totalNegativeCount += negativeCount;
+            totalFalsePositiveCount += falsePositiveCount;
+            totalFalseNegativeCount += falseNegativeCount;
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
             const auto FNR = 1. * falseNegativeCount / positiveCount;
@@ -269,13 +279,25 @@ TEST(PitchDetectorImpl, benchmarking) {
     avgAvg /= count;
     rmsAvg /= count;
 
+    const auto globalFalsePositiveRate = 1. * totalFalsePositiveCount / totalNegativeCount;
+    const auto globalFalseNegativeRate = 1. * totalFalseNegativeCount / totalPositiveCount;
+
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
+        << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
     constexpr auto previousRmsError = 43.26518102862689;
     constexpr auto previousAuc = 0.8815561328790874;
+    constexpr auto previousFNR = 0.42406493980534854;
 
     constexpr auto comparisonTolerance = 0.01;
+
+    const auto fnrIsUnchanged =
+        testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "FNR.txt",
+                                    previousFNR, globalFalseNegativeRate, comparisonTolerance);
+    EXPECT_TRUE(fnrIsUnchanged) << "False Negative Rate has changed! Previous FNR: " << previousFNR
+                                << ", new FNR: " << globalFalseNegativeRate;
+
     const auto rmsErrorIsUnchanged = testUtils::valueIsUnchanged(
         testUtils::getEvalDir() / "BenchmarkingOutput" / "RMS_error.txt", previousRmsError, rmsAvg,
         comparisonTolerance);
