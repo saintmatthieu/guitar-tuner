@@ -114,7 +114,7 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput) {
 
     // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
     // and 8% of the test cases failing by no-pitch-detected.
-    constexpr auto threshold = 0.94;
+    constexpr auto threshold = 0.931;
     if (probNotOctaviated < threshold) {
         return 0.f;
     }
