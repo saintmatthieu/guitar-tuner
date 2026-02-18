@@ -58,7 +58,6 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     // Lock when median filter outputs a non-zero estimate (note onset).
     // Update the constraint while locked to track the current pitch.
     if (medianFiltered > 0.f) {
-        _locked = true;
         _impl->setEstimateConstraint(medianFiltered);
     }
 
