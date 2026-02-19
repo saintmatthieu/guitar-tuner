@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "HighPassFilter.h"
+#include "ButterworthFilter.h"
 
 namespace saint {
 class Preprocessor {
@@ -15,7 +15,7 @@ class Preprocessor {
     static constexpr auto cutoffFreq = 5000.0;
     static constexpr auto filterOrder = 6;
 
-    Filter<filterOrder> _lowpass;
-    const std::unique_ptr<Filter<filterOrder>> _rightLowpass;
+    ButterworthFilter<filterOrder> _lowpass;
+    const std::unique_ptr<ButterworthFilter<filterOrder>> _rightLowpass;
 };
 }  // namespace saint

@@ -134,9 +134,9 @@ Coefs<P> butterworthCoefs(FilterType type, double cutoffHz, int sampleRate) {
 }
 
 template <int FilterOrder>
-class Filter {
+class ButterworthFilter {
    public:
-    Filter(int numChannels, int channel, Coefs<FilterOrder> coeffs)
+    ButterworthFilter(int numChannels, int channel, Coefs<FilterOrder> coeffs)
         : _numChannels{numChannels},
           _channel{channel},
           _b(std::move(coeffs.b)),

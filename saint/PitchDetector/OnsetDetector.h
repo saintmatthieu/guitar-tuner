@@ -3,7 +3,6 @@
 #include <optional>
 #include <vector>
 
-#include "HighPassFilter.h"
 #include "PitchDetectorTypes.h"
 
 namespace saint {
