@@ -1,16 +1,13 @@
 #include <algorithm>
-#include <vector>
+#include <array>
 
 namespace saint {
+template <int FilterOrder>
 class Filter {
    public:
-    Filter(int numChannels, int channel, std::vector<double> b, std::vector<double> a)
-        : _numChannels{numChannels},
-          _channel{channel},
-          _b(std::move(b)),
-          _a(std::move(a)),
-          _x(_b.size(), 0.f),
-          _y(_a.size(), 0.f) {}
+    Filter(int numChannels, int channel, std::array<double, FilterOrder + 1> b,
+           std::array<double, FilterOrder + 1> a)
+        : _numChannels{numChannels}, _channel{channel}, _b(std::move(b)), _a(std::move(a)) {}
 
     void process(float* data, int samplesPerChannel) {
         for (int i = 0; i < samplesPerChannel; ++i) {
@@ -45,27 +42,28 @@ class Filter {
    private:
     const int _numChannels;
     const int _channel;
-    std::vector<double> _b;
-    std::vector<double> _a;
-    std::vector<double> _x;  // input delay line
-    std::vector<double> _y;  // output delay line
+    std::array<double, FilterOrder + 1> _b;
+    std::array<double, FilterOrder + 1> _a;
+    std::array<double, FilterOrder + 1> _x;  // input delay line
+    std::array<double, FilterOrder + 1> _y;  // output delay line
 };
 
-class HighPassFilter : public Filter {
+class HighPassFilter : public Filter<3> {
    public:
     HighPassFilter(int numChannels, int channel)
-        : Filter(numChannels, channel,
-                 // Cutoff 1kHz
-                 {0.8671035126423323, -2.601310537926997, 2.601310537926997, -0.8671035126423323},
-                 {1.0, -2.7152853556329544, 2.4696743431401167, -0.7518684023655857}) {}
+        : Filter<3>(
+              numChannels, channel,
+              // Cutoff 1kHz
+              {0.8671035126423323, -2.601310537926997, 2.601310537926997, -0.8671035126423323},
+              {1.0, -2.7152853556329544, 2.4696743431401167, -0.7518684023655857}) {}
 };
 
-class LowPassFilter : public Filter {
+class LowPassFilter : public Filter<2> {
    public:
     LowPassFilter(int numChannels, int channel)
-        : Filter(numChannels, channel,
-                 // Cutoff 5kHz
-                 {0.08315986992995228, 0.16631973985990456, 0.08315986992995228},
-                 {1.0, -1.035171209738942, 0.3678106894587511}) {}
+        : Filter<2>(numChannels, channel,
+                    // Cutoff 5kHz
+                    {0.08315986992995228, 0.16631973985990456, 0.08315986992995228},
+                    {1.0, -1.035171209738942, 0.3678106894587511}) {}
 };
 }  // namespace saint
