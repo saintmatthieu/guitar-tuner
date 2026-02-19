@@ -8,12 +8,13 @@
 #include "FrequencyDomainTransformer.h"
 #include "OnsetDetector.h"
 #include "PitchDetectorLoggerInterface.h"
+#include "Preprocessor.h"
 
 namespace saint {
 class PitchDetectorImpl {
    public:
-    PitchDetectorImpl(FrequencyDomainTransformer, AutocorrPitchDetector,
-                      AutocorrEstimateDisambiguator, OnsetDetector,
+    PitchDetectorImpl(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
+                      AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
 
     float process(const float*, DebugOutput*);
@@ -30,6 +31,7 @@ class PitchDetectorImpl {
     }
 
    private:
+    const std::unique_ptr<Preprocessor> _preprocessor;
     FrequencyDomainTransformer _frequencyDomainTransformer;
     AutocorrPitchDetector _autocorrPitchDetector;
     AutocorrEstimateDisambiguator _disambiguator;

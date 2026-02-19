@@ -67,12 +67,14 @@ double probabilityNotOctaviated(double s) {
 }  // namespace
 
 namespace saint {
-PitchDetectorImpl::PitchDetectorImpl(FrequencyDomainTransformer transformer,
+PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
+                                     FrequencyDomainTransformer transformer,
                                      AutocorrPitchDetector autocorrPitchDetector,
                                      AutocorrEstimateDisambiguator disambiguator,
                                      OnsetDetector onsetDetector,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger)
-    : _frequencyDomainTransformer(std::move(transformer)),
+    : _preprocessor(std::move(preprocessor)),
+      _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
       _onsetDetector(std::move(onsetDetector)),
@@ -82,12 +84,16 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput) {
     _logger->StartNewEstimate();
     utils::Finally finally{[this] { _logger->EndNewEstimate(nullptr, 0); }};
 
+    // Use the unprocessed, broadband audio for the onset detection.
     if (const auto isOnset = _onsetDetector.process(audio, debugOutput)) {
         // New attack is detected, likely a new note ; reset constraint
         _estimateConstraint.reset();
     }
 
-    const std::vector<std::complex<float>> freq = _frequencyDomainTransformer.process(audio);
+    const auto processedAudio = _preprocessor->processBlock(audio);
+
+    const std::vector<std::complex<float>> freq =
+        _frequencyDomainTransformer.process(processedAudio.data());
 
     auto presenceScore = 0.f;
     const float xcorrEstimate =

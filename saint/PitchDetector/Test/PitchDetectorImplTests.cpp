@@ -88,6 +88,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             const auto minFreq = getMinFreq(kTestConfig);
+            auto preprocessor =
+                std::make_unique<Preprocessor>(noisy.sampleRate, noisy.channelFormat, blockSize);
+
             FrequencyDomainTransformer transformer(noisy.sampleRate, noisy.channelFormat, blockSize,
                                                    minFreq, *logger);
             AutocorrPitchDetector autocorrPitchDetector(noisy.sampleRate, transformer.fftSize(),
@@ -97,8 +100,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize, minFreq);
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
-                std::move(onsetDetector), std::move(logger));
+                std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
+                std::move(disambiguator), std::move(onsetDetector), std::move(logger));
             std::unique_ptr<PitchDetector> pitchDetector;
 
             if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {
@@ -286,7 +289,7 @@ TEST(PitchDetectorImpl, benchmarking) {
         << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 42.72116810023208;
+    constexpr auto previousRmsError = 41.82508377230909;
     constexpr auto previousAuc = 0.8815561328790874;
     constexpr auto previousFNR = 0.3722068879964025;
 

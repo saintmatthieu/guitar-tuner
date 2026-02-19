@@ -7,6 +7,7 @@
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorMedianFilter.h"
 #include "PitchDetectorUtils.h"
+#include "Preprocessor.h"
 
 namespace saint {
 
@@ -27,9 +28,12 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
 
     OnsetDetector onsetDetector(sampleRate, channelFormat, samplesPerBlockPerChannel, minFreq);
 
+    auto preprocessor =
+        std::make_unique<Preprocessor>(sampleRate, channelFormat, samplesPerBlockPerChannel);
+
     auto impl = std::make_unique<PitchDetectorImpl>(
-        std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
-        std::move(onsetDetector), std::move(logger));
+        std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
+        std::move(disambiguator), std::move(onsetDetector), std::move(logger));
 
     return std::make_unique<PitchDetectorMedianFilter>(sampleRate, samplesPerBlockPerChannel,
                                                        std::move(impl));
