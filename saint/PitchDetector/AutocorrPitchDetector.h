@@ -8,6 +8,7 @@
 #include "FrequencyDomainTransformer.h"
 #include "PitchDetector.h"
 #include "RealFft.h"
+#include "Upsampler.h"
 #include "Utils.h"
 
 class PitchDetectorLoggerInterface;
@@ -28,6 +29,6 @@ class AutocorrPitchDetector {
     RealFft _fwdFft;
     const std::vector<float> _lpWindow;
     const int _lastSearchIndex;
-    const std::vector<float> _windowXcor;
+    const std::vector<float> _windowXcorr;
 };
 }  // namespace saint

@@ -3,12 +3,12 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import butter, freqz
+from scipy.signal import butter, freqz, group_delay
 
 # Design a first-order Butterworth high-pass filter
 fs = 44100  # Sampling frequency
 fc = 5000   # Cutoff frequency (Hz)
-order = 2
+order = 6
 nyq = 0.5 * fs
 normal_cutoff = fc / nyq
 b, a = butter(order, normal_cutoff, btype='low', analog=False)
@@ -24,8 +24,17 @@ plt.grid()
 plt.xlim(0, 20000)
 plt.ylim(-60, 5)
 
-plt.savefig('lowpass_filter_response.png')
-plt.close()
+# Group delay
+w, gd = group_delay((b, a), w=512, fs=fs)
+plt.figure()
+plt.plot(w, gd)
+plt.title('Group Delay')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Group Delay (samples)')
+plt.grid()
+plt.xlim(0, 20000)
+
+plt.show()
 
 print("b coefficients:", ", ".join([str(coef) for coef in b]))
 print("a coefficients:", ", ".join([str(coef) for coef in a]))

@@ -11,6 +11,15 @@ namespace saint {
 namespace {
 constexpr auto cutoffFreq = 1500;
 
+std::vector<float> upsampleXCorr(std::vector<float> xcorr, int sampleRate) {
+    Upsampler upsampler(sampleRate);
+    std::rotate(xcorr.begin(), xcorr.begin() + xcorr.size() / 2, xcorr.end());
+    std::vector<float> upXcorr = upsampler.process(xcorr.data(), xcorr.size());
+    std::rotate(upXcorr.begin(), upXcorr.begin() + upXcorr.size() / 2 + upsampler.delaySamples(),
+                upXcorr.end());
+    return upXcorr;
+}
+
 void getXCorr(RealFft& fft, std::vector<float>& time, std::vector<std::complex<float>> freq,
               const std::vector<float>& lpWindow) {
     auto timeData = time.data();
@@ -71,22 +80,28 @@ AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
       _fftSize(fftSize),
       _fwdFft(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
-      _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / minFreq))),
-      _windowXcor(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)) {}
+      _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / minFreq)) *
+                       Upsampler::factor),
+      _windowXcorr(upsampleXCorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow), sampleRate)) {}
 
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
                                      float* presenceScore, std::optional<float> constraint) {
-    std::vector<float> time(_fftSize);
+    std::vector<float> xcorr(_fftSize);
+    _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "windowXcorr");
 
     // Compute cross-correlation
-    getXCorr(_fwdFft, time, freq, _lpWindow);
-    _logger.Log(time.data(), time.size(), "xcorr");
+    getXCorr(_fwdFft, xcorr, freq, _lpWindow);
+    _logger.Log(xcorr.data(), xcorr.size(), "xcorr");
+
+    const auto upXcorr = upsampleXCorr(std::move(xcorr), _sampleRate);
+    _logger.Log(upXcorr.data(), upXcorr.size(), "upXcorr");
 
     // Determine search range based on constraint
     // A major third is a ratio of 5/4 = 1.26 (up) or 4/5 = 0.8 (down)
     constexpr auto majorThirdRatio = 1.26f;
     int firstSearchIndex = 0;
     int lastSearchIndex = _lastSearchIndex;
+    const auto upSampleRate = _sampleRate * Upsampler::factor;
 
     if (constraint.has_value() && constraint.value() > 0.f) {
         const auto constraintFreq = constraint.value();
@@ -94,26 +109,26 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         const auto maxFreq = constraintFreq * majorThirdRatio;
         // Convert frequencies to lag indices (frequency = sampleRate / lag)
         // Higher frequency means smaller lag
-        firstSearchIndex = std::max(0, static_cast<int>(_sampleRate / maxFreq));
-        lastSearchIndex = std::min(_lastSearchIndex, static_cast<int>(_sampleRate / minFreq) + 1);
+        firstSearchIndex = std::max(0, static_cast<int>(upSampleRate / maxFreq));
+        lastSearchIndex = std::min(_lastSearchIndex, static_cast<int>(upSampleRate / minFreq) + 1);
     }
 
     auto maxIndex = 0;
     auto wentNegative = false;
     auto maximum = 0.f;
     for (auto i = 0; i < lastSearchIndex; ++i) {
-        wentNegative |= time[i] < 0;
-        if (wentNegative && i >= firstSearchIndex && time[i] > maximum) {
-            maximum = time[i];
+        wentNegative |= upXcorr[i] < 0;
+        if (wentNegative && i >= firstSearchIndex && upXcorr[i] > maximum) {
+            maximum = upXcorr[i];
             maxIndex = i;
         }
     }
 
-    maximum /= _windowXcor[maxIndex];
+    maximum /= _windowXcorr[maxIndex];
     if (presenceScore) {
         *presenceScore = maximum;
     }
 
-    return maxIndex == 0 ? 0.f : static_cast<float>(_sampleRate) / maxIndex;
+    return maxIndex == 0 ? 0.f : static_cast<float>(upSampleRate) / maxIndex;
 }
 }  // namespace saint
