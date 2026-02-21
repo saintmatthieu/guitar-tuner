@@ -8,7 +8,7 @@ namespace saint {
 
 namespace {
 constexpr int getFilterSize(int sampleRate, int blockSize) {
-    constexpr auto filterDuration = 0.2f;
+    constexpr auto filterDuration = 0.15f;
     const auto blockDuration = static_cast<float>(blockSize) / static_cast<float>(sampleRate);
     auto size = static_cast<int>(std::ceil(filterDuration / blockDuration));
     if (size % 2 == 0) {
