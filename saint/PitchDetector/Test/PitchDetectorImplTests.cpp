@@ -10,6 +10,7 @@
 #include "AutocorrPitchDetector.h"
 #include "DummyPitchDetectorLogger.h"
 #include "OnsetDetector.h"
+#include "PitchDetectionSmoother.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorImplTestWrapper.h"
 #include "PitchDetectorLogger.h"
@@ -105,8 +106,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             std::unique_ptr<PitchDetector> pitchDetector;
 
             if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {
-                pitchDetector = std::make_unique<PitchDetectorMedianFilter>(
+                auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
                     noisy.sampleRate, blockSize, std::move(internalAlgorithm));
+                pitchDetector = std::make_unique<PitchDetectionSmoother>(std::move(medianFilter));
             } else {
                 pitchDetector =
                     std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));

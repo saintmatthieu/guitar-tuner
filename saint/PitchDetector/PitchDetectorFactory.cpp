@@ -4,6 +4,7 @@
 #include "DummyPitchDetectorLogger.h"
 #include "FrequencyDomainTransformer.h"
 #include "OnsetDetector.h"
+#include "PitchDetectionSmoother.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorMedianFilter.h"
 #include "PitchDetectorUtils.h"
@@ -35,7 +36,9 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
         std::move(disambiguator), std::move(onsetDetector), std::move(logger));
 
-    return std::make_unique<PitchDetectorMedianFilter>(sampleRate, samplesPerBlockPerChannel,
-                                                       std::move(impl));
+    auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
+        sampleRate, samplesPerBlockPerChannel, std::move(impl));
+
+    return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter));
 }
 }  // namespace saint

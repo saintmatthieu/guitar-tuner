@@ -15,6 +15,7 @@ target_sources(PitchDetector
     DummyPitchDetectorLogger.cpp
     FrequencyDomainTransformer.cpp
     OnsetDetector.cpp
+    PitchDetectionSmoother.cpp
     Upsampler.cpp
 )
 
