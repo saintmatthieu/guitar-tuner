@@ -8,7 +8,7 @@ namespace saint {
 
 namespace {
 constexpr int getFilterSize(int sampleRate, int blockSize) {
-    constexpr auto filterDuration = 0.5f;
+    constexpr auto filterDuration = 0.2f;
     const auto blockDuration = static_cast<float>(blockSize) / static_cast<float>(sampleRate);
     auto size = static_cast<int>(std::ceil(filterDuration / blockDuration));
     if (size % 2 == 0) {
@@ -38,6 +38,9 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     }
 
     const auto raw = _impl->process(input, debugOutput, debugOutputSignal);
+    if (const auto isOnset = debugOutput->at("isOnset") == 1.f) {
+        _allGoodOnce = false;
+    }
 
     const auto rawPresenceScore = debugOutput->at("presenceScore");
     _delayedScores.push_back(rawPresenceScore);
@@ -45,6 +48,13 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     _delayedScores.erase(_delayedScores.begin());
 
     _buffer.push_back(raw);
+    _allGoodOnce |=
+        std::all_of(_buffer.begin(), _buffer.end(), [](float raw) { return raw > 0.f; });
+
+    if (!_allGoodOnce) {
+        return 0.f;
+    }
+
     auto sortedBuffer = _buffer;
     std::sort(sortedBuffer.begin(), sortedBuffer.end());
     const auto medianFiltered = sortedBuffer[sortedBuffer.size() / 2];

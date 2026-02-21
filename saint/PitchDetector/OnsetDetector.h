@@ -27,6 +27,8 @@ class OnsetDetector {
     std::vector<double> _pastPowers;
     const std::vector<double> _avgWindow;
     const double _alpha;
+    const int _leastBlockCountBetweenOffsets;
+    int _countSinceLastTrueOutput = 0;
 };
 
 }  // namespace saint

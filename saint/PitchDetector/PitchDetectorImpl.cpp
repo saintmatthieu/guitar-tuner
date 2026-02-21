@@ -86,7 +86,11 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     utils::Finally finally{[this] { _logger->EndNewEstimate(nullptr, 0); }};
 
     // Use the unprocessed, broadband audio for the onset detection.
-    if (const auto isOnset = _onsetDetector.process(audio, debugOutput)) {
+    const auto isOnset = _onsetDetector.process(audio, debugOutput);
+    if (debugOutput) {
+        (*debugOutput)["isOnset"] = isOnset ? 1.f : 0.f;
+    }
+    if (isOnset) {
         // New attack is detected, likely a new note ; reset constraint
         _estimateConstraint.reset();
     }
@@ -125,7 +129,7 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
 
     // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
     // and 8% of the test cases failing by no-pitch-detected.
-    constexpr auto thresholdWithoutEstimateConstraint = 0.931;
+    constexpr auto thresholdWithoutEstimateConstraint = 0.92;
     constexpr auto thresholdWithEstimateConstraint = 0.75;
     const auto threshold = _estimateConstraint.has_value() ? thresholdWithEstimateConstraint
                                                            : thresholdWithoutEstimateConstraint;

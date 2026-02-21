@@ -29,7 +29,8 @@ OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
       _avgFilterLength(1. * sampleRate / samplesPerBlockPerChannel * 0.25),
       _pastPowers(_avgFilterLength, 0.f),
       _avgWindow(utils::getAnalysisWindow<double>(_avgFilterLength, utils::WindowType::Hann)),
-      _alpha(0.7 * sampleRate / samplesPerBlockPerChannel / 100) {
+      _alpha(0.7 * sampleRate / samplesPerBlockPerChannel / 100),
+      _leastBlockCountBetweenOffsets(sampleRate / samplesPerBlockPerChannel * 0.1) {
     _audioBuffer.reserve(std::max<size_t>(_window.size(), samplesPerBlockPerChannel));
 }
 
@@ -73,7 +74,16 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
 
     // To get this, we run OnsetDetectorCalibrationTests and then showOnsetDetectionHistograms.py.
     // It is set so that there are no false negatives.
-    return onsetStrength > 1.75109e-07;
+    const auto isOnset = onsetStrength > 1.75109e-07;
+
+    const auto output = isOnset && _countSinceLastTrueOutput >= _leastBlockCountBetweenOffsets;
+    if (output) {
+        _countSinceLastTrueOutput = 0;
+    } else {
+        ++_countSinceLastTrueOutput;
+    }
+
+    return output;
 }
 
 double OnsetDetector::updatePowerAverage(double newPower) {

@@ -306,9 +306,9 @@ TEST(PitchDetectorImpl, benchmarking) {
         << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 40.63645162610538;
+    constexpr auto previousRmsError = 16.49293366488798;
     constexpr auto previousAuc = 0.8815561328790874;
-    constexpr auto previousFNR = 0.3722068879964025;
+    constexpr auto previousFNR = 0.4210149117900784;
 
     constexpr auto comparisonTolerance = 0.01;
 

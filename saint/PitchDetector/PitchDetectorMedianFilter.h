@@ -23,5 +23,6 @@ class PitchDetectorMedianFilter : public PitchDetector {
     DebugOutput _debugOutput;
     std::vector<float> _buffer;
     std::vector<float> _delayedScores;
+    bool _allGoodOnce = false;
 };
 }  // namespace saint
