@@ -48,8 +48,15 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     _delayedScores.erase(_delayedScores.begin());
 
     _buffer.push_back(raw);
-    _allGoodOnce |=
-        std::all_of(_buffer.begin(), _buffer.end(), [](float raw) { return raw > 0.f; });
+    if (!_allGoodOnce) {
+        const auto allNonZero =
+            std::all_of(_buffer.begin(), _buffer.end(), [](float raw) { return raw > 0.f; });
+        if (allNonZero) {
+            const auto minEstimate = *std::min_element(_buffer.begin(), _buffer.end());
+            const auto maxEstimate = *std::max_element(_buffer.begin(), _buffer.end());
+            _allGoodOnce = maxEstimate / minEstimate < majorThirdRatio;
+        }
+    }
 
     if (!_allGoodOnce) {
         return 0.f;

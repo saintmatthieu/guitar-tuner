@@ -39,5 +39,4 @@ plt.gcf().canvas.manager.set_window_title("Error histogram")
 # plt.grid(True)
 # plt.gcf().canvas.manager.set_window_title("Error over time")
 
-plt.savefig('error_histogram.png')
-plt.close()
+plt.show()

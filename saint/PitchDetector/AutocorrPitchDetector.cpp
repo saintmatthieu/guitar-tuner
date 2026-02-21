@@ -82,8 +82,6 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
     _logger.Log(xcorr.data(), xcorr.size(), "xcorr");
 
     // Determine search range based on constraint
-    // A major third is a ratio of 5/4 = 1.26 (up) or 4/5 = 0.8 (down)
-    constexpr auto majorThirdRatio = 1.26f;
     int firstSearchIndex = 0;
     int lastSearchIndex = _lastSearchIndex;
 

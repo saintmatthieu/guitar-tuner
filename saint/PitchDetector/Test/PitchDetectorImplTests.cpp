@@ -126,6 +126,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 debugOutputSignal = std::make_unique<std::vector<float>>();
             }
 
+            std::vector<bool> onsets;
+
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 DebugOutput debugOutput;
                 const auto finalEstimate = pitchDetector->process(
@@ -149,6 +151,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                                         : 0.f;
                 testFileEstimates.emplace_back(truth, debugOutput["presenceScore"], finalEstimate,
                                                errorCents);
+                onsets.push_back(debugOutput["isOnset"] == 1.f);
             }
 
             totalPositiveCount += positiveCount;
@@ -186,6 +189,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                      "frequencyEstimates.py");
                 testUtils::PrintPythonVector(frequencyEstimatesFile, frequencyEstimates,
                                              "frequencyEstimates");
+                testUtils::PrintPythonVector(frequencyEstimatesFile, onsets, "onsets");
                 frequencyEstimatesFile
                     << "secondsPerBlock = " << static_cast<float>(blockSize) / noisy.sampleRate
                     << "\n";
@@ -306,7 +310,7 @@ TEST(PitchDetectorImpl, benchmarking) {
         << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 16.49293366488798;
+    constexpr auto previousRmsError = 13.96999747265438;
     constexpr auto previousAuc = 0.8815561328790874;
     constexpr auto previousFNR = 0.4210149117900784;
 

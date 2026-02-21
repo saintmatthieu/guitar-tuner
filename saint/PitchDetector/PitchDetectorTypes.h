@@ -17,6 +17,8 @@ static constexpr auto autocorrRolloffHz = 200;
 // Upsampling by a factor of 4, we reduce the maximal quantization to 1.5 cents.
 constexpr auto autocorrUpsamplingFactor = 4;
 
+constexpr auto majorThirdRatio = 1.26f;
+
 struct Pitch {
     const PitchClass pitchClass;
     const int octave;

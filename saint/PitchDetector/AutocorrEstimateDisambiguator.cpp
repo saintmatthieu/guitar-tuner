@@ -195,7 +195,6 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
                                              octaviatedIndex / 2, octaviatedIndex / 3};
 
     // If constrained, filter candidates to those within a major third of the constraint
-    constexpr auto majorThirdRatio = 1.26f;
     std::vector<float> candidates;
     for (const auto& c : allCandidates) {
         if (!constraintIndex.has_value()) {
