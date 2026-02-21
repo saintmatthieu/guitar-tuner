@@ -6,13 +6,13 @@
 
 #include "AutocorrPitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
+#include "Upsampler.h"
 
 namespace saint {
 namespace {
-constexpr auto cutoffFreq = 1500;
-
 std::vector<float> upsampleXCorr(std::vector<float> xcorr, int sampleRate) {
-    Upsampler upsampler(sampleRate);
+    Upsampler upsampler(sampleRate, autocorrUpsamplingFactor,
+                        autocorrCutoffFreqHz + autocorrRolloffHz);
     std::rotate(xcorr.begin(), xcorr.begin() + xcorr.size() / 2, xcorr.end());
     std::vector<float> upXcorr = upsampler.process(xcorr.data(), xcorr.size());
     std::rotate(upXcorr.begin(), upXcorr.begin() + upXcorr.size() / 2 + upsampler.delaySamples(),
@@ -41,8 +41,8 @@ void getXCorr(RealFft& fft, std::vector<float>& time, std::vector<std::complex<f
 
 std::vector<float> getLpWindow(int sampleRate, int fftSize) {
     std::vector<float> window(fftSize / 2);
-    const int cutoffBin = std::min(fftSize / 2, fftSize * cutoffFreq / sampleRate);
-    const int rollOffSize = fftSize * 200 / sampleRate;
+    const int cutoffBin = std::min(fftSize / 2, fftSize * autocorrCutoffFreqHz / sampleRate);
+    const int rollOffSize = fftSize * autocorrRolloffHz / sampleRate;
     std::fill(window.begin(), window.begin() + cutoffBin, 1.f);
     for (auto i = 0; i < rollOffSize && cutoffBin + rollOffSize < fftSize / 2; ++i) {
         window[cutoffBin + i] = 1.f - i / static_cast<float>(rollOffSize);
@@ -81,7 +81,7 @@ AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
       _fwdFft(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / minFreq)) *
-                       Upsampler::factor),
+                       autocorrUpsamplingFactor),
       _windowXcorr(upsampleXCorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow), sampleRate)) {}
 
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
@@ -101,7 +101,7 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
     constexpr auto majorThirdRatio = 1.26f;
     int firstSearchIndex = 0;
     int lastSearchIndex = _lastSearchIndex;
-    const auto upSampleRate = _sampleRate * Upsampler::factor;
+    const auto upSampleRate = _sampleRate * autocorrUpsamplingFactor;
 
     if (constraint.has_value() && constraint.value() > 0.f) {
         const auto constraintFreq = constraint.value();

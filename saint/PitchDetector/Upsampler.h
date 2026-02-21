@@ -5,9 +5,7 @@
 namespace saint {
 class Upsampler {
    public:
-    static constexpr auto factor = 2;
-
-    Upsampler(int sampleRate);
+    Upsampler(int sampleRate, int factor, int cutoffFreqHz);
 
     /**
      * @brief assumes mono input
@@ -24,5 +22,6 @@ class Upsampler {
     // Odd number of taps ensures Type I linear phase (symmetric)
     static constexpr auto numTaps = 31;
     FIRFilter<numTaps> _filter;
+    const int _factor;
 };
 }  // namespace saint

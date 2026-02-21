@@ -17,6 +17,8 @@ DummyPitchDetectorLogger::~DummyPitchDetectorLogger() {}
 
 void DummyPitchDetectorLogger::Log(int value, const char* name) const {}
 
+void DummyPitchDetectorLogger::Log(float value, const char* name) const {}
+
 void DummyPitchDetectorLogger::Log(const float* samples, size_t size, const char* name,
                                    const std::function<float(float)>& transform) const {}
 

@@ -8,7 +8,6 @@
 #include "FrequencyDomainTransformer.h"
 #include "PitchDetector.h"
 #include "RealFft.h"
-#include "Upsampler.h"
 #include "Utils.h"
 
 class PitchDetectorLoggerInterface;

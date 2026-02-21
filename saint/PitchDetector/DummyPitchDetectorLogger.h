@@ -23,6 +23,7 @@ class DummyPitchDetectorLogger : public PitchDetectorLoggerInterface {
         return false;
     }
     void Log(int value, const char* name) const override;
+    void Log(float value, const char* name) const override;
     void Log(const float* samples, size_t size, const char* name,
              const std::function<float(float)>& transform) const override;
     void Log(const std::complex<float>* samples, size_t size, const char* name,

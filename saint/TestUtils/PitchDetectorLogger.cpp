@@ -56,6 +56,12 @@ void PitchDetectorLogger::Log(int value, const char* name) const {
     }
 }
 
+void PitchDetectorLogger::Log(float value, const char* name) const {
+    if (mOfs) {
+        *mOfs << name << " = " << value << "\n";
+    }
+}
+
 void PitchDetectorLogger::Log(const float* samples, size_t size, const char* name,
                               const std::function<float(float)>& transform) const {
     if (!mOfs) {
