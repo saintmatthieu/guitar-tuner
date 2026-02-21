@@ -80,7 +80,8 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
       _onsetDetector(std::move(onsetDetector)),
       _logger(std::move(logger)) {}
 
-float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput) {
+float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
+                                 std::vector<float>* debugOutputSignal) {
     _logger->StartNewEstimate();
     utils::Finally finally{[this] { _logger->EndNewEstimate(nullptr, 0); }};
 
@@ -91,6 +92,10 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput) {
     }
 
     const auto processedAudio = _preprocessor->processBlock(audio);
+    if (debugOutputSignal) {
+        debugOutputSignal->insert(debugOutputSignal->end(), processedAudio.begin(),
+                                  processedAudio.end());
+    }
 
     const std::vector<std::complex<float>> freq =
         _frequencyDomainTransformer.process(processedAudio.data());

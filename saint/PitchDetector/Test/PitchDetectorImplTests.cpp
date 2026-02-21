@@ -121,11 +121,15 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto* noisyData = noisy.interleaved.data();
 
             std::vector<testUtils::ProcessEstimate> testFileEstimates;
+            std::unique_ptr<std::vector<float>> debugOutputSignal;
+            if (argTestCaseId) {
+                debugOutputSignal = std::make_unique<std::vector<float>>();
+            }
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 DebugOutput debugOutput;
-                const auto finalEstimate =
-                    pitchDetector->process(noisyData + i * numChannels, &debugOutput);
+                const auto finalEstimate = pitchDetector->process(
+                    noisyData + i * numChannels, &debugOutput, debugOutputSignal.get());
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -167,7 +171,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto filename = cleanFile.string() + "_with_" +
                                   testCase.noise.file.stem().string() + "_at_" +
                                   testCase.noise.rmsDb + "dB";
-            const auto outWavName = testUtils::getOutDir() / "wav" / (filename + ".wav");
+            const auto outWavName = (testUtils::getOutDir() / "wav" / filename).string();
 
             const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
             const auto evalDir = testUtils::getEvalDir();
@@ -178,6 +182,11 @@ TEST(PitchDetectorImpl, benchmarking) {
             if (argTestCaseId.has_value()) {
                 std::cout << csvLine.str();
 
+                testUtils::toWavFile(outWavName + "_preprocessed.wav",
+                                     testUtils::Audio{std::move(*debugOutputSignal),
+                                                      noisy.sampleRate, noisy.channelFormat},
+                                     &tee, "Preprocessed signal");
+                testUtils::toWavFile(outWavName + ".wav", noisy, &tee, "Noisy input");
                 std::vector<float> presenceSores(testFileEstimates.size());
                 std::transform(
                     testFileEstimates.begin(), testFileEstimates.end(), presenceSores.begin(),

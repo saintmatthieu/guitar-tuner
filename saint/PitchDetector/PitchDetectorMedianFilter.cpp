@@ -24,32 +24,25 @@ PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSi
       _buffer(getFilterSize(sampleRate, blockSize), 0.f),
       _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
 
-float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugOutput) {
-    return process(input, debugOutput, nullptr);
-}
-
 int PitchDetectorMedianFilter::delaySamples() const {
     return _delayedScores.size() * _blockSize + _impl->delaySamples();
 }
 
 float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugOutput,
-                                         float* unfilteredEstimate) {
+                                         std::vector<float>* debugOutputSignal) {
     _buffer.erase(_buffer.begin());
 
     if (debugOutput == nullptr) {
         debugOutput = &_debugOutput;
     }
 
-    const auto raw = _impl->process(input, debugOutput);
+    const auto raw = _impl->process(input, debugOutput, debugOutputSignal);
 
     const auto rawPresenceScore = debugOutput->at("presenceScore");
     _delayedScores.push_back(rawPresenceScore);
     (*debugOutput)["presenceScore"] = _delayedScores.front();
     _delayedScores.erase(_delayedScores.begin());
 
-    if (unfilteredEstimate != nullptr) {
-        *unfilteredEstimate = raw;
-    }
     _buffer.push_back(raw);
     auto sortedBuffer = _buffer;
     std::sort(sortedBuffer.begin(), sortedBuffer.end());

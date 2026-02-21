@@ -17,7 +17,7 @@ class PitchDetectorImpl {
                       AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger);
 
-    float process(const float*, DebugOutput*);
+    float process(const float*, DebugOutput*, std::vector<float>* debugOutputSignal = nullptr);
     int delaySamples() const {
         return windowSizeSamples() / 2;
     }
