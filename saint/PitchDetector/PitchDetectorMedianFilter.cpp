@@ -1,7 +1,8 @@
 #include "PitchDetectorMedianFilter.h"
 
 #include <algorithm>
-#include <cmath>  // ceil
+#include <cmath>    // ceil
+#include <numeric>  // accumulate
 
 namespace saint {
 
@@ -21,7 +22,7 @@ PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSi
                                                      std::unique_ptr<PitchDetectorImpl> impl)
     : _blockSize(blockSize),
       _impl(std::move(impl)),
-      _buffer(getFilterSize(sampleRate, blockSize), 0.f),
+      _buffer(getFilterSize(sampleRate, blockSize)),
       _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
 
 int PitchDetectorMedianFilter::delaySamples() const {

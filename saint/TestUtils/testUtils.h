@@ -89,6 +89,8 @@ float getTrueFrequency(const std::filesystem::path& filePath);
 std::filesystem::path getFileShortName(const std::filesystem::path& filePath);
 std::optional<Sample> getSampleFromFile(const std::filesystem::path& filePath);
 
+std::vector<float> scaleByPowerOf10(const std::vector<float>& data);
+
 // Output utilities
 struct Marking {
     const int startSample;
@@ -209,6 +211,15 @@ RocInfo GetRocInfo(std::vector<Result> results, double allowedFalsePositiveRate 
 
 template <typename T>
 void PrintPythonVector(std::ofstream& ofs, const std::vector<T>& v, const char* name) {
+    ofs << name << " = [";
+    std::for_each(v.begin(), v.end(), [&](T x) { ofs << x << ","; });
+    ofs << "]\n";
+}
+
+template <typename T>
+void PrintPythonVector(const std::filesystem::path& path, const std::vector<T>& v,
+                       const char* name) {
+    std::ofstream ofs{path};
     ofs << name << " = [";
     std::for_each(v.begin(), v.end(), [&](T x) { ofs << x << ","; });
     ofs << "]\n";

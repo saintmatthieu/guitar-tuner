@@ -10,6 +10,16 @@
 namespace saint {
 namespace fs = std::filesystem;
 
+std::vector<float> testUtils::scaleByPowerOf10(const std::vector<float>& values) {
+    const auto max = *std::max_element(values.begin(), values.end(),
+                                       [](float a, float b) { return std::abs(a) < std::abs(b); });
+    const float scale = std::pow(10, std::ceil(std::log10(max)));
+    std::vector<float> scaledValues(values.size());
+    std::transform(values.begin(), values.end(), scaledValues.begin(),
+                   [scale](float e) { return e / scale; });
+    return scaledValues;
+}
+
 std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSamples) {
     // read all the file in one go using libsndfile:
     SF_INFO sfinfo;

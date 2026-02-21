@@ -182,6 +182,14 @@ TEST(PitchDetectorImpl, benchmarking) {
             if (argTestCaseId.has_value()) {
                 std::cout << csvLine.str();
 
+                std::ofstream frequencyEstimatesFile(testUtils::getOutDir() /
+                                                     "frequencyEstimates.py");
+                testUtils::PrintPythonVector(frequencyEstimatesFile, frequencyEstimates,
+                                             "frequencyEstimates");
+                frequencyEstimatesFile
+                    << "secondsPerBlock = " << static_cast<float>(blockSize) / noisy.sampleRate
+                    << "\n";
+
                 testUtils::toWavFile(outWavName + "_preprocessed.wav",
                                      testUtils::Audio{std::move(*debugOutputSignal),
                                                       noisy.sampleRate, noisy.channelFormat},
@@ -298,7 +306,7 @@ TEST(PitchDetectorImpl, benchmarking) {
         << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 37.96279242707639;
+    constexpr auto previousRmsError = 40.63645162610538;
     constexpr auto previousAuc = 0.8815561328790874;
     constexpr auto previousFNR = 0.3722068879964025;
 

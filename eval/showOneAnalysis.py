@@ -57,20 +57,6 @@ plt.gcf().canvas.manager.set_window_title("Autocorrelation")
 
 fig += 1
 plt.figure(fig)
-plt.plot(pdl.windowXcorr)
-plt.grid(True)
-plt.suptitle("Upsampled window autocorrelation")
-plt.gcf().canvas.manager.set_window_title("Upsampled window autocorrelation")
-
-fig += 1
-plt.figure(fig)
-plt.plot(pdl.upXcorr)
-plt.grid(True)
-plt.suptitle("Upsampled autocorrelation")
-plt.gcf().canvas.manager.set_window_title("Upsampled autocorrelation")
-
-fig += 1
-plt.figure(fig)
 plt.subplot(2, 1, 1)
 plt.plot(f, pdl.spectrumEnvelope[:F])
 plt.xlabel("Frequency (Hz)")

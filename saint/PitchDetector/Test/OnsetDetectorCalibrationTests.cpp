@@ -57,7 +57,7 @@ std::vector<TestCase> prepareOnsetTestCases(const std::optional<std::string>& ar
     return testCases;
 }
 
-std::vector<float> extractDebugOutput(const std::vector<OnsetDetector::DebugOutput>& debugOutputs,
+std::vector<float> extractDebugOutput(const std::vector<DebugOutput>& debugOutputs,
                                       const std::string& key) {
     std::vector<float> values;
     values.reserve(debugOutputs.size());
@@ -72,22 +72,17 @@ std::vector<float> extractDebugOutput(const std::vector<OnsetDetector::DebugOutp
     return values;
 }
 
-void writeToWavFile(const std::vector<OnsetDetector::DebugOutput>& debugOutputs,
-                    const std::string& key, int sampleRate, int blockSize,
-                    testUtils::TeeStream* tee) {
+void writeToWavFile(const std::vector<DebugOutput>& debugOutputs, const std::string& key,
+                    int sampleRate, int blockSize, testUtils::TeeStream* tee) {
     auto values = extractDebugOutput(debugOutputs, key);
-    const auto max = *std::max_element(values.begin(), values.end());
-    const float scale = std::pow(10, std::ceil(std::log10(max)));
-    std::vector<float> scaledValues(values.size());
-    std::transform(values.begin(), values.end(), scaledValues.begin(),
-                   [scale](float e) { return e / scale; });
+    const auto scaledValues = testUtils::scaleByPowerOf10(values);
     const auto filePath = testUtils::getOutDir() / (key + ".wav");
     testUtils::toWavFile(
         filePath, testUtils::Audio{std::move(scaledValues), sampleRate / blockSize}, tee, key);
 }
 
-void writeToWavFile(const std::vector<OnsetDetector::DebugOutput>& debugOutputs, int sampleRate,
-                    int blockSize, testUtils::TeeStream* tee) {
+void writeToWavFile(const std::vector<DebugOutput>& debugOutputs, int sampleRate, int blockSize,
+                    testUtils::TeeStream* tee) {
     std::unordered_set<std::string> keys;
     for (const auto& debugOutput : debugOutputs) {
         for (const auto& [key, _] : debugOutput) {
@@ -168,13 +163,13 @@ TEST(OnsetDetector, calibration) {
             const auto numChannels = noisy.channelFormat == ChannelFormat::Mono ? 1 : 2;
             const auto numFrames = noisy.interleaved.size() / numChannels;
 
-            std::vector<OnsetDetector::DebugOutput> debugOutputs;
+            std::vector<DebugOutput> debugOutputs;
 
             auto filteredNoisy = noisy.interleaved;
             float* const noisyData = filteredNoisy.data();
 
             for (size_t i = 0; i + blockSize < numFrames; i += blockSize) {
-                OnsetDetector::DebugOutput debugOutput;
+                DebugOutput debugOutput;
                 onsetDetector.process(noisyData + i * numChannels, &debugOutput);
                 debugOutputs.push_back(std::move(debugOutput));
             }
