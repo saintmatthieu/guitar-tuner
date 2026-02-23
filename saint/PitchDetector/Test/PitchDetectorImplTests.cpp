@@ -108,7 +108,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {
                 auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
                     noisy.sampleRate, blockSize, std::move(internalAlgorithm));
-                pitchDetector = std::make_unique<PitchDetectionSmoother>(std::move(medianFilter));
+                const auto blocksPerSecond = noisy.sampleRate / blockSize;
+                pitchDetector = std::make_unique<PitchDetectionSmoother>(std::move(medianFilter),
+                                                                         blocksPerSecond);
             } else {
                 pitchDetector =
                     std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));
@@ -312,7 +314,7 @@ TEST(PitchDetectorImpl, benchmarking) {
         << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
         << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
 
-    constexpr auto previousRmsError = 14.53320796095442;
+    constexpr auto previousRmsError = 14.45737783023248;
     constexpr auto previousAuc = 0.8709150094747889;
     constexpr auto previousFNR = 0.4210149117900784;
 

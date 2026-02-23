@@ -8,9 +8,8 @@ import numpy as np
 import frequencyEstimates as fe
 
 t = [i * fe.secondsPerBlock for i in range(len(fe.frequencyEstimates))]
-# plt.plot(1200 * np.log2(np.array(fe.frequencyEstimates)/440))
 plt.subplot(2, 1, 1)
-plt.plot(t, fe.frequencyEstimates)
+plt.plot(t, 1200 * np.log2(np.array(fe.frequencyEstimates)/440))
 plt.xlabel('t (s)')
 plt.ylabel('Frequency Estimate (cents relative to A4)')
 plt.suptitle('Frequency Estimates and Onset Detection over Time')

@@ -39,6 +39,8 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
         sampleRate, samplesPerBlockPerChannel, std::move(impl));
 
-    return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter));
+    const auto blocksPerSecond = sampleRate / samplesPerBlockPerChannel;
+
+    return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
 }
 }  // namespace saint

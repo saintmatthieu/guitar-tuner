@@ -15,8 +15,7 @@ plt.ylabel('Frequency')
 plt.legend()
 plt.title('Onset vs Non-Onset Value Histograms')
 
-plt.savefig('onset_vs_nononset_histograms.png')
-plt.close()
+plt.show()
 
 print('Max of non-onset values:', max(onsetDetectionValues.nonOnsetValues))
 print('Min of onset values:', min(onsetDetectionValues.onsetValues))
