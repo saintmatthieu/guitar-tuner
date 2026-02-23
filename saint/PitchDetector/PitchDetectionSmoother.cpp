@@ -4,7 +4,7 @@
 
 namespace saint {
 namespace {
-constexpr auto C = 0.9f;
+constexpr auto C = 0.95f;
 }  // namespace
 
 PitchDetectionSmoother::PitchDetectionSmoother(std::unique_ptr<PitchDetector> innerDetector,
