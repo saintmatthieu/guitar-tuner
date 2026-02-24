@@ -6,7 +6,11 @@ A C++ pitch detection library designed for real-time instrument tuning. The core
 
 ## Algorithm
 
-Audio is processed in fixed-size blocks (10 ms). For each block, the pipeline runs the following steps:
+Audio is processed in configurable block sizes, with the analysis using a frequency-dependent window.
+
+The block size can be seen as a step size, while the actual pitch detection uses a typically larger-sized analysis window that depends on the given `PitchDetectorConfig`, which defines a detection range. The range defaults to accommodate standard 6-string guitar tuning, with +/- 3 semitones at the lower and higher ends, respectively (i.e., Db2 to G4).
+
+For each block, the pipeline runs the following steps:
 
 ```
 Raw audio block
