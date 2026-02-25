@@ -134,8 +134,12 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold, P
     LineFitResult bestFit = {};
 
     while (k.size() > 1) {
-        // TODO explain
         const std::unordered_set<int> kSet{k.begin(), k.end()};
+
+        // For a candidate that's an underestimate by a factor of 2, the peaks that are present
+        // will still explain very well that candidate. However, the k values for these cases will
+        // look like [2, 4, 6, ...], i.e., most of them will be dividable by 2. Same goes for 3. If
+        // we detect such a situation, we abort.
         for (auto divisor : {2, 3}) {
             const auto numDividables = std::accumulate(
                 kSet.begin(), kSet.end(), 0,
@@ -143,6 +147,14 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold, P
             if (numDividables >= kSet.size() - 2) {
                 return bestFit;
             }
+        }
+
+        // Next caveat: the candidate is an overestimate by a factor of 2, then the k values will
+        // tend to look like [1, 1, 2, 2, ...]. The least square fit in such cases isn't that bad,
+        // actually, so just relying on this isn't so robust. Instead, let's just look at how many
+        // duplicates there are ...
+        if (1. * kSet.size() / k.size() < 0.9) {
+            return bestFit;
         }
 
         auto fit = leastSquareFit(k, peaks, weights);

@@ -12,8 +12,8 @@
       "stopOnEntry": false,
       "args": [
         // "testWithMedianFilter=false",
-        // "indexOfProcessToLog=90",
-        // "testCaseId=testFiles/notes/Fender_Stratocaster_unplugged/iPhone_11/E4.wav | testFiles/noise/CS_Telecaster_noise.wav | -60"
+        // "indexOfProcessToLog=96",
+        // "testCaseId=testFiles/notes/guitar_1/e2.wav | testFiles/noise/PC_fan_noise.wav | -40"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
