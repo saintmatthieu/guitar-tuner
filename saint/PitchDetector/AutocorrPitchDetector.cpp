@@ -111,6 +111,10 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         *presenceScore = maximum;
     }
 
+    if (maxIndex == 0) {
+        return 0.f;
+    }
+
     const auto fracIndex = utils::quadFit(&xcorr[maxIndex - 1]);
     const auto refinedIndex = maxIndex + fracIndex;
 
