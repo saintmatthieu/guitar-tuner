@@ -18,14 +18,13 @@ class AutocorrEstimateDisambiguator {
                                   const std::optional<PitchDetectorConfig>& config,
                                   PitchDetectorLoggerInterface& logger);
 
-    float process(float xcorrEstimate, const std::vector<float>& dbSpectrum,
-                  std::optional<float> constraint = std::nullopt);
+    void updateNoiseProfile(float confidence, const std::vector<float>& dbSpectrum);
+    float disambiguate(float xcorrEstimate, const std::vector<float>& dbSpectrum,
+                       const std::optional<float>& constraint = std::nullopt) const;
 
    private:
-    float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum,
-                               std::optional<float> constraint) const;
-    float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
-    void toIdealSpectrum(std::vector<float>& logSpectrum);
+    void toIdealSpectrum(std::vector<float>& logSpectrum) const;
+    std::vector<float> getSpectrumEnvelope(const std::vector<float>& dbSpectrum);
 
     const int _sampleRate;
     PitchDetectorLoggerInterface& _logger;
@@ -34,5 +33,8 @@ class AutocorrEstimateDisambiguator {
     RealFft _cepstrumFft;
     const float _minFreq;
     const float _maxFreq;
+    std::vector<float> _noiseProfile;
+    const float _threshold = 0.88f;
+    const float _maxAlpha = 0.03f;
 };
 }  // namespace saint

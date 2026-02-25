@@ -115,6 +115,14 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         return 0.f;
     }
 
+    std::vector<float> powerSpectrum;
+    utils::getPowerSpectrum(freq, powerSpectrum);
+    std::vector<float> dbSpectrum = powerSpectrum;
+    std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
+                   [](float power) { return utils::FastDb(power); });
+    assert(utils::isSymmetric(dbSpectrum));
+    _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
+
     // clang-format off
     // Evaluate the probability of xcorrEstimate not being octaviated (being "good") given presence
     // score "s".
@@ -127,6 +135,8 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     // clang-format on
     const double probNotOctaviated = probabilityNotOctaviated(presenceScore);
 
+    _disambiguator.updateNoiseProfile(probNotOctaviated, dbSpectrum);
+
     // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
     // and 8% of the test cases failing by no-pitch-detected.
     constexpr auto thresholdWithoutEstimateConstraint = 0.85;
@@ -137,16 +147,8 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         return 0.f;
     }
 
-    std::vector<float> powerSpectrum;
-    utils::getPowerSpectrum(freq, powerSpectrum);
-    std::vector<float> dbSpectrum = powerSpectrum;
-    std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
-                   [](float power) { return utils::FastDb(power); });
-    assert(utils::isSymmetric(dbSpectrum));
-    _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
-
     const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, dbSpectrum, _estimateConstraint);
+        _disambiguator.disambiguate(xcorrEstimate, dbSpectrum, _estimateConstraint);
 
     return disambiguatedEstimate;
 }

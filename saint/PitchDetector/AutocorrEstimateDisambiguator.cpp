@@ -290,17 +290,6 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
 }
 }  // namespace
 
-float AutocorrEstimateDisambiguator::disambiguateEstimate(float priorEstimate,
-                                                          const std::vector<float>& idealSpectrum,
-                                                          std::optional<float> constraint) const {
-    const auto priorIndex = priorEstimate / _binFreq;
-    const auto minF0 = _minFreq / _binFreq;
-    const auto constraintIndex =
-        constraint.has_value() ? std::optional<float>(constraint.value() / _binFreq) : std::nullopt;
-    return disambiguateFundamentalIndex(priorIndex, idealSpectrum, minF0, constraintIndex) *
-           _binFreq;
-}
-
 AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
     int sampleRate, int fftSize, const std::optional<PitchDetectorConfig>& config,
     PitchDetectorLoggerInterface& logger)
@@ -312,34 +301,65 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
       _minFreq(getMinFreq(config)),
       _maxFreq(getMaxFreq(config)) {}
 
-float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
-                                             const std::vector<float>& dbSpectrum,
-                                             std::optional<float> constraint) {
+void AutocorrEstimateDisambiguator::updateNoiseProfile(float confidence,
+                                                       const std::vector<float>& dbSpectrum) {
+    const auto envelope = getSpectrumEnvelope(dbSpectrum);
+    _logger.Log(envelope.data(), envelope.size(), "spectrumEnvelope");
+
+    // Adaptation rate depends on presence score:
+    // - presenceScore = 0 -> alpha = maxAlpha (fast adaptation, confident it's noise)
+    // - presenceScore = threshold -> alpha = 0 (no adaptation, pitch is present)
+
+    // Linear interpolation: alpha decreases as presence score increases
+    const float alpha = std::max(0.f, _maxAlpha * (1.f - confidence / _threshold));
+    if (alpha > 0.f) {
+        if (_noiseProfile.empty()) {
+            _noiseProfile = envelope;
+        } else {
+            for (size_t i = 0; i < _noiseProfile.size(); ++i) {
+                _noiseProfile[i] = alpha * envelope[i] + (1.f - alpha) * _noiseProfile[i];
+            }
+        }
+    }
+
+    _logger.Log(_noiseProfile.data(), _noiseProfile.size(), "noiseProfile");
+}
+
+float AutocorrEstimateDisambiguator::disambiguate(float xcorrEstimate,
+                                                  const std::vector<float>& dbSpectrum,
+                                                  const std::optional<float>& constraint) const {
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
 
+    const auto priorIndex = xcorrEstimate / _binFreq;
+    const auto minF0 = _minFreq / _binFreq;
+    const auto constraintIndex =
+        constraint.has_value() ? std::optional<float>(constraint.value() / _binFreq) : std::nullopt;
     const auto disambiguatedEstimate =
-        disambiguateEstimate(xcorrEstimate, idealSpectrum, constraint);
+        disambiguateFundamentalIndex(priorIndex, idealSpectrum, minF0, constraintIndex) * _binFreq;
 
     return disambiguatedEstimate;
 }
 
-void AutocorrEstimateDisambiguator::toIdealSpectrum(std::vector<float>& logSpectrum) {
-    auto& spec = logSpectrum;
-
+std::vector<float> AutocorrEstimateDisambiguator::getSpectrumEnvelope(
+    const std::vector<float>& dbSpectrum) {
     Aligned<std::vector<float>> cepstrumAligned;
-    toCepstrum(spec, _cepstrumFft, cepstrumAligned);
-
-    const std::vector<float>& cepstrum = cepstrumAligned.value;
+    toCepstrum(dbSpectrum, _cepstrumFft, cepstrumAligned);
+    const auto& cepstrum = cepstrumAligned.value;
     std::vector<float> lifteredCepstrum = cepstrum;
     const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
     std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
               0.f);
+    return fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
+}
 
-    const std::vector<float> spectrumEnvelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
-    _logger.Log(spectrumEnvelope.data(), spectrumEnvelope.size(), "spectrumEnvelope");
+void AutocorrEstimateDisambiguator::toIdealSpectrum(std::vector<float>& logSpectrum) const {
+    if (_noiseProfile.empty())
+        return;
 
-    std::transform(spec.begin(), spec.end(), spectrumEnvelope.begin(), spec.begin(),
+    auto& spec = logSpectrum;
+
+    std::transform(spec.begin(), spec.end(), _noiseProfile.begin(), spec.begin(),
                    std::minus<float>());
 
     // Calculate the variance from 5kHz to the Nyquist
