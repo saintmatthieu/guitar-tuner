@@ -89,8 +89,6 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             const auto minFreq = getMinFreq(kTestConfig);
-            auto preprocessor =
-                std::make_unique<Preprocessor>(noisy.sampleRate, noisy.channelFormat, blockSize);
 
             FrequencyDomainTransformer transformer(noisy.sampleRate, noisy.channelFormat, blockSize,
                                                    minFreq, *logger);
@@ -101,8 +99,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize, minFreq);
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-                std::move(disambiguator), std::move(onsetDetector), std::move(logger));
+                std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
+                std::move(onsetDetector), std::move(logger));
             std::unique_ptr<PitchDetector> pitchDetector;
 
             if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {

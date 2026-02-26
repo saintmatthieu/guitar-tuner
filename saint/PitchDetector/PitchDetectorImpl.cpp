@@ -67,14 +67,12 @@ double probabilityNotOctaviated(double s) {
 }  // namespace
 
 namespace saint {
-PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
-                                     FrequencyDomainTransformer transformer,
+PitchDetectorImpl::PitchDetectorImpl(FrequencyDomainTransformer transformer,
                                      AutocorrPitchDetector autocorrPitchDetector,
                                      AutocorrEstimateDisambiguator disambiguator,
                                      OnsetDetector onsetDetector,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger)
-    : _preprocessor(std::move(preprocessor)),
-      _frequencyDomainTransformer(std::move(transformer)),
+    : _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
       _onsetDetector(std::move(onsetDetector)),
@@ -95,14 +93,7 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _estimateConstraint.reset();
     }
 
-    const auto processedAudio = _preprocessor->processBlock(audio);
-    if (debugOutputSignal) {
-        debugOutputSignal->insert(debugOutputSignal->end(), processedAudio.begin(),
-                                  processedAudio.end());
-    }
-
-    const std::vector<std::complex<float>> freq =
-        _frequencyDomainTransformer.process(processedAudio.data());
+    const std::vector<std::complex<float>> freq = _frequencyDomainTransformer.process(audio);
 
     auto presenceScore = 0.f;
     const float xcorrEstimate =
