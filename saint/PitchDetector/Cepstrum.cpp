@@ -93,7 +93,7 @@ std::vector<float> getHalfWindow(int fftSize, int sampleRate) {
     // noisy. The rest will be zeroed and it will act as zero-padding.
     constexpr float cutoffFreq = 5000.f;
     const auto cutoffBin = std::min<int>(fftSize / 2, fftSize * cutoffFreq / sampleRate);
-    std::vector<float> window = utils::getAnalysisWindow(cutoffBin * 2, utils::WindowType::Hann);
+    std::vector<float> window = utils::getAnalysisWindow(cutoffBin * 2, WindowType::Hann);
     window.erase(window.begin(), window.begin() + window.size() / 2 - 1);
     return window;
 }

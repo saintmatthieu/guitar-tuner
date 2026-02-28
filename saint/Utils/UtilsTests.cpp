@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <fstream>
 
+#include "TestUtils/testUtils.h"
 #include "Utils.h"
 
 namespace saint {
@@ -92,6 +94,33 @@ TEST(doubleCheckEstimate, doubleCheckEstimate) {
     dbSpectrum[25] = 0.f;
     const auto result3 = utils::doubleCheckEstimate(20, dbSpectrum, 0, N);
     EXPECT_EQ(result3, 5.f);
+}
+
+template <WindowType W>
+void printSpectrum(std::ofstream& outFile, const char* name) {
+    constexpr auto width = utils::mainLobeWidth<W>();
+    constexpr auto numBins = 10;
+    constexpr auto pointsPerBin = 50;
+    std::vector<double> b(numBins * pointsPerBin + 1);
+    for (size_t i = 0; i < b.size(); ++i) {
+        b[i] = (i - (b.size() - 1) / 2.) / pointsPerBin;
+    }
+
+    std::vector<double> values(b.size());
+    std::transform(b.begin(), b.end(), values.begin(), [](double b) {
+        //
+        return utils::mainLobeAt<W>(b);
+    });
+    testUtils::PrintPythonVector(outFile, b, "bins");
+    testUtils::PrintPythonVector(outFile, values, name);
+}
+
+TEST(mainLobeAt, mainLobeAt) {
+    auto outFile = std::ofstream(testUtils::getOutDir() / "spectrum.py");
+    printSpectrum<WindowType::Rectangular>(outFile, "rectangular");
+    printSpectrum<WindowType::Hann>(outFile, "hann");
+    printSpectrum<WindowType::Hamming>(outFile, "hamming");
+    printSpectrum<WindowType::MinimumThreeTerm>(outFile, "minimumThreeTerm");
 }
 }  // namespace
 }  // namespace saint

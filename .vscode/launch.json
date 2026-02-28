@@ -11,9 +11,9 @@
       "program": "${command:cmake.launchTargetPath}",
       "stopOnEntry": false,
       "args": [
-        // "testWithMedianFilter=false",
-        // "indexOfProcessToLog=96",
-        // "testCaseId=testFiles/notes/guitar_1/e2.wav | testFiles/noise/PC_fan_noise.wav | -40"
+        "testWithMedianFilter=false",
+        "indexOfProcessToLog=55",
+        "testCaseId=testFiles/notes/guitar_1/b3.wav | testFiles/noise/home_4.wav | -50"
       ],
       "cwd": "${workspaceFolder}",
       "env": {

@@ -3,8 +3,11 @@
 #include <vector>
 
 #include "PitchDetectorTypes.h"
+#include "Utils/CommonTypes.h"
 
 namespace saint {
+constexpr auto kWindowType = WindowType::MinimumThreeTerm;
+
 class PitchDetector {
    public:
     /**

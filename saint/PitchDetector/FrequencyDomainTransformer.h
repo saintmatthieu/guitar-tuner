@@ -38,7 +38,6 @@ class FrequencyDomainTransformer {
     const ChannelFormat _channelFormat;
     const int _blockSize;
     PitchDetectorLoggerInterface& _logger;
-    const utils::WindowType _windowType;
     const std::vector<float> _window;
     const int _fftSize;
     RealFft _fwdFft;

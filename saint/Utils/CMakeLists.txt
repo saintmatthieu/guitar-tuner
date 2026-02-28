@@ -24,6 +24,7 @@ if(NOT NO_GTEST)
   target_link_libraries(UtilsTests
     PRIVATE
       Utils
+      TestUtils
       gtest_main
   )
 endif()

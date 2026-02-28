@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <optional>
 
 namespace juce {
@@ -60,4 +61,8 @@ struct TimeSignaturePosition {
     float crotchet;
     Fraction timeSignature;
 };
+
+enum class WindowType { Rectangular, Hann, Hamming, MinimumThreeTerm, _count };
+constexpr auto numWindowTypes = static_cast<size_t>(WindowType::_count);
+constexpr std::array<int, numWindowTypes> windowOrders = {0, 1, 1, 2};
 }  // namespace saint
