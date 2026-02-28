@@ -68,9 +68,12 @@ void utils::getPowerSpectrum(const std::vector<std::complex<float>>& spectrum,
     assert(isSymmetric(out));
 }
 
-float utils::quadFit(const float* y) {
+float utils::quadFit(const float* y, float* out) {
     // vertex at x = 0.5 * (y[-1] - y[1]) / (y[-1] - 2 * y[0] + y[1])
     const auto delta = 0.5f * (y[0] - y[2]) / (y[2] - 2 * y[1] + y[0]);
+    if (out) {
+        *out = y[1] - 0.25f * (y[0] - y[2]) * delta;
+    }
     return delta;
 }
 

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <iostream>
 
+#include "PitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
@@ -22,8 +23,8 @@ int getFftSizeSamples(int windowSize) {
     return 1 << (getFftOrder(windowSize) + zeroPadding);
 }
 
-int getWindowSizeSamples(int sampleRate, utils::WindowType windowType, float minFreq) {
-    const auto numPeriods = utils::windowOrders.at(static_cast<size_t>(windowType)) * 2 + 1.3;
+int getWindowSizeSamples(int sampleRate, WindowType windowType, float minFreq) {
+    const auto numPeriods = windowOrders.at(static_cast<size_t>(windowType)) * 2 + 1.3;
     const auto windowSizeMs = 1000. * numPeriods / minFreq;
     return static_cast<int>(windowSizeMs * sampleRate / 1000);
 }
@@ -50,9 +51,8 @@ FrequencyDomainTransformer::FrequencyDomainTransformer(int sampleRate, ChannelFo
       _channelFormat(channelFormat),
       _blockSize(samplesPerBlockPerChannel),
       _logger(logger),
-      _windowType(utils::WindowType::MinimumThreeTerm),
-      _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, _windowType, minFreq),
-                                       _windowType)),
+      _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, kWindowType, minFreq),
+                                       kWindowType)),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
       _fwdFft(_fftSize),
       _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f) {

@@ -23,5 +23,6 @@ target_sources(UtilsTests
 target_link_libraries(UtilsTests
   PRIVATE
     Utils
+    TestUtils
     gtest_main
 )

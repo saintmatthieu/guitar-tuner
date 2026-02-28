@@ -8,6 +8,7 @@
 #include <optional>
 #include <unordered_set>
 
+#include "PitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
 #include "PitchDetectorTypes.h"
 #include "PitchDetectorUtils.h"
@@ -192,6 +193,91 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold, P
     return bestFit;
 }
 
+struct PeakModel {
+    float index = 0;
+    float value = 0;
+    float weight = 0;
+};
+
+template <WindowType W>
+std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum) {
+    std::vector<PeakModel> spectrumModel;
+
+    // 0. Create a vector of indices [0, 1, ..., dbSpectrum.size()-1].
+    // 1. Find `dbSpectrum`'s global max.
+    // 2. Find the troughs left and right of it.
+    // 3. Use a quadratic fit to refine the index estimate of the peak.
+    // 4. Evaluate the ideal lobe at the fractional bins of the peak.
+    // 5. Calculate the mean of the square errors between ideal and actual peak.
+    // 6. If the error is larger than a threshold (to be found and tuned), finish.
+    // 7. Add an entry to `spectrumModel`.
+    // 8. Erase dbSpectrum and index vector entries of the peak.
+    // 9. Go back to 1.
+
+    // 0.
+    std::vector<int> indices(dbSpectrum.size());
+    std::iota(indices.begin(), indices.end(), 0);
+
+    while (!indices.empty()) {
+        // 1.
+        const auto maxIt = std::max_element(dbSpectrum.begin(), dbSpectrum.end());
+        const auto maxIndex = std::distance(dbSpectrum.begin(), maxIt);
+        const auto maxValue = *maxIt;
+
+        // 2.
+        auto leftTroughIndex = maxIndex;
+        while (leftTroughIndex > 0 &&
+               dbSpectrum[leftTroughIndex - 1] < dbSpectrum[leftTroughIndex]) {
+            --leftTroughIndex;
+        }
+        auto rightTroughIndex = maxIndex;
+        while (rightTroughIndex + 1 < dbSpectrum.size() &&
+               dbSpectrum[rightTroughIndex + 1] < dbSpectrum[rightTroughIndex]) {
+            ++rightTroughIndex;
+        }
+
+        // 3.
+        float refinedIndex = maxIndex;
+        float refinedValue = maxValue;
+        if (maxIndex > 0 && maxIndex < dbSpectrum.size() - 1) {
+            const float y[3] = {dbSpectrum[maxIndex - 1], dbSpectrum[maxIndex],
+                                dbSpectrum[maxIndex + 1]};
+            refinedIndex += utils::quadFit(y, &refinedValue);
+        }
+
+        // 4.
+        std::vector<float> idealLobe(rightTroughIndex - leftTroughIndex + 1);
+        std::transform(indices.begin() + leftTroughIndex, indices.begin() + rightTroughIndex + 1,
+                       idealLobe.begin(), [refinedIndex, refinedValue](int i) {
+                           const auto linearValue = utils::mainLobeAt<W>(i - refinedIndex);
+                           return utils::FastDb(linearValue * linearValue) + refinedValue;
+                       });
+
+        // 5.
+        const std::vector<float> actualLobe(dbSpectrum.begin() + leftTroughIndex,
+                                            dbSpectrum.begin() + rightTroughIndex + 1);
+        const auto meanSquaredError = std::inner_product(
+            idealLobe.begin(), idealLobe.end(), actualLobe.begin(), 0.f,
+            [](float acc, float val) { return acc + val; },
+            [](float ideal, float actual) { return (ideal - actual) * (ideal - actual); });
+
+        // 6.
+        if (meanSquaredError > 1.f) {
+            break;
+        }
+
+        // 7.
+        spectrumModel.push_back({refinedIndex, refinedValue, 1.f / (1.f + meanSquaredError)});
+
+        // 8.
+        dbSpectrum.erase(dbSpectrum.begin() + leftTroughIndex,
+                         dbSpectrum.begin() + rightTroughIndex + 1);
+        indices.erase(indices.begin() + leftTroughIndex, indices.begin() + rightTroughIndex + 1);
+    }
+
+    return spectrumModel;
+}
+
 float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<float>& idealSpectrum,
                                    float minF0, std::optional<float> constraintIndex) {
     const auto& spec = idealSpectrum;
@@ -317,6 +403,20 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
                                              std::optional<float> constraint) {
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
+
+    const std::vector<PeakModel> spectrumModel = toSpectrumModel<kWindowType>(idealSpectrum);
+    std::vector<float> spectrumModelIndices(spectrumModel.size());
+    std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelIndices.begin(),
+                   [](const PeakModel& pm) { return pm.index; });
+    std::vector<float> spectrumModelValues(spectrumModel.size());
+    std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelValues.begin(),
+                   [](const PeakModel& pm) { return pm.value; });
+    std::vector<float> spectrumModelWeights(spectrumModel.size());
+    std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelWeights.begin(),
+                   [](const PeakModel& pm) { return pm.weight; });
+    _logger.Log(spectrumModelIndices.data(), spectrumModelIndices.size(), "spectrumModelIndices");
+    _logger.Log(spectrumModelValues.data(), spectrumModelValues.size(), "spectrumModelValues");
+    _logger.Log(spectrumModelWeights.data(), spectrumModelWeights.size(), "spectrumModelWeights");
 
     const auto disambiguatedEstimate =
         disambiguateEstimate(xcorrEstimate, idealSpectrum, constraint);

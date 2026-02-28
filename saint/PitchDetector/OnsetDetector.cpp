@@ -5,16 +5,16 @@
 #include <cmath>
 #include <numeric>
 
+#include "PitchDetectorTypes.h"
 #include "Utils.h"
 
 namespace saint {
 
 namespace {
-constexpr auto windowType = utils::WindowType::Hann;
+constexpr auto windowType = WindowType::Hann;
 
 int getWindowSize(int sampleRate, float minFreq) {
-    const auto mainLobeWidth = utils::windowOrders.at(static_cast<size_t>(windowType)) * 2 + 1;
-    const auto numPeriods = mainLobeWidth;
+    const auto numPeriods = utils::mainLobeWidth<windowType>();
     const auto minPeriod = 1. / minFreq;
     return numPeriods * minPeriod * sampleRate;
 }
@@ -28,7 +28,7 @@ OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
       _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f),
       _avgFilterLength(1. * sampleRate / samplesPerBlockPerChannel * 0.25),
       _pastPowers(_avgFilterLength, 0.f),
-      _avgWindow(utils::getAnalysisWindow<double>(_avgFilterLength, utils::WindowType::Hann)),
+      _avgWindow(utils::getAnalysisWindow<double>(_avgFilterLength, WindowType::Hann)),
       _alpha(0.7 * sampleRate / samplesPerBlockPerChannel / 100),
       _leastBlockCountBetweenOffsets(sampleRate / samplesPerBlockPerChannel * 0.1) {
     _audioBuffer.reserve(std::max<size_t>(_window.size(), samplesPerBlockPerChannel));
