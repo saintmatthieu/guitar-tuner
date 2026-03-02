@@ -11,8 +11,10 @@
 
 namespace saint {
 
-std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
-    int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning) {
+std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(int sampleRate,
+                                                                    ChannelFormat channelFormat,
+                                                                    int samplesPerBlockPerChannel,
+                                                                    Tuning tuning) {
     auto logger = std::make_unique<DummyPitchDetectorLogger>();
 
     const auto minFreq = getMinFreq(tuning);
@@ -23,7 +25,8 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
     AutocorrPitchDetector autocorrPitchDetector(sampleRate, transformer.fftSize(),
                                                 transformer.window(), minFreq, *logger);
 
-    AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.fftSize(), tuning, *logger);
+    AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.window().size(),
+                                                transformer.fftSize(), tuning, *logger);
 
     OnsetDetector onsetDetector(sampleRate, channelFormat, samplesPerBlockPerChannel, minFreq);
 
