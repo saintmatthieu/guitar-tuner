@@ -94,8 +94,9 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                    minFreq, *logger);
             AutocorrPitchDetector autocorrPitchDetector(noisy.sampleRate, transformer.fftSize(),
                                                         transformer.window(), minFreq, *logger);
-            AutocorrEstimateDisambiguator disambiguator(noisy.sampleRate, transformer.fftSize(),
-                                                        kTestConfig, *logger);
+            AutocorrEstimateDisambiguator disambiguator(
+                noisy.sampleRate, transformer.window().size(), transformer.fftSize(), kTestConfig,
+                *logger);
             OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize, minFreq);
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(

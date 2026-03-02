@@ -14,7 +14,7 @@ class PitchDetectorLoggerInterface;
 namespace saint {
 class AutocorrEstimateDisambiguator {
    public:
-    AutocorrEstimateDisambiguator(int sampleRate, int fftSize,
+    AutocorrEstimateDisambiguator(int sampleRate, int windowSize, int fftSize,
                                   const std::optional<PitchDetectorConfig>& config,
                                   PitchDetectorLoggerInterface& logger);
 
@@ -30,6 +30,7 @@ class AutocorrEstimateDisambiguator {
     const int _sampleRate;
     PitchDetectorLoggerInterface& _logger;
     const int _fftSize;
+    const double _binResolution;  // if the fft size is larger than the window size
     const float _binFreq;
     RealFft _cepstrumFft;
     const float _minFreq;
