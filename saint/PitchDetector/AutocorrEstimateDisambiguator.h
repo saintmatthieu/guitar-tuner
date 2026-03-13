@@ -8,6 +8,7 @@
 #include "Cepstrum.h"
 #include "PitchDetectorTypes.h"
 #include "RealFft.h"
+#include "Utils/CommonTypes.h"
 
 class PitchDetectorLoggerInterface;
 
@@ -22,7 +23,7 @@ class AutocorrEstimateDisambiguator {
                   std::optional<float> constraint = std::nullopt);
 
    private:
-    float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum,
+    float disambiguateEstimate(float priorEstimate, const std::vector<PeakModel>& idealSpectrum,
                                std::optional<float> constraint) const;
     float getCepstrumPeakFrequency(const CepstrumData& cepstrumData) const;
     void toIdealSpectrum(std::vector<float>& logSpectrum);

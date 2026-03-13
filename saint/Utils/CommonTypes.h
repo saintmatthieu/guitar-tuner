@@ -65,4 +65,10 @@ struct TimeSignaturePosition {
 enum class WindowType { Rectangular, Hann, Hamming, MinimumThreeTerm, _count };
 constexpr auto numWindowTypes = static_cast<size_t>(WindowType::_count);
 constexpr std::array<int, numWindowTypes> windowOrders = {0, 1, 1, 2};
+
+struct PeakModel {
+    float index = 0;
+    float value = 0;
+    float weight = 0;
+};
 }  // namespace saint
