@@ -39,5 +39,7 @@ class PitchDetectorLoggerInterface {
      * (Of course not for use in production :D)
      */
     virtual void EndNewEstimate(std::complex<float>* spectrum, size_t fftSize) = 0;
+
+    virtual bool IsLogging() const = 0;
 };
 }  // namespace saint

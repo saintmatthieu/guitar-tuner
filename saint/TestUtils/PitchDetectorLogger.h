@@ -41,6 +41,10 @@ class PitchDetectorLogger : public PitchDetectorLoggerInterface {
      */
     void EndNewEstimate(std::complex<float>* spectrum, size_t fftSize) override;
 
+    bool IsLogging() const override {
+        return mOfs != nullptr;
+    }
+
     std::optional<int> analysisAudioIndex() const {
         return mAnalysisSampleIndex;
     }

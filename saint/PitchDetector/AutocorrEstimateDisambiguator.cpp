@@ -121,6 +121,7 @@ static_assert(getGcd(std::array<int, 3>{2, 4, 6}) == 2);
 
 LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold,
                                 std::vector<PeakModel> spectrumModel) {
+    assert(!spectrumModel.empty());
     if (spectrumModel.empty() || candidate <= 0.f) {
         return {};
     }
@@ -135,17 +136,7 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold,
     LineFitResult bestFit = {};
 
     while (k.size() > 1) {
-        // std::unordered_map<int /* k */, float /* avg of weights */> kMap;
-        // for (auto i = 0; i < spectrumModel.size(); ++i) {
-        //     const auto k = static_cast<int>(std::round(spectrumModel[i].index / candidate));
-        //     kMap[k] += spectrumModel[i]
-        // }
-
         const std::unordered_set<int> kSet{k.begin(), k.end()};
-
-        const auto sumOfWeights =
-            std::accumulate(spectrumModel.begin(), spectrumModel.end(), 0.f,
-                            [](float acc, const PeakModel& pm) { return acc + pm.weight; });
 
         // For a candidate that's an underestimate by a factor of 2, the peaks that are present
         // will still explain very well that candidate. However, the k values for these cases will
@@ -168,7 +159,7 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold,
             return bestFit;
         }
 
-        auto fit = leastSquareFit(k, spectrumModel);
+        const auto fit = leastSquareFit(k, spectrumModel);
 
         // Check if it's converged
         const auto allOk =
@@ -225,32 +216,59 @@ std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum, double bin
     std::vector<float> lobeFittingWeights(numBinsForFit);
 
     std::vector<int> peakIndices;
+    float largestPeakValue = -std::numeric_limits<float>::infinity();
     for (auto i = 1; i < dbSpectrum.size() - 1; ++i) {
         if (dbSpectrum[i] > dbSpectrum[i - 1] && dbSpectrum[i] > dbSpectrum[i + 1]) {
             peakIndices.push_back(i);
+            if (dbSpectrum[i] > largestPeakValue) {
+                largestPeakValue = dbSpectrum[i];
+            }
         }
     }
 
-    // Perceptual masking: remove imperceptible peaks with a mask of -3.5dB per octave:
     {
+        // Perceptual masking
         constexpr auto dbPerBark = 20.f;
         std::vector<int> indicesToRemove;
-        for (size_t i = 0; i < peakIndices.size(); ++i) {
+        const auto numIndices = static_cast<int>(peakIndices.size());
+        for (int i = 0; i < numIndices; ++i) {
             const auto pi = peakIndices[i];
-            const auto level = dbSpectrum[pi];
+            const auto thisLevel = dbSpectrum[pi];
+            const auto thisBark = toBark(pi, binFrequency);
+
+            const auto maxBarkDiff = (largestPeakValue - thisLevel) / dbPerBark;
+
             bool masked = false;
-            for (size_t j = 0; j < peakIndices.size() && !masked; ++j) {
-                if (i == j)
-                    continue;
+            for (int j = i + 1; j < numIndices && !masked; ++j) {
                 const auto pj = peakIndices[j];
-                if (dbSpectrum[pj] <= level)
+                const auto otherLevel = dbSpectrum[pj];
+                if (otherLevel <= thisLevel)
                     continue;
-                const auto barks = std::abs(toBark(pi, binFrequency) - toBark(pj, binFrequency));
-                if (level < dbSpectrum[pj] - dbPerBark * barks) {
+                const auto barkDiff = std::abs(thisBark - toBark(pj, binFrequency));
+                if (barkDiff > maxBarkDiff)
+                    break;
+                if (thisLevel < otherLevel - dbPerBark * barkDiff) {
                     masked = true;
                     break;
                 }
             }
+
+            if (!masked) {
+                for (int j = i - 1; j >= 0 && !masked; --j) {
+                    const auto pj = peakIndices[j];
+                    const auto otherLevel = dbSpectrum[pj];
+                    if (otherLevel <= thisLevel)
+                        continue;
+                    const auto barkDiff = std::abs(thisBark - toBark(pj, binFrequency));
+                    if (barkDiff > maxBarkDiff)
+                        break;
+                    if (thisLevel < otherLevel - dbPerBark * barkDiff) {
+                        masked = true;
+                        break;
+                    }
+                }
+            }
+
             if (masked)
                 indicesToRemove.push_back(static_cast<int>(i));
         }
@@ -439,23 +457,35 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
 
-    std::vector<float> fullIdeal;
+    std::unique_ptr<std::vector<float>> fullIdeal;
+    if (_logger.IsLogging()) {
+        fullIdeal = std::make_unique<std::vector<float>>();
+    }
     const std::vector<PeakModel> spectrumModel = toSpectrumModel<kWindowType>(
         {dbSpectrum.begin(), dbSpectrum.begin() + dbSpectrum.size() / 2}, _binResolution, _binFreq,
-        &fullIdeal);
-    std::vector<float> spectrumModelIndices(spectrumModel.size());
-    std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelIndices.begin(),
-                   [](const PeakModel& pm) { return pm.index; });
-    std::vector<float> spectrumModelValues(spectrumModel.size());
-    std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelValues.begin(),
-                   [](const PeakModel& pm) { return pm.value; });
-    std::vector<float> spectrumModelWeights(spectrumModel.size());
-    std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelWeights.begin(),
-                   [](const PeakModel& pm) { return pm.weight; });
-    _logger.Log(spectrumModelIndices.data(), spectrumModelIndices.size(), "spectrumModelIndices");
-    _logger.Log(spectrumModelValues.data(), spectrumModelValues.size(), "spectrumModelValues");
-    _logger.Log(spectrumModelWeights.data(), spectrumModelWeights.size(), "spectrumModelWeights");
-    _logger.Log(fullIdeal.data(), fullIdeal.size(), "fullIdealSpectrum");
+        fullIdeal.get());
+
+    if (_logger.IsLogging()) {
+        std::vector<float> spectrumModelIndices(spectrumModel.size());
+        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelIndices.begin(),
+                       [](const PeakModel& pm) { return pm.index; });
+        std::vector<float> spectrumModelValues(spectrumModel.size());
+        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelValues.begin(),
+                       [](const PeakModel& pm) { return pm.value; });
+        std::vector<float> spectrumModelWeights(spectrumModel.size());
+        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelWeights.begin(),
+                       [](const PeakModel& pm) { return pm.weight; });
+        _logger.Log(spectrumModelIndices.data(), spectrumModelIndices.size(),
+                    "spectrumModelIndices");
+        _logger.Log(spectrumModelValues.data(), spectrumModelValues.size(), "spectrumModelValues");
+        _logger.Log(spectrumModelWeights.data(), spectrumModelWeights.size(),
+                    "spectrumModelWeights");
+        _logger.Log(fullIdeal->data(), fullIdeal->size(), "fullIdealSpectrum");
+    }
+
+    if (spectrumModel.size() < 3) {
+        return 0.f;
+    }
 
     const auto disambiguatedEstimate =
         disambiguateEstimate(xcorrEstimate, spectrumModel, constraint);
