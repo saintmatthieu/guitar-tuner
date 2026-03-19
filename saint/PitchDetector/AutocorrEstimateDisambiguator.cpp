@@ -119,9 +119,8 @@ constexpr int getGcd(const IntContainer& ints) {
 }
 static_assert(getGcd(std::array<int, 3>{2, 4, 6}) == 2);
 
-LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold,
-                                std::vector<PeakModel> spectrumModel) {
-    assert(!spectrumModel.empty());
+std::optional<LineFitResult> evaluateCandidate(float candidate, float absoluteErrorThreshold,
+                                               std::vector<PeakModel> spectrumModel) {
     if (spectrumModel.empty() || candidate <= 0.f) {
         return {};
     }
@@ -133,7 +132,23 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold,
                        return static_cast<int>(std::round(peak.index / candidate));
                    });
 
-    LineFitResult bestFit = {};
+    // If there is a harmonic gap of 10 or more, what comes after is very unlikely harmonics - get
+    // rid of it:
+    auto lastValidHarmonic = 0;
+    for (size_t i = 1; i < k.size(); ++i) {
+        if (k[i] - k[i - 1] > 10) {
+            break;
+        }
+        lastValidHarmonic = i;
+    }
+    k.resize(lastValidHarmonic + 1);
+
+    if (k.size() < 3) {
+        // Too risky
+        return {};
+    }
+
+    std::optional<LineFitResult> bestFit = {};
 
     while (k.size() > 1) {
         const std::unordered_set<int> kSet{k.begin(), k.end()};
@@ -142,11 +157,16 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold,
         // will still explain very well that candidate. However, the k values for these cases will
         // look like [2, 4, 6, ...], i.e., most of them will be dividable by 2. Same goes for 3. If
         // we detect such a situation, we abort.
+        const auto K = static_cast<int>(kSet.size());
         for (auto divisor : {2, 3}) {
             const auto numDividables = std::accumulate(
                 kSet.begin(), kSet.end(), 0,
                 [divisor](int acc, int val) { return acc + (val % divisor == 0 ? 1 : 0); });
-            if (numDividables >= kSet.size() - 2) {
+            const auto expectedIfCorrect = K / divisor;
+            const auto expectedIfIncorrect = K;
+            const auto closerToIncorrect =
+                expectedIfIncorrect - numDividables < std::abs(expectedIfCorrect - numDividables);
+            if (closerToIncorrect) {
                 return bestFit;
             }
         }
@@ -185,7 +205,7 @@ LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold,
 
         spectrumModel.erase(spectrumModel.begin() + maxErrorPos);
 
-        if (fit.meanSquaredError < bestFit.meanSquaredError)
+        if (!bestFit || fit.meanSquaredError < bestFit->meanSquaredError)
             bestFit = fit;
     }
 
@@ -199,14 +219,20 @@ float toBark(int bin, float binFrequency) {
 }
 
 template <WindowType W>
-std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum, double binResolution,
-                                       double binFrequency,
+std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
+                                       const std::vector<float>& whitenedSpectrum,
+                                       double binResolution, double binFrequency,
                                        std::vector<float>* fullIdeal = nullptr) {
+    assert(utils::isSymmetric(dbSpectrum));
+    assert(utils::isSymmetric(whitenedSpectrum));
+    assert(dbSpectrum.size() == whitenedSpectrum.size());
+
+    const auto N = dbSpectrum.size() / 2;
     constexpr auto maxNumPeaks = 20;
     std::vector<PeakModel> spectrumModel;
     spectrumModel.reserve(maxNumPeaks);
     if (fullIdeal) {
-        fullIdeal->resize(dbSpectrum.size());
+        fullIdeal->resize(N);
         std::fill(fullIdeal->begin(), fullIdeal->end(), -1000.f);
     }
 
@@ -217,8 +243,9 @@ std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum, double bin
 
     std::vector<int> peakIndices;
     float largestPeakValue = -std::numeric_limits<float>::infinity();
-    for (auto i = 1; i < dbSpectrum.size() - 1; ++i) {
-        if (dbSpectrum[i] > dbSpectrum[i - 1] && dbSpectrum[i] > dbSpectrum[i + 1]) {
+    for (auto i = 1; i < N - 1; ++i) {
+        if (dbSpectrum[i] > dbSpectrum[i - 1] && dbSpectrum[i] > dbSpectrum[i + 1] &&
+            whitenedSpectrum[i] > 0.f) {
             peakIndices.push_back(i);
             if (dbSpectrum[i] > largestPeakValue) {
                 largestPeakValue = dbSpectrum[i];
@@ -276,7 +303,7 @@ std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum, double bin
             peakIndices.erase(peakIndices.begin() + *it);
     }
 
-    // 0. Create a vector of indices [0, 1, ..., dbSpectrum.size()-1].
+    // 0. Create a vector of indices [0, 1, ..., N-1].
     // 1. Find `dbSpectrum`'s global max.
     // 2. Find the troughs left and right of it.
     // 3. Use a quadratic fit to refine the index estimate of the peak.
@@ -300,14 +327,14 @@ std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum, double bin
         // 2.
         const auto beginIndex = maxIndex - (numBinsForFit - 1) / 2;
         const auto endIndex = beginIndex + numBinsForFit;
-        if (beginIndex < 0 || endIndex > dbSpectrum.size()) {
+        if (beginIndex < 0 || endIndex > N) {
             break;
         }
 
         // 3.
         float refinedIndex = maxIndex;
         float refinedValue = maxValue;
-        if (maxIndex > 0 && maxIndex < dbSpectrum.size() - 1) {
+        if (maxIndex > 0 && maxIndex < N - 1) {
             const float y[3] = {dbSpectrum[maxIndex - 1], dbSpectrum[maxIndex],
                                 dbSpectrum[maxIndex + 1]};
             refinedIndex += utils::quadFit(y, &refinedValue);
@@ -339,7 +366,7 @@ std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum, double bin
 
         // 6.
         constexpr auto coef = -0.5157894736842106f;
-        const auto weight = std::min(-coef / (coef + rmsError), 1.f);
+        const auto weight = rmsError < -coef ? 1.f : std::min(-coef / (coef + rmsError), 1.f);
         if (weight > 0.1)
             spectrumModel.push_back({refinedIndex, refinedValue, weight});
     }
@@ -354,7 +381,6 @@ std::vector<PeakModel> toSpectrumModel(std::vector<float> dbSpectrum, double bin
 float disambiguateFundamentalIndex(float octaviatedIndex,
                                    const std::vector<PeakModel>& spectrumModel, float minF0,
                                    std::optional<float> constraintIndex) {
-    const auto& spec = spectrumModel;
     // `octaviatedIndex` is the fundamental frequency estimate based on autocorrelation.
     // At the time of writing, the parent commit yields an accuracy histogram where
     // * 96.8% of the estimates are "exact" (within [-50, 50] cents of the ground truth),
@@ -409,22 +435,17 @@ float disambiguateFundamentalIndex(float octaviatedIndex,
         }
 
         const auto absoluteErrorThreshold = candidate / 20.f;
-        const LineFitResult candidateFit =
-            evaluateCandidate(candidate, absoluteErrorThreshold, spec);
+        const std::optional<LineFitResult> candidateFit =
+            evaluateCandidate(candidate, absoluteErrorThreshold, spectrumModel);
 
-        const auto squaredErrorThreshold = absoluteErrorThreshold * absoluteErrorThreshold;
-        if (!bestFit.has_value() && candidateFit.meanSquaredError < squaredErrorThreshold) {
-            // The original estimate looks good already, no need to take risks.
-            return octaviatedIndex;
-        }
-
-        if (!bestFit.has_value() || candidateFit.meanSquaredError < bestFit->meanSquaredError) {
+        if (candidateFit.has_value() &&
+            (!bestFit.has_value() || candidateFit->meanSquaredError < bestFit->meanSquaredError)) {
             bestFit = candidateFit;
             bestCandidate = candidate;
         }
     }
 
-    return bestCandidate > 0.f ? bestCandidate : octaviatedIndex;
+    return bestCandidate;  // Could be 0
 }
 }  // namespace
 
@@ -454,16 +475,15 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(int sampleRate, int
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
                                              const std::vector<float>& dbSpectrum,
                                              std::optional<float> constraint) {
-    auto idealSpectrum = dbSpectrum;
-    toIdealSpectrum(idealSpectrum);
+    auto whitenedSpectrum = dbSpectrum;
+    toIdealSpectrum(whitenedSpectrum);
 
     std::unique_ptr<std::vector<float>> fullIdeal;
     if (_logger.IsLogging()) {
         fullIdeal = std::make_unique<std::vector<float>>();
     }
     const std::vector<PeakModel> spectrumModel = toSpectrumModel<kWindowType>(
-        {dbSpectrum.begin(), dbSpectrum.begin() + dbSpectrum.size() / 2}, _binResolution, _binFreq,
-        fullIdeal.get());
+        dbSpectrum, whitenedSpectrum, _binResolution, _binFreq, fullIdeal.get());
 
     if (_logger.IsLogging()) {
         std::vector<float> spectrumModelIndices(spectrumModel.size());
@@ -481,10 +501,6 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
         _logger.Log(spectrumModelWeights.data(), spectrumModelWeights.size(),
                     "spectrumModelWeights");
         _logger.Log(fullIdeal->data(), fullIdeal->size(), "fullIdealSpectrum");
-    }
-
-    if (spectrumModel.size() < 3) {
-        return 0.f;
     }
 
     const auto disambiguatedEstimate =

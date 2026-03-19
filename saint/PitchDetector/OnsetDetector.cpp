@@ -30,7 +30,7 @@ OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
       _pastPowers(_avgFilterLength, 0.f),
       _avgWindow(utils::getAnalysisWindow<double>(_avgFilterLength, WindowType::Hann)),
       _alpha(0.7 * sampleRate / samplesPerBlockPerChannel / 100),
-      _leastBlockCountBetweenOffsets(sampleRate / samplesPerBlockPerChannel * 0.1) {
+      _leastBlockCountBetweenOffsets(sampleRate / samplesPerBlockPerChannel * 0.5) {
     _audioBuffer.reserve(std::max<size_t>(_window.size(), samplesPerBlockPerChannel));
 }
 
