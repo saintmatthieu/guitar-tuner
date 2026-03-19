@@ -74,7 +74,8 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
 
     // To get this, we run OnsetDetectorCalibrationTests and then showOnsetDetectionHistograms.py.
     // It is set so that there are no false negatives.
-    const auto isOnset = onsetStrength > 1.75109e-07;
+    // const auto isOnset = onsetStrength > 1.75109e-07;
+    const auto isOnset = onsetStrength > 1e-6;
 
     const auto output = isOnset && _countSinceLastTrueOutput >= _leastBlockCountBetweenOffsets;
     if (output) {
