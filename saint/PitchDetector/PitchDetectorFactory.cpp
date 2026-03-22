@@ -25,14 +25,14 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(int sampleRa
     AutocorrPitchDetector autocorrPitchDetector(sampleRate, transformer.fftSize(),
                                                 transformer.window(), minFreq, *logger);
 
-    AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.window().size(),
-                                                transformer.fftSize(), tuning, *logger);
+    AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.fftSize(), tuning, *logger);
 
     OnsetDetector onsetDetector(sampleRate, channelFormat, samplesPerBlockPerChannel, minFreq);
 
     auto impl = std::make_unique<PitchDetectorImpl>(
-        std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
-        std::move(onsetDetector), std::move(logger));
+        sampleRate, transformer.window().size(), transformer.fftSize(), std::move(transformer),
+        std::move(autocorrPitchDetector), std::move(disambiguator), std::move(onsetDetector),
+        std::move(logger));
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
         sampleRate, samplesPerBlockPerChannel, std::move(impl));

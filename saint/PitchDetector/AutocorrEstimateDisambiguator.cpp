@@ -12,7 +12,6 @@
 #include "PitchDetectorLoggerInterface.h"
 #include "PitchDetectorTypes.h"
 #include "PitchDetectorUtils.h"
-#include "ToSpectrumModel.h"
 
 namespace saint {
 namespace {
@@ -284,9 +283,9 @@ float disambiguateFundamentalIndex(float octaviatedIndex,
 }
 }  // namespace
 
-float AutocorrEstimateDisambiguator::disambiguateEstimate(
-    float priorEstimate, const std::vector<PeakModel>& spectrumModel,
-    std::optional<float> constraint) const {
+float AutocorrEstimateDisambiguator::process(float priorEstimate,
+                                             const std::vector<PeakModel>& spectrumModel,
+                                             std::optional<float> constraint) const {
     const auto priorIndex = priorEstimate / _binFreq;
     const auto minF0 = _minFreq / _binFreq;
     const auto constraintIndex =
@@ -295,98 +294,12 @@ float AutocorrEstimateDisambiguator::disambiguateEstimate(
            _binFreq;
 }
 
-AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(int sampleRate, int windowSize,
-                                                             int fftSize, Tuning tuning,
+AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(int sampleRate, int fftSize,
+                                                             Tuning tuning,
                                                              PitchDetectorLoggerInterface& logger)
-    : _sampleRate(sampleRate),
-      _logger(logger),
-      _fftSize(fftSize),
-      _binResolution(1. * windowSize / fftSize),
-      _binFreq(static_cast<float>(sampleRate) / _fftSize),
-      _cepstrumFft(_fftSize),
+    : _logger(logger),
+      _binFreq(static_cast<float>(sampleRate) / fftSize),
       _minFreq(getMinFreq(tuning)),
       _maxFreq(getMaxFreq(tuning)) {}
-
-float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
-                                             const std::vector<float>& dbSpectrum,
-                                             std::optional<float> constraint) {
-    auto whitenedSpectrum = dbSpectrum;
-    toIdealSpectrum(whitenedSpectrum);
-
-    std::unique_ptr<std::vector<float>> fullIdeal;
-    if (_logger.IsLogging()) {
-        fullIdeal = std::make_unique<std::vector<float>>();
-    }
-    const std::vector<PeakModel> spectrumModel = toSpectrumModel<kWindowType>(
-        dbSpectrum, whitenedSpectrum, _binResolution, _binFreq, fullIdeal.get());
-
-    if (_logger.IsLogging()) {
-        std::vector<float> spectrumModelIndices(spectrumModel.size());
-        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelIndices.begin(),
-                       [](const PeakModel& pm) { return pm.index; });
-        std::vector<float> spectrumModelValues(spectrumModel.size());
-        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelValues.begin(),
-                       [](const PeakModel& pm) { return pm.value; });
-        std::vector<float> spectrumModelWeights(spectrumModel.size());
-        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelWeights.begin(),
-                       [](const PeakModel& pm) { return pm.weight; });
-        _logger.Log(spectrumModelIndices.data(), spectrumModelIndices.size(),
-                    "spectrumModelIndices");
-        _logger.Log(spectrumModelValues.data(), spectrumModelValues.size(), "spectrumModelValues");
-        _logger.Log(spectrumModelWeights.data(), spectrumModelWeights.size(),
-                    "spectrumModelWeights");
-        _logger.Log(fullIdeal->data(), fullIdeal->size(), "fullIdealSpectrum");
-    }
-
-    const auto disambiguatedEstimate =
-        disambiguateEstimate(xcorrEstimate, spectrumModel, constraint);
-
-    return disambiguatedEstimate;
-}
-
-void AutocorrEstimateDisambiguator::toIdealSpectrum(std::vector<float>& logSpectrum) {
-    auto& spec = logSpectrum;
-
-    Aligned<std::vector<float>> cepstrumAligned;
-    toCepstrum(spec, _cepstrumFft, cepstrumAligned);
-
-    const std::vector<float>& cepstrum = cepstrumAligned.value;
-    std::vector<float> lifteredCepstrum = cepstrum;
-    const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
-    std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
-              0.f);
-
-    const std::vector<float> spectrumEnvelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
-    _logger.Log(spectrumEnvelope.data(), spectrumEnvelope.size(), "spectrumEnvelope");
-
-    std::transform(spec.begin(), spec.end(), spectrumEnvelope.begin(), spec.begin(),
-                   std::minus<float>());
-
-    // Calculate the variance from 5kHz to the Nyquist
-    const auto minFreq = 5000.f;
-    const auto minBin = static_cast<int>(minFreq / _binFreq);
-    const auto N = static_cast<float>(static_cast<int>(spec.size()) - minBin);
-
-    // Expected value E
-    const auto E = std::accumulate(spec.begin() + minBin, spec.end(), 0.f,
-                                   [](float acc, float val) { return acc + val; }) /
-                   N;
-
-    const auto variance =
-        std::accumulate(spec.begin(), spec.end(), 0.f,
-                        [E](float acc, float val) { return acc + (val - E) * (val - E); }) /
-        N;
-
-    const auto stdDev = std::sqrt(variance);
-    const auto noiseThreshold = stdDev * 2.f;
-
-    std::transform(spec.begin(), spec.end(), spec.begin(),
-                   [noiseThreshold](float x) { return x - noiseThreshold; });
-
-    _logger.Log(spec.data(), spec.size(), "idealSpectrum");
-
-    assert(utils::isSymmetric(spec));
-    assert(utils::isPowerOfTwo(spec.size()));
-}
 
 }  // namespace saint

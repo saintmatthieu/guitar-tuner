@@ -2,7 +2,9 @@
 
 #include <cmath>
 
+#include "CommonTypes.h"
 #include "PitchDetectorLoggerInterface.h"
+#include "ToSpectrumModel.h"
 
 namespace {
 // Beta function B(a, b) = Gamma(a) * Gamma(b) / Gamma(a + b)
@@ -67,12 +69,18 @@ double probabilityNotOctaviated(double s) {
 }  // namespace
 
 namespace saint {
-PitchDetectorImpl::PitchDetectorImpl(FrequencyDomainTransformer transformer,
+PitchDetectorImpl::PitchDetectorImpl(int sampleRate, int windowSize, int fftSize,
+                                     FrequencyDomainTransformer transformer,
                                      AutocorrPitchDetector autocorrPitchDetector,
                                      AutocorrEstimateDisambiguator disambiguator,
                                      OnsetDetector onsetDetector,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger)
-    : _frequencyDomainTransformer(std::move(transformer)),
+    : _sampleRate(sampleRate),
+      _fftSize(fftSize),
+      _binFreq(static_cast<float>(sampleRate) / fftSize),
+      _binResolution(1. * windowSize / fftSize),
+      _cepstrumFft(fftSize),
+      _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
       _onsetDetector(std::move(onsetDetector)),
@@ -136,12 +144,85 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     assert(utils::isSymmetric(dbSpectrum));
     _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
+    auto whitenedSpectrum = dbSpectrum;
+    toIdealSpectrum(whitenedSpectrum);
+
+    std::unique_ptr<std::vector<float>> fullIdeal;
+    if (_logger->IsLogging()) {
+        fullIdeal = std::make_unique<std::vector<float>>();
+    }
+    const std::vector<PeakModel> spectrumModel = toSpectrumModel<kWindowType>(
+        dbSpectrum, whitenedSpectrum, _binResolution, _binFreq, fullIdeal.get());
+
+    if (_logger->IsLogging()) {
+        std::vector<float> spectrumModelIndices(spectrumModel.size());
+        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelIndices.begin(),
+                       [](const PeakModel& pm) { return pm.index; });
+        std::vector<float> spectrumModelValues(spectrumModel.size());
+        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelValues.begin(),
+                       [](const PeakModel& pm) { return pm.value; });
+        std::vector<float> spectrumModelWeights(spectrumModel.size());
+        std::transform(spectrumModel.begin(), spectrumModel.end(), spectrumModelWeights.begin(),
+                       [](const PeakModel& pm) { return pm.weight; });
+        _logger->Log(spectrumModelIndices.data(), spectrumModelIndices.size(),
+                     "spectrumModelIndices");
+        _logger->Log(spectrumModelValues.data(), spectrumModelValues.size(), "spectrumModelValues");
+        _logger->Log(spectrumModelWeights.data(), spectrumModelWeights.size(),
+                     "spectrumModelWeights");
+        _logger->Log(fullIdeal->data(), fullIdeal->size(), "fullIdealSpectrum");
+    }
+
     const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, dbSpectrum, _estimateConstraint);
+        _disambiguator.process(xcorrEstimate, spectrumModel, _estimateConstraint);
 
     if (debugOutput)
         (*debugOutput)["rawEstimate"] = disambiguatedEstimate;
 
     return disambiguatedEstimate;
+}
+
+void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
+    auto& spec = logSpectrum;
+
+    Aligned<std::vector<float>> cepstrumAligned;
+    toCepstrum(spec, _cepstrumFft, cepstrumAligned);
+
+    const std::vector<float>& cepstrum = cepstrumAligned.value;
+    std::vector<float> lifteredCepstrum = cepstrum;
+    const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
+    std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
+              0.f);
+
+    const std::vector<float> spectrumEnvelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
+    _logger->Log(spectrumEnvelope.data(), spectrumEnvelope.size(), "spectrumEnvelope");
+
+    std::transform(spec.begin(), spec.end(), spectrumEnvelope.begin(), spec.begin(),
+                   std::minus<float>());
+
+    // Calculate the variance from 5kHz to the Nyquist
+    const auto minFreq = 5000.f;
+    const auto minBin = static_cast<int>(minFreq / _binFreq);
+    const auto N = static_cast<float>(static_cast<int>(spec.size()) - minBin);
+
+    // Expected value E
+    const auto E = std::accumulate(spec.begin() + minBin, spec.end(), 0.f,
+                                   [](float acc, float val) { return acc + val; }) /
+                   N;
+
+    const auto variance =
+        std::accumulate(spec.begin(), spec.end(), 0.f,
+                        [E](float acc, float val) { return acc + (val - E) * (val - E); }) /
+        N;
+
+    const auto stdDev = std::sqrt(variance);
+    const auto noiseThreshold = stdDev * 2.f;
+
+    std::transform(spec.begin(), spec.end(), spec.begin(),
+                   [noiseThreshold](float x) { return x - noiseThreshold; });
+
+    _logger->Log(spec.data(), spec.size(), "idealSpectrum");
+
+    assert(utils::isSymmetric(spec));
+    assert(utils::isPowerOfTwo(spec.size()));
 }
 }  // namespace saint
