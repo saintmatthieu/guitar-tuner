@@ -160,8 +160,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 const auto errorCents =
                     finalEstimate > 0.f ? 1200.f * std::log2(finalEstimate / sample.truth.frequency)
                                         : 0.f;
-                testFileEstimates.emplace_back(weight, debugOutput["presenceScore"], finalEstimate,
-                                               errorCents);
+                testFileEstimates.emplace_back(truth, debugOutput["presenceScore"], finalEstimate,
+                                               errorCents, debugOutput["rawEstimate"]);
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
             }
 

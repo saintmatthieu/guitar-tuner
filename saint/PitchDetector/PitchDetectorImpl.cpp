@@ -139,6 +139,9 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     const auto disambiguatedEstimate =
         _disambiguator.process(xcorrEstimate, dbSpectrum, _estimateConstraint);
 
+    if (debugOutput)
+        (*debugOutput)["rawEstimate"] = disambiguatedEstimate;
+
     return disambiguatedEstimate;
 }
 }  // namespace saint
