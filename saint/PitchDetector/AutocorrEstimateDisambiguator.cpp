@@ -543,7 +543,7 @@ void AutocorrEstimateDisambiguator::toIdealSpectrum(std::vector<float>& logSpect
         N;
 
     const auto stdDev = std::sqrt(variance);
-    const auto noiseThreshold = stdDev * 1.5f;
+    const auto noiseThreshold = stdDev * 2.f;
 
     std::transform(spec.begin(), spec.end(), spec.begin(),
                    [noiseThreshold](float x) { return x - noiseThreshold; });
