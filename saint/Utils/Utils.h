@@ -253,6 +253,8 @@ int getIndexOfClosestLocalMaximum(const std::vector<float>& values, int startInd
 float doubleCheckEstimate(float priorIndex, const std::vector<float>& dbSpectrum, int minBin,
                           int N);
 
+float toBark(int bin, float binFrequency);
+
 template <typename F>
 struct Finally {
     Finally(F f) : func(std::move(f)) {}

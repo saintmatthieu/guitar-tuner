@@ -235,4 +235,10 @@ int utils::getIndexOfClosestLocalMaximum(const std::vector<float>& values, int s
     }
     return i;
 }
+
+float utils::toBark(int bin, float binFrequency) {
+    const auto f = bin * binFrequency;
+    constexpr auto den2 = 7500.f * 7500.f;
+    return 13.f * std::atan(0.00076f * f) + 3.5f * std::atan(f * f / den2);
+}
 }  // namespace saint
