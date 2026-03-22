@@ -16,20 +16,6 @@ fig = 0
 
 fig += 1
 plt.figure(fig)
-plt.plot(t, pdl.inputAudio)
-plt.grid(True)
-plt.title("Input Audio Signal")
-plt.gcf().canvas.manager.set_window_title("Input Audio Signal")
-
-fig += 1
-plt.figure(fig)
-plt.plot(t, pdl.windowedAudio)
-plt.grid(True)
-plt.title("Windowed Audio Signal")
-plt.gcf().canvas.manager.set_window_title("Windowed Audio Signal")
-
-fig += 1
-plt.figure(fig)
 # plt.subplot(2, 1, 1)
 # plt.plot(f, pdl.dbSpectrum[:F])
 # plt.xlabel("Frequency (Hz)")
@@ -48,17 +34,6 @@ plt.grid(True)
 # plt.xlim(0, 2000 / hzPerBin)
 plt.suptitle("dB Spectrum")
 plt.gcf().canvas.manager.set_window_title("dB Spectrum")
-
-fig += 1
-plt.figure(fig)
-plt.subplot(2, 1, 1)
-plt.plot(t, pdl.xcorr)
-plt.grid(True)
-plt.subplot(2, 1, 2)
-plt.plot(pdl.xcorr)
-plt.grid(True)
-plt.suptitle("Autocorrelation")
-plt.gcf().canvas.manager.set_window_title("Autocorrelation")
 
 fig += 1
 plt.figure(fig)
