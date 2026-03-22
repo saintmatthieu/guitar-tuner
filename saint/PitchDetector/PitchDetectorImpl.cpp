@@ -136,8 +136,21 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         return 0.f;
     }
 
+    const std::vector<PeakModel> spectrumModel = getSpectrumModel(freq);
+
+    const auto disambiguatedEstimate =
+        _disambiguator.process(xcorrEstimate, spectrumModel, _estimateConstraint);
+
+    if (debugOutput)
+        (*debugOutput)["rawEstimate"] = disambiguatedEstimate;
+
+    return disambiguatedEstimate;
+}
+
+std::vector<PeakModel> PitchDetectorImpl::getSpectrumModel(
+    const std::vector<std::complex<float>>& spectrum) {
     std::vector<float> powerSpectrum;
-    utils::getPowerSpectrum(freq, powerSpectrum);
+    utils::getPowerSpectrum(spectrum, powerSpectrum);
     std::vector<float> dbSpectrum = powerSpectrum;
     std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
                    [](float power) { return utils::FastDb(power); });
@@ -172,13 +185,7 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _logger->Log(fullIdeal->data(), fullIdeal->size(), "fullIdealSpectrum");
     }
 
-    const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, spectrumModel, _estimateConstraint);
-
-    if (debugOutput)
-        (*debugOutput)["rawEstimate"] = disambiguatedEstimate;
-
-    return disambiguatedEstimate;
+    return spectrumModel;
 }
 
 void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {

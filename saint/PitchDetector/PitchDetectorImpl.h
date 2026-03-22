@@ -33,6 +33,7 @@ class PitchDetectorImpl {
     }
 
    private:
+    std::vector<PeakModel> getSpectrumModel(const std::vector<std::complex<float>>& spectrum);
     void toIdealSpectrum(std::vector<float>& logSpectrum);
 
     const int _sampleRate;
