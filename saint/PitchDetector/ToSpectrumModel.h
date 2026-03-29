@@ -8,6 +8,8 @@ template <WindowType W>
 std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
                                        const std::vector<float>& whitenedSpectrum,
                                        double binResolution, double binFrequency,
+                                       const std::vector<std::complex<float>>& spectrum,
+                                       std::vector<std::complex<float>>& denoisedSpectrum,
                                        std::vector<float>* fullIdeal = nullptr) {
     assert(utils::isSymmetric(dbSpectrum));
     assert(utils::isSymmetric(whitenedSpectrum));
@@ -21,6 +23,9 @@ std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
         fullIdeal->resize(N);
         std::fill(fullIdeal->begin(), fullIdeal->end(), -1000.f);
     }
+
+    denoisedSpectrum.resize(spectrum.size());
+    std::fill(denoisedSpectrum.begin(), denoisedSpectrum.end(), std::complex<float>(0.f, 0.f));
 
     const auto numBinsForFit =
         static_cast<int>(utils::mainLobeWidth<W>() / binResolution / 2) * 2 + 1;
@@ -153,8 +158,11 @@ std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
         // 6.
         constexpr auto coef = -0.5157894736842106f;
         const auto weight = rmsError < -coef ? 1.f : std::min(-coef / (coef + rmsError), 1.f);
-        if (weight > 0.1)
+        if (weight > 0.1) {
             spectrumModel.push_back({refinedIndex, refinedValue, weight});
+            std::copy(spectrum.begin() + beginIndex, spectrum.begin() + endIndex,
+                      denoisedSpectrum.begin() + beginIndex);
+        }
     }
 
     // sort peaks by index

@@ -79,7 +79,7 @@ PitchDetectorImpl::PitchDetectorImpl(int sampleRate, int windowSize, int fftSize
       _fftSize(fftSize),
       _binFreq(static_cast<float>(sampleRate) / fftSize),
       _binResolution(1. * windowSize / fftSize),
-      _cepstrumFft(fftSize),
+      _fft(fftSize),
       _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
@@ -103,9 +103,18 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
 
     const std::vector<std::complex<float>> freq = _frequencyDomainTransformer.process(audio);
 
+    std::vector<std::complex<float>> denoisedSpectrum;
+    const std::vector<PeakModel> spectrumModel = getSpectrumModel(freq, denoisedSpectrum);
+
+    if (_logger->IsLogging()) {
+        std::vector<float> denoisedAudio(_fftSize);
+        _fft.inverse(denoisedSpectrum.data(), denoisedAudio.data());
+        _logger->Log(denoisedAudio.data(), denoisedAudio.size(), "denoisedAudio");
+    }
+
     auto presenceScore = 0.f;
     const float xcorrEstimate =
-        _autocorrPitchDetector.process(freq, &presenceScore, _estimateConstraint);
+        _autocorrPitchDetector.process(denoisedSpectrum, &presenceScore, _estimateConstraint);
     if (debugOutput) {
         (*debugOutput)["presenceScore"] = presenceScore;
     }
@@ -124,7 +133,8 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     //      (a, loc, scale) = (4.551395913440457, 0.12565570910063836, 0.3627118137538335)
     // f_S(s) is a mixture of both with weights 0.665 for the "good" distribution and 0.335 for the "not good".
     // clang-format on
-    const double probNotOctaviated = probabilityNotOctaviated(presenceScore);
+    const double probNotOctaviated =
+        xcorrEstimate >= 1 ? 1.0 : probabilityNotOctaviated(presenceScore);
 
     // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
     // and 8% of the test cases failing by no-pitch-detected.
@@ -136,8 +146,6 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         return 0.f;
     }
 
-    const std::vector<PeakModel> spectrumModel = getSpectrumModel(freq);
-
     const auto disambiguatedEstimate =
         _disambiguator.process(xcorrEstimate, spectrumModel, _estimateConstraint);
 
@@ -148,7 +156,8 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
 }
 
 std::vector<PeakModel> PitchDetectorImpl::getSpectrumModel(
-    const std::vector<std::complex<float>>& spectrum) {
+    const std::vector<std::complex<float>>& spectrum,
+    std::vector<std::complex<float>>& denoisedSpectrum) {
     std::vector<float> powerSpectrum;
     utils::getPowerSpectrum(spectrum, powerSpectrum);
     std::vector<float> dbSpectrum = powerSpectrum;
@@ -164,8 +173,10 @@ std::vector<PeakModel> PitchDetectorImpl::getSpectrumModel(
     if (_logger->IsLogging()) {
         fullIdeal = std::make_unique<std::vector<float>>();
     }
-    const std::vector<PeakModel> spectrumModel = toSpectrumModel<kWindowType>(
-        dbSpectrum, whitenedSpectrum, _binResolution, _binFreq, fullIdeal.get());
+
+    const std::vector<PeakModel> spectrumModel =
+        toSpectrumModel<kWindowType>(dbSpectrum, whitenedSpectrum, _binResolution, _binFreq,
+                                     spectrum, denoisedSpectrum, fullIdeal.get());
 
     if (_logger->IsLogging()) {
         std::vector<float> spectrumModelIndices(spectrumModel.size());
@@ -192,7 +203,7 @@ void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
     auto& spec = logSpectrum;
 
     Aligned<std::vector<float>> cepstrumAligned;
-    toCepstrum(spec, _cepstrumFft, cepstrumAligned);
+    toCepstrum(spec, _fft, cepstrumAligned);
 
     const std::vector<float>& cepstrum = cepstrumAligned.value;
     std::vector<float> lifteredCepstrum = cepstrum;
@@ -200,7 +211,7 @@ void PitchDetectorImpl::toIdealSpectrum(std::vector<float>& logSpectrum) {
     std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
               0.f);
 
-    const std::vector<float> spectrumEnvelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
+    const std::vector<float> spectrumEnvelope = fromCepstrum(_fft, lifteredCepstrum.data());
     _logger->Log(spectrumEnvelope.data(), spectrumEnvelope.size(), "spectrumEnvelope");
 
     std::transform(spec.begin(), spec.end(), spectrumEnvelope.begin(), spec.begin(),

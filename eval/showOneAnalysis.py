@@ -13,6 +13,7 @@ hzPerBin = pdl.sampleRate / pdl.fftSize
 F = len(pdl.dbSpectrum) // 2
 f = [i * hzPerBin for i in range(F)]
 fig = 0
+trueFreqBin = pdl.trueFrequency / hzPerBin
 
 fig += 1
 plt.figure(fig)
@@ -22,6 +23,12 @@ plt.figure(fig)
 # plt.ylabel("dB")
 # plt.grid(True)
 # plt.subplot(2, 1, 2)
+
+# In the background are vertical stripes, alternating between transparent and semi-transparent salmon color,
+# and spaced by `trueFreqBin`:
+for i in range(int(len(pdl.dbSpectrum) / trueFreqBin) + 1):
+    plt.axvspan(i * trueFreqBin, (i + 1) * trueFreqBin, color='salmon', alpha=0.1 if i % 2 == 0 else 0)
+
 plt.plot(pdl.dbSpectrum[:F])
 plt.plot(pdl.spectrumModelIndices, pdl.spectrumModelValues, 'ro')
 plt.plot([x if x > -1000 else np.nan for x in pdl.fullIdealSpectrum[:F]], linestyle='dashed', label="fitted lobes")

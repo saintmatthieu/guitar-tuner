@@ -23,7 +23,7 @@
 namespace saint {
 class PitchDetectorLogger : public PitchDetectorLoggerInterface {
    public:
-    PitchDetectorLogger(int sampleRate, int estimateIndex);
+    PitchDetectorLogger(int sampleRate, int estimateIndex, double trueFrequency);
     ~PitchDetectorLogger() override;
 
     void SamplesRead(int count) override;
@@ -52,6 +52,7 @@ class PitchDetectorLogger : public PitchDetectorLoggerInterface {
    private:
     const int mSampleRate;
     const int mEstimateIndex;
+    const double mTrueFrequency;
     std::unique_ptr<std::ofstream> mOfs;
     int mEstimateCount = 0;
     int mRingBufferCount = 0;

@@ -33,7 +33,8 @@ class PitchDetectorImpl {
     }
 
    private:
-    std::vector<PeakModel> getSpectrumModel(const std::vector<std::complex<float>>& spectrum);
+    std::vector<PeakModel> getSpectrumModel(const std::vector<std::complex<float>>& spectrum,
+                                            std::vector<std::complex<float>>& denoisedSpectrum);
     void toIdealSpectrum(std::vector<float>& logSpectrum);
 
     const int _sampleRate;
@@ -46,7 +47,7 @@ class PitchDetectorImpl {
     AutocorrEstimateDisambiguator _disambiguator;
     OnsetDetector _onsetDetector;
 
-    RealFft _cepstrumFft;
+    RealFft _fft;
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
     std::optional<float> _estimateConstraint;
 };

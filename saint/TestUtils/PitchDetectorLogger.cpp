@@ -27,8 +27,8 @@ void PrintPythonVector(std::ofstream& ofs, Iterator begin, Iterator end, const c
 }
 }  // namespace
 
-PitchDetectorLogger::PitchDetectorLogger(int sampleRate, int estimateIndex)
-    : mSampleRate{sampleRate}, mEstimateIndex{estimateIndex} {}
+PitchDetectorLogger::PitchDetectorLogger(int sampleRate, int estimateIndex, double trueFrequency)
+    : mSampleRate{sampleRate}, mEstimateIndex{estimateIndex}, mTrueFrequency{trueFrequency} {}
 
 PitchDetectorLogger::~PitchDetectorLogger() {}
 
@@ -46,6 +46,7 @@ bool PitchDetectorLogger::StartNewEstimate() {
         mOfs = std::make_unique<std::ofstream>(file);
         *mOfs << "sampleRate = " << mSampleRate << "\n";
         *mOfs << "audioIndex = " << *mAnalysisSampleIndex << "\n";
+        *mOfs << "trueFrequency = " << mTrueFrequency << "\n";
     }
     return ok;
 }

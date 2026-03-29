@@ -82,8 +82,8 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             std::unique_ptr<PitchDetectorLoggerInterface> logger;
             if (argIndexOfProcessToLog.has_value()) {
-                logger = std::make_unique<PitchDetectorLogger>(noisy.sampleRate,
-                                                               *argIndexOfProcessToLog);
+                logger = std::make_unique<PitchDetectorLogger>(
+                    noisy.sampleRate, *argIndexOfProcessToLog, sample.truth.frequency);
             } else {
                 logger = std::make_unique<DummyPitchDetectorLogger>();
             }

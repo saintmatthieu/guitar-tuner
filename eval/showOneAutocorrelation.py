@@ -17,12 +17,9 @@ windowedAudio = np.array(pdl.windowedAudio).astype(np.float32)
 normalizedWindowedAudio = windowedAudio / np.max(np.abs(windowedAudio)) * 0.9
 wavfile.write(os.path.join(os.path.dirname(__file__), 'out', 'windowedAudio.wav'), pdl.sampleRate, normalizedWindowedAudio)
 
-fig += 1
-plt.figure(fig)
-plt.plot(t, pdl.cepstrum)
-plt.grid(True)
-plt.title("Cepstrum")
-plt.gcf().canvas.manager.set_window_title("Cepstrum")
+denoisedAudio = np.array(pdl.denoisedAudio).astype(np.float32)
+normalizedDenoisedAudio = denoisedAudio / np.max(np.abs(denoisedAudio)) * 0.9
+wavfile.write(os.path.join(os.path.dirname(__file__), 'out', 'windowedAudio_denoised.wav'), pdl.sampleRate, normalizedDenoisedAudio)
 
 fig += 1
 plt.figure(fig)
@@ -37,6 +34,13 @@ plt.plot(t, pdl.windowedAudio)
 plt.grid(True)
 plt.title("Windowed Audio Signal")
 plt.gcf().canvas.manager.set_window_title("Windowed Audio Signal")
+
+fig += 1
+plt.figure(fig)
+plt.plot(t, pdl.denoisedAudio)
+plt.grid(True)
+plt.title("Windowed Audio Signal - denoised")
+plt.gcf().canvas.manager.set_window_title("Windowed Audio Signal - denoised")
 
 fig += 1
 plt.figure(fig)
