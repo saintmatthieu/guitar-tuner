@@ -25,6 +25,9 @@ class PitchDetectorImpl {
     void setEstimateConstraint(float constraint) {
         _estimateConstraint = constraint;
     }
+    void clearEstimateConstraint() {
+        _estimateConstraint.reset();
+    }
 
     int windowSizeSamples() const {
         return _frequencyDomainTransformer.windowSizeSamples();
