@@ -7,22 +7,22 @@
 namespace saint {
 
 namespace {
-constexpr int getFilterSize(int sampleRate, int blockSize) {
-    constexpr auto filterDuration = 0.15f;
+int getFilterSize(int sampleRate, int blockSize, float filterDuration) {
     const auto blockDuration = static_cast<float>(blockSize) / static_cast<float>(sampleRate);
     auto size = static_cast<int>(std::ceil(filterDuration / blockDuration));
     if (size % 2 == 0) {
         ++size;  // Make it odd, it's simpler for median calculation
     }
-    return size;
+    return std::max(size, 3);  // minimum 3 for median to be meaningful
 }
 }  // namespace
 
 PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSize,
-                                                     std::unique_ptr<PitchDetectorImpl> impl)
+                                                     std::unique_ptr<PitchDetectorImpl> impl,
+                                                     float filterDuration)
     : _blockSize(blockSize),
       _impl(std::move(impl)),
-      _buffer(getFilterSize(sampleRate, blockSize)),
+      _buffer(getFilterSize(sampleRate, blockSize, filterDuration)),
       _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
 
 int PitchDetectorMedianFilter::delaySamples() const {
