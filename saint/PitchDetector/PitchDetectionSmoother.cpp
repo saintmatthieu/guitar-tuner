@@ -7,8 +7,8 @@ namespace {
 constexpr auto C = 0.95f;
 }  // namespace
 
-PitchDetectionSmoother::PitchDetectionSmoother(std::unique_ptr<PitchDetector> innerDetector,
-                                               int blocksPerSecond)
+PitchDetectionSmoother::PitchDetectionSmoother(
+    std::unique_ptr<FixedBlockPitchDetector> innerDetector, int blocksPerSecond)
     : _innerDetector(std::move(innerDetector)), _coef(std::pow(C, 100.0 / blocksPerSecond)) {}
 
 float PitchDetectionSmoother::process(const float* input, DebugOutput* debugOutput,

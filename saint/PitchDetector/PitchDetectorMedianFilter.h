@@ -3,11 +3,11 @@
 #include <memory>
 #include <vector>
 
-#include "PitchDetector.h"
+#include "FixedBlockPitchDetector.h"
 #include "PitchDetectorImpl.h"
 
 namespace saint {
-class PitchDetectorMedianFilter : public PitchDetector {
+class PitchDetectorMedianFilter : public FixedBlockPitchDetector {
    public:
     PitchDetectorMedianFilter(int sampleRate, int blockSize,
                               std::unique_ptr<PitchDetectorImpl> impl,

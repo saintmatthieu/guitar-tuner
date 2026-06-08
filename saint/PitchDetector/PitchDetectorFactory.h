@@ -3,11 +3,11 @@
 #include <memory>
 #include <optional>
 
-#include "PitchDetector.h"
+#include "FixedBlockPitchDetector.h"
 
 namespace saint {
 namespace PitchDetectorFactory {
-std::unique_ptr<PitchDetector> createInstance(
+std::unique_ptr<FixedBlockPitchDetector> createInstance(
     int sampleRate, ChannelFormat, int samplesPerBlockPerChannel,
     const std::optional<PitchDetectorConfig>& config = std::nullopt);
 }  // namespace PitchDetectorFactory

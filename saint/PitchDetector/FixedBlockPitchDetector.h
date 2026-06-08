@@ -5,7 +5,11 @@
 #include "PitchDetectorTypes.h"
 
 namespace saint {
-class PitchDetector {
+// Pitch detector that consumes a fixed number of samples per process() call: exactly the
+// `samplesPerBlockPerChannel` specified at construction, fed as non-overlapping back-to-back
+// blocks. Callers that receive arbitrary-sized buffers must re-block before feeding this
+// (see StreamingPitchDetector).
+class FixedBlockPitchDetector {
    public:
     /**
      * @brief Processes a block of audio samples and return the detected pitch in
@@ -22,6 +26,6 @@ class PitchDetector {
     virtual float process(const float* input, DebugOutput* = nullptr,
                           std::vector<float>* debugOutputSignal = nullptr) = 0;
     virtual int delaySamples() const = 0;
-    virtual ~PitchDetector() = default;
+    virtual ~FixedBlockPitchDetector() = default;
 };
 }  // namespace saint

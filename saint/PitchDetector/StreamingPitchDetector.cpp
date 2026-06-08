@@ -6,7 +6,8 @@
 
 namespace saint {
 
-StreamingPitchDetector::StreamingPitchDetector(std::unique_ptr<PitchDetector> inner, int blockSize)
+StreamingPitchDetector::StreamingPitchDetector(std::unique_ptr<FixedBlockPitchDetector> inner,
+                                               int blockSize)
     : _inner(std::move(inner)), _blockSize(std::max(1, blockSize)) {
     assert(_inner);
 }

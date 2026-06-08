@@ -6,7 +6,6 @@
 
 #include "Cepstrum.h"
 #include "FrequencyDomainTransformer.h"
-#include "PitchDetector.h"
 #include "RealFft.h"
 #include "Utils.h"
 

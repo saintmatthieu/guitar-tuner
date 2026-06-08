@@ -10,7 +10,7 @@
 #include <optional>
 #include <vector>
 
-#include "PitchDetector.h"
+#include "FixedBlockPitchDetector.h"
 
 namespace saint {
 namespace testUtils {

@@ -3,22 +3,23 @@
 #include <memory>
 #include <vector>
 
-#include "PitchDetector.h"
+#include "FixedBlockPitchDetector.h"
 #include "PitchDetectorTypes.h"
 
 namespace saint {
 // Adapts an arbitrary-sized input stream to the fixed-block PitchDetector contract.
 //
-// PitchDetector::process() requires exactly `blockSize` samples per call (see PitchDetector.h),
-// and is fed non-overlapping blocks back-to-back. Real-time audio callbacks do not honour that
-// on their own: iOS AVAudioEngine taps treat the requested buffer size as a hint, Android
-// AudioRecord::read() may return short reads, and Web Audio render quanta (128 frames) rarely
-// equal `blockSize`. This class accumulates whatever is pushed and releases it to the inner
-// detector one `blockSize` block at a time, in arrival order, with no overlap or gaps — so the
-// inner detector sees exactly the same block sequence it would from an ideal fixed-size source.
+// PitchDetector::process() requires exactly `blockSize` samples per call (see
+// FixedBlockPitchDetector.h), and is fed non-overlapping blocks back-to-back. Real-time audio
+// callbacks do not honour that on their own: iOS AVAudioEngine taps treat the requested buffer size
+// as a hint, Android AudioRecord::read() may return short reads, and Web Audio render quanta (128
+// frames) rarely equal `blockSize`. This class accumulates whatever is pushed and releases it to
+// the inner detector one `blockSize` block at a time, in arrival order, with no overlap or gaps —
+// so the inner detector sees exactly the same block sequence it would from an ideal fixed-size
+// source.
 class StreamingPitchDetector {
    public:
-    StreamingPitchDetector(std::unique_ptr<PitchDetector> inner, int blockSize);
+    StreamingPitchDetector(std::unique_ptr<FixedBlockPitchDetector> inner, int blockSize);
 
     // Append `n` mono samples to the internal buffer. Returns the number accepted (`n`).
     size_t push(const float* samples, size_t n);
@@ -36,7 +37,7 @@ class StreamingPitchDetector {
     }
 
    private:
-    const std::unique_ptr<PitchDetector> _inner;
+    const std::unique_ptr<FixedBlockPitchDetector> _inner;
     const int _blockSize;
     std::vector<float> _buffer;
     size_t _readPos = 0;  // index of the first unconsumed sample in _buffer

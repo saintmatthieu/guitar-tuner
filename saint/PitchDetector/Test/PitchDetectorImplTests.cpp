@@ -103,7 +103,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
                 std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
                 std::move(disambiguator), std::move(onsetDetector), std::move(logger));
-            std::unique_ptr<PitchDetector> pitchDetector;
+            std::unique_ptr<FixedBlockPitchDetector> pitchDetector;
 
             if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {
                 auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(

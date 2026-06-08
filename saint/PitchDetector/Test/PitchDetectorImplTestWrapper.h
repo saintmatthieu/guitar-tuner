@@ -2,17 +2,17 @@
 
 #include <memory>
 
-#include "PitchDetector.h"
+#include "FixedBlockPitchDetector.h"
 #include "PitchDetectorImpl.h"
 
 namespace saint {
 
 /**
  * @brief A pitch detector without temporal filtering.
- * Wraps PitchDetectorImpl and exposes the PitchDetector interface.
+ * Wraps PitchDetectorImpl and exposes the FixedBlockPitchDetector interface.
  * Use this when testWithMedianFilter=false.
  */
-class PitchDetectorImplTestWrapper : public PitchDetector {
+class PitchDetectorImplTestWrapper : public FixedBlockPitchDetector {
    public:
     explicit PitchDetectorImplTestWrapper(std::unique_ptr<PitchDetectorImpl> impl);
     ~PitchDetectorImplTestWrapper() override = default;

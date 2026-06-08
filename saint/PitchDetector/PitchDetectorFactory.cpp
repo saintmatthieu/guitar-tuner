@@ -12,7 +12,7 @@
 
 namespace saint {
 
-std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
+std::unique_ptr<FixedBlockPitchDetector> PitchDetectorFactory::createInstance(
     int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel,
     const std::optional<PitchDetectorConfig>& config) {
     auto logger = std::make_unique<DummyPitchDetectorLogger>();
