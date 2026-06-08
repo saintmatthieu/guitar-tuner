@@ -46,6 +46,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argIndexOfProcessToLog = getArgument<int>("indexOfProcessToLog");
     const auto argTestCaseId = getArgument<std::string>("testCaseId");
     const auto argTestWithMedianFilter = getArgument<bool>("testWithMedianFilter");
+    const auto argNoiseCompensation = getArgument<bool>("noiseCompensation");
 
     std::optional<std::ofstream> csvFile;
 
@@ -95,7 +96,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             FrequencyDomainTransformer transformer(noisy.sampleRate, noisy.channelFormat, blockSize,
                                                    minFreq, *logger);
             AutocorrPitchDetector autocorrPitchDetector(noisy.sampleRate, transformer.fftSize(),
-                                                        transformer.window(), minFreq, *logger);
+                                                        transformer.window(), minFreq, *logger,
+                                                        argNoiseCompensation.value_or(false));
             AutocorrEstimateDisambiguator disambiguator(noisy.sampleRate, transformer.fftSize(),
                                                         kTestConfig, *logger);
             OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize, minFreq);

@@ -48,6 +48,18 @@ std::vector<std::complex<float>> getSpectrum(RealFft& fft, const float* timeData
     return freqAligned.value;
 }
 
+// The low-pass window is a run of positive weights followed by zeros, so the
+// bins that actually contribute to the autocorrelation are a prefix. Those are
+// the only bins worth tracking and subtracting noise from.
+int countPositiveBins(const std::vector<float>& lpWindow) {
+    int count = 0;
+    for (const auto w : lpWindow) {
+        if (w > 0.f)
+            ++count;
+    }
+    return count;
+}
+
 std::vector<float> getWindowXCorr(RealFft& fft, const std::vector<float>& window,
                                   const std::vector<float>& lpWindow) {
     Aligned<std::vector<float>> xcorrAligned;
@@ -63,22 +75,44 @@ std::vector<float> getWindowXCorr(RealFft& fft, const std::vector<float>& window
 
 AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
                                              const std::vector<float>& fftWindow, float minFreq,
-                                             PitchDetectorLoggerInterface& logger)
+                                             PitchDetectorLoggerInterface& logger,
+                                             bool noiseCompensation)
     : _sampleRate(sampleRate),
       _logger(logger),
       _fftSize(fftSize),
       _fwdFft(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / minFreq))),
-      _windowXcorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)) {}
+      _windowXcorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)),
+      _noiseCompensation(noiseCompensation),
+      _noiseBinCount(countPositiveBins(_lpWindow)),
+      _noisePsd(_noiseBinCount, 0.f) {}
 
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
                                      float* presenceScore, std::optional<float> constraint) {
     std::vector<float> xcorr(_fftSize);
     _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "windowXcorr");
 
+    // Noise-compensated autocorrelation: subtract the estimated noise power
+    // spectrum from |X|^2 before computing the autocorrelation. The subtraction
+    // is realised as a real-valued spectral gain applied to the complex
+    // spectrum, so getXCorr (which forms |X|^2 internally) sees the denoised
+    // power. We only subtract once a note is active (the estimate has been
+    // frozen at the onset) and a noise floor has actually been learned from the
+    // pre-roll; otherwise the spectrum is left untouched and the detector
+    // behaves exactly as baseline (including the noise-only pre-roll, so the
+    // gate's false-positive behaviour there is unchanged).
+    std::vector<std::complex<float>> compensated;
+    const std::vector<std::complex<float>>* xcorrInput = &freq;
+    if (_noiseCompensation && _noiseEstimationFrozen &&
+        _noiseFramesSeen >= noiseEstimateWarmupFrames) {
+        compensated = freq;
+        applyNoiseCompensation(compensated);
+        xcorrInput = &compensated;
+    }
+
     // Compute cross-correlation
-    getXCorr(_fwdFft, xcorr, freq, _lpWindow);
+    getXCorr(_fwdFft, xcorr, *xcorrInput, _lpWindow);
     _logger.Log(xcorr.data(), xcorr.size(), "xcorr");
 
     // Determine search range based on constraint
@@ -111,6 +145,10 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         *presenceScore = maximum;
     }
 
+    // Update the noise-power estimate from this frame's raw spectrum, gated by
+    // the presence score so frames that contain a pitch don't pollute it.
+    updateNoiseEstimate(freq, maximum);
+
     if (maxIndex == 0) {
         return 0.f;
     }
@@ -119,5 +157,41 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
     const auto refinedIndex = maxIndex + fracIndex;
 
     return maxIndex == 0 ? 0.f : static_cast<float>(_sampleRate) / refinedIndex;
+}
+
+void AutocorrPitchDetector::applyNoiseCompensation(
+    std::vector<std::complex<float>>& spectrum) const {
+    for (int i = 0; i < _noiseBinCount; ++i) {
+        const float power = std::norm(spectrum[i]);  // |X[i]|^2
+        if (power <= 1e-20f) {
+            continue;
+        }
+        const float denoised = std::max(power - noiseOverSubtractionFactor * _noisePsd[i],
+                                        noiseSpectralFloor * power);
+        // Scaling the complex bin by sqrt(denoised / power) leaves its phase
+        // untouched while making |scaled|^2 == denoised.
+        spectrum[i] *= std::sqrt(denoised / power);
+    }
+}
+
+void AutocorrPitchDetector::updateNoiseEstimate(const std::vector<std::complex<float>>& spectrum,
+                                                float presenceScore) {
+    if (!_noiseCompensation || _noiseEstimationFrozen) {
+        return;
+    }
+    // Secondary guard: even before the first onset, skip any frame that looks
+    // periodic (e.g. an onset detected a frame late), so a note edge can't seed
+    // the noise floor.
+    if (presenceScore >= noiseUpdatePresenceThreshold) {
+        return;
+    }
+    // The first observed noise-only frame seeds the estimate outright; later
+    // frames are smoothed in.
+    const float smoothing = _noiseFramesSeen == 0 ? 0.f : noiseEstimateSmoothing;
+    for (int i = 0; i < _noiseBinCount; ++i) {
+        const float power = std::norm(spectrum[i]);
+        _noisePsd[i] = smoothing * _noisePsd[i] + (1.f - smoothing) * power;
+    }
+    ++_noiseFramesSeen;
 }
 }  // namespace saint

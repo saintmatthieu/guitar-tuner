@@ -93,6 +93,10 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     if (isOnset) {
         // New attack is detected, likely a new note ; reset constraint
         _estimateConstraint.reset();
+        // A note is now sounding, so the audio is no longer reliably noise-only.
+        // Hold the noise-power estimate at whatever was learned from the
+        // pre-onset audio and stop adapting it (see freezeNoiseEstimation).
+        _autocorrPitchDetector.freezeNoiseEstimation();
     }
 
     const auto processedAudio = _preprocessor->processBlock(audio);
