@@ -323,7 +323,7 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     constexpr auto previousRmsError = 7.089565788764084;
     constexpr auto previousAuc = 0.8709150094747889;
-    constexpr auto previousFNR = 0.2832534962249292;
+    constexpr auto previousFNR = 0.2832534962766567;
 
     constexpr auto comparisonTolerance = 0.01;
 
