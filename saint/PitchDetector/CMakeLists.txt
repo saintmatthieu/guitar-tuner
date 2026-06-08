@@ -16,6 +16,7 @@ target_sources(PitchDetector
     FrequencyDomainTransformer.cpp
     OnsetDetector.cpp
     PitchDetectionSmoother.cpp
+    StreamingPitchDetector.cpp
     Upsampler.cpp
 )
 
