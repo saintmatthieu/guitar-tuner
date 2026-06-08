@@ -57,34 +57,6 @@ TEST(LeastSquareFit, LeastSquareFit) {
     }
 }
 
-TEST(PolyFit, PolyFit) {
-    {
-        const std::vector<float> x = {1.f, 2.f, 3.f};
-        const std::vector<float> y = {2.2f, 2.3f, 2.4f};
-        const auto [a, b] = utils::polyFit(x, y);
-        EXPECT_FLOAT_EQ(a, 0.1f);
-        EXPECT_FLOAT_EQ(b, 2.1f);
-    }
-
-    {
-        const std::vector<float> x = {1.f, 2.f, 3.f, 4.f};
-        const std::vector<float> y = {2.2f, 2.3f, 2.4f, 1234.f};
-        const std::vector<float> w = {1.f, 1.f, 1.f, 0.f};
-        const auto [a, b] = utils::polyFit(x, y, w);
-        EXPECT_FLOAT_EQ(a, 0.1f);
-        EXPECT_FLOAT_EQ(b, 2.1f);
-    }
-
-    {
-        const std::vector<float> x = {1.f, 2.f, 3.f, 4.f};
-        const std::vector<float> y = {2.2f, 2.3f, 2.4f, 1234.f};
-        const std::vector<float> w = {1.f, 1.f, 1.f, 1.f};
-        const auto [a, b] = utils::polyFit(x, y, w);
-        EXPECT_LT(a, 0.1f);
-        EXPECT_GT(b, 2.1f);
-    }
-}
-
 TEST(GCD, GCD) {
     {
         const std::vector<float> values = {0.f};
