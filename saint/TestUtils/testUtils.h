@@ -39,9 +39,9 @@ struct Sample {
 };
 
 struct ProcessEstimate {
-    ProcessEstimate(bool truth, float score, float frequencyEstimate, float errorCents)
+    ProcessEstimate(float truth, float score, float frequencyEstimate, float errorCents)
         : t(truth), e(errorCents), s(score), f(frequencyEstimate) {}
-    bool t = false;
+    float t = 0.f;
     float e = 0.f;
     float s = 0.f;
     float f = 0.f;
