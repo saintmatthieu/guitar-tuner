@@ -65,10 +65,10 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::atomic<int> completedCount{0};
     std::mutex progressMutex;
 
-    auto totalPositiveCount = 0;
+    auto totalPositiveWeight = 0.;
     auto totalNegativeCount = 0;
     auto totalFalsePositiveCount = 0;
-    auto totalFalseNegativeCount = 0;
+    auto totalFalseNegativeWeight = 0.;
 
     std::cout << std::endl << "Evaluating samples..." << std::endl;
 
@@ -117,8 +117,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             auto negativeCount = 0;
-            auto falseNegativeCount = 0;
-            auto positiveCount = 0;
+            auto falseNegativeWeight = 0.;
+            auto positiveWeight = 0.;
             auto falsePositiveCount = 0;
             const auto numChannels = noisy.channelFormat == ChannelFormat::Mono ? 1 : 2;
             const auto numFrames = noisy.interleaved.size() / numChannels;
@@ -141,10 +141,18 @@ TEST(PitchDetectorImpl, benchmarking) {
                     noisy.sampleRate;
                 const auto truth = (currentTime >= sample.truth.startTime) &&
                                    (currentTime <= sample.truth.endTime);
+                auto weight = 0.f;
                 if (truth) {
-                    ++positiveCount;
+                    // A plucked note decays over its labelled duration, so its SNR
+                    // is highest at the onset and lowest by the end. Weight each
+                    // positive window linearly from w(startTime) = 1 down to
+                    // w(endTime) = 0, so missing a note while it is loud counts for
+                    // much more than missing it once it has faded into the noise.
+                    weight = (currentTime - sample.truth.endTime) /
+                             (sample.truth.startTime - sample.truth.endTime);
+                    positiveWeight += weight;
                     if (finalEstimate == 0.f)
-                        ++falseNegativeCount;
+                        falseNegativeWeight += weight;
                 } else {
                     ++negativeCount;
                     if (finalEstimate != 0.f)
@@ -153,18 +161,18 @@ TEST(PitchDetectorImpl, benchmarking) {
                 const auto errorCents =
                     finalEstimate > 0.f ? 1200.f * std::log2(finalEstimate / sample.truth.frequency)
                                         : 0.f;
-                testFileEstimates.emplace_back(truth, debugOutput["presenceScore"], finalEstimate,
+                testFileEstimates.emplace_back(weight, debugOutput["presenceScore"], finalEstimate,
                                                errorCents);
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
             }
 
-            totalPositiveCount += positiveCount;
+            totalPositiveWeight += positiveWeight;
             totalNegativeCount += negativeCount;
             totalFalsePositiveCount += falsePositiveCount;
-            totalFalseNegativeCount += falseNegativeCount;
+            totalFalseNegativeWeight += falseNegativeWeight;
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
-            const auto FNR = 1. * falseNegativeCount / positiveCount;
+            const auto FNR = falseNegativeWeight / positiveWeight;
 
             std::vector<float> frequencyEstimates(testFileEstimates.size());
             std::transform(testFileEstimates.begin(), testFileEstimates.end(),
@@ -308,7 +316,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     rmsAvg /= count;
 
     const auto globalFalsePositiveRate = 1. * totalFalsePositiveCount / totalNegativeCount;
-    const auto globalFalseNegativeRate = 1. * totalFalseNegativeCount / totalPositiveCount;
+    const auto globalFalseNegativeRate = totalFalseNegativeWeight / totalPositiveWeight;
 
     tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
         << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
@@ -316,7 +324,7 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     constexpr auto previousRmsError = 7.089565788764084;
     constexpr auto previousAuc = 0.8709150094747889;
-    constexpr auto previousFNR = 0.4028217629842614;
+    constexpr auto previousFNR = 0.2832534962249292;
 
     constexpr auto comparisonTolerance = 0.01;
 
