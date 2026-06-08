@@ -58,6 +58,9 @@ int main(int argc, char* argv[]) {
     // Start audio capture with callback
     bool success = audioInput.start([&](const float* samples, int numSamples) {
         if (!gRunning) {
+            // start() blocks in the capture loop, which only watches its own
+            // flag; stop() breaks it so start() returns and we exit on Ctrl+C.
+            audioInput.stop();
             return;
         }
 
