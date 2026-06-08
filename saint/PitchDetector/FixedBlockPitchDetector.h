@@ -8,7 +8,7 @@ namespace saint {
 // Pitch detector that consumes a fixed number of samples per process() call: exactly the
 // `samplesPerBlockPerChannel` specified at construction, fed as non-overlapping back-to-back
 // blocks. Callers that receive arbitrary-sized buffers must re-block before feeding this
-// (see StreamingPitchDetector).
+// (see ReblockingPitchDetector, which adapts this to the variable-size PitchDetector interface).
 class FixedBlockPitchDetector {
    public:
     /**
