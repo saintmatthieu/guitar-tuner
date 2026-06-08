@@ -109,8 +109,13 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _frequencyDomainTransformer.process(processedAudio.data());
 
     auto presenceScore = 0.f;
-    const float xcorrEstimate =
-        _autocorrPitchDetector.process(freq, &presenceScore, _estimateConstraint);
+    // If noise compensation is active, `compensatedFreq` receives the
+    // noise-subtracted spectrum used for the autocorrelation; we then feed the
+    // same denoised spectrum to the octave disambiguator so its harmonic fit
+    // sees the cleaned-up partials rather than the original noisy ones.
+    std::vector<std::complex<float>> compensatedFreq;
+    const float xcorrEstimate = _autocorrPitchDetector.process(freq, &presenceScore,
+                                                               _estimateConstraint, &compensatedFreq);
     if (debugOutput) {
         (*debugOutput)["presenceScore"] = presenceScore;
     }
@@ -141,8 +146,10 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         return 0.f;
     }
 
+    const std::vector<std::complex<float>>& spectrumForDisambiguation =
+        compensatedFreq.empty() ? freq : compensatedFreq;
     std::vector<float> powerSpectrum;
-    utils::getPowerSpectrum(freq, powerSpectrum);
+    utils::getPowerSpectrum(spectrumForDisambiguation, powerSpectrum);
     std::vector<float> dbSpectrum = powerSpectrum;
     std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
                    [](float power) { return utils::FastDb(power); });

@@ -48,9 +48,11 @@ std::vector<std::complex<float>> getSpectrum(RealFft& fft, const float* timeData
     return freqAligned.value;
 }
 
-// The low-pass window is a run of positive weights followed by zeros, so the
-// bins that actually contribute to the autocorrelation are a prefix. Those are
-// the only bins worth tracking and subtracting noise from.
+// The low-pass window is a run of positive weights followed by zeros. Those
+// positive bins are the ones that contribute to the autocorrelation, and they
+// are also the harmonic range the disambiguator can usefully see denoised: the
+// disambiguator derives its own noise floor from the (untouched) high bins, so
+// subtracting there would corrupt its octave decisions.
 int countPositiveBins(const std::vector<float>& lpWindow) {
     int count = 0;
     for (const auto w : lpWindow) {
@@ -89,7 +91,8 @@ AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
       _noisePsd(_noiseBinCount, 0.f) {}
 
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
-                                     float* presenceScore, std::optional<float> constraint) {
+                                     float* presenceScore, std::optional<float> constraint,
+                                     std::vector<std::complex<float>>* compensatedSpectrum) {
     std::vector<float> xcorr(_fftSize);
     _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "windowXcorr");
 
@@ -109,6 +112,9 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         compensated = freq;
         applyNoiseCompensation(compensated);
         xcorrInput = &compensated;
+        if (compensatedSpectrum) {
+            *compensatedSpectrum = compensated;
+        }
     }
 
     // Compute cross-correlation
