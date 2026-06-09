@@ -44,6 +44,10 @@ std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
         }
     }
 
+    // Peaks removed by perceptual masking below: kept out of `spectrumModel` (which feeds the
+    // disambiguator) but their lobes are still added to `denoisedSpectrum` so the autocorrelation
+    // sees the full harmonic series.
+    std::vector<int> maskedOutPeaks;
     {
         // Perceptual masking
         constexpr auto dbPerBark = 20.f;
@@ -90,8 +94,11 @@ std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
             if (masked)
                 indicesToRemove.push_back(static_cast<int>(i));
         }
-        for (auto it = indicesToRemove.rbegin(); it != indicesToRemove.rend(); ++it)
+        maskedOutPeaks.reserve(indicesToRemove.size());
+        for (auto it = indicesToRemove.rbegin(); it != indicesToRemove.rend(); ++it) {
+            maskedOutPeaks.push_back(peakIndices[*it]);
             peakIndices.erase(peakIndices.begin() + *it);
+        }
     }
 
     // 0. Create a vector of indices [0, 1, ..., N-1].
@@ -105,26 +112,20 @@ std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
     // 8. Erase dbSpectrum and index vector entries of the peak.
     // 9. Go back to 1.
 
-    // 0.
-    while (!peakIndices.empty() && spectrumModel.size() <= maxNumPeaks) {
-        // 1.
-        const auto maxIt =
-            std::max_element(peakIndices.begin(), peakIndices.end(),
-                             [&dbSpectrum](int a, int b) { return dbSpectrum[a] < dbSpectrum[b]; });
-        const auto maxIndex = *maxIt;
-        const auto maxValue = dbSpectrum[maxIndex];
-        peakIndices.erase(maxIt);
-
+    // Fit an ideal main lobe at `maxIndex`; if the fit is good enough (steps 2-6 above), copy the
+    // raw lobe bins into `denoisedSpectrum`, and -- when `addToModel` -- record the peak in
+    // `spectrumModel`.
+    const auto tryAddLobe = [&](int maxIndex, bool addToModel) {
         // 2.
         const auto beginIndex = maxIndex - (numBinsForFit - 1) / 2;
         const auto endIndex = beginIndex + numBinsForFit;
         if (beginIndex < 0 || endIndex > N) {
-            break;
+            return;
         }
 
         // 3.
         float refinedIndex = maxIndex;
-        float refinedValue = maxValue;
+        float refinedValue = dbSpectrum[maxIndex];
         if (maxIndex > 0 && maxIndex < N - 1) {
             const float y[3] = {dbSpectrum[maxIndex - 1], dbSpectrum[maxIndex],
                                 dbSpectrum[maxIndex + 1]};
@@ -139,18 +140,16 @@ std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
             lobeFittingWeights[i - beginIndex] =
                 1 - std::pow((i - refinedIndex) * 2 / numBinsForFit, 16);
         }
-        if (fullIdeal) {
+        if (fullIdeal && addToModel) {
             for (auto i = beginIndex; i < endIndex; ++i) {
                 (*fullIdeal)[i] = idealLobeScratch[i - beginIndex];
             }
         }
 
         // 5.
-        const std::vector<float> actualLobe{dbSpectrum.begin() + beginIndex,
-                                            dbSpectrum.begin() + endIndex};
         auto squareSum = 0.f;
         for (auto i = 0; i < numBinsForFit; ++i) {
-            const auto error = idealLobeScratch[i] - actualLobe[i];
+            const auto error = idealLobeScratch[i] - dbSpectrum[beginIndex + i];
             squareSum += error * error * lobeFittingWeights[i];
         }
         const auto rmsError = std::sqrt(squareSum / numBinsForFit);
@@ -159,10 +158,39 @@ std::vector<PeakModel> toSpectrumModel(const std::vector<float>& dbSpectrum,
         constexpr auto coef = -0.5157894736842106f;
         const auto weight = rmsError < -coef ? 1.f : std::min(-coef / (coef + rmsError), 1.f);
         if (weight > 0.1) {
-            spectrumModel.push_back({refinedIndex, refinedValue, weight});
             std::copy(spectrum.begin() + beginIndex, spectrum.begin() + endIndex,
                       denoisedSpectrum.begin() + beginIndex);
+            if (addToModel) {
+                spectrumModel.push_back({refinedIndex, refinedValue, weight});
+            }
         }
+    };
+
+    // 0. Build `spectrumModel` from the perceptually-masked peaks, in descending level order.
+    while (!peakIndices.empty() && spectrumModel.size() <= maxNumPeaks) {
+        // 1.
+        const auto maxIt =
+            std::max_element(peakIndices.begin(), peakIndices.end(),
+                             [&dbSpectrum](int a, int b) { return dbSpectrum[a] < dbSpectrum[b]; });
+        const auto maxIndex = *maxIt;
+        peakIndices.erase(maxIt);
+
+        // Preserve the original early-out: a peak whose lobe runs off either spectrum edge ends
+        // the scan.
+        const auto beginIndex = maxIndex - (numBinsForFit - 1) / 2;
+        const auto endIndex = beginIndex + numBinsForFit;
+        if (beginIndex < 0 || endIndex > N) {
+            break;
+        }
+
+        tryAddLobe(maxIndex, /*addToModel=*/true);
+    }
+
+    // Perceptual masking is tuned for audibility -- the right criterion for the disambiguator, but
+    // it strips harmonics the autocorrelation relies on. Add the masked-out peaks' lobes to the
+    // autocorr-facing `denoisedSpectrum` only (not to `spectrumModel`).
+    for (const auto maskedOutPeak : maskedOutPeaks) {
+        tryAddLobe(maskedOutPeak, /*addToModel=*/false);
     }
 
     // sort peaks by index
