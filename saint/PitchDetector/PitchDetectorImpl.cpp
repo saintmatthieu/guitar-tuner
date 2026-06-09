@@ -134,7 +134,7 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     // f_S(s) is a mixture of both with weights 0.665 for the "good" distribution and 0.335 for the "not good".
     // clang-format on
     const double probNotOctaviated =
-        xcorrEstimate >= 1 ? 1.0 : probabilityNotOctaviated(presenceScore);
+        presenceScore >= 1 ? 1.0 : probabilityNotOctaviated(presenceScore);
 
     // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
     // and 8% of the test cases failing by no-pitch-detected.
