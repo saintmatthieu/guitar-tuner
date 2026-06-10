@@ -55,9 +55,7 @@ std::string TunerDisplay::renderMeter(float cents, int width) {
 
     // Build the meter string
     for (int i = 0; i < width; ++i) {
-        if (i == centerPos) {
-            oss << "|";  // Center marker
-        } else if (i == needlePos) {
+        if (i == needlePos) {
             // Color the needle based on how close to center
             const float absCents = std::abs(cents);
             if (absCents < 5.0f) {
@@ -67,6 +65,8 @@ std::string TunerDisplay::renderMeter(float cents, int width) {
             } else {
                 oss << "\033[31m▼\033[0m";  // Red - off
             }
+        } else if (i == centerPos) {
+            oss << "|";  // Center marker
         } else if (i < centerPos) {
             oss << (i == 0 ? "♭" : "-");
         } else {
@@ -82,8 +82,14 @@ void TunerDisplay::update(float frequencyHz, const std::string& status) {
     std::cout << "\r\033[K";
 
     if (frequencyHz <= 0.f) {
-        std::cout << "  --  │  ---.-  Hz  │  ";
+        // Same column layout as the pitch branch below, so that the meter doesn't shift when
+        // detection toggles.
+        std::cout << std::setw(3) << "--";
+        std::cout << " │ ";
+        std::cout << std::setw(6) << "---.-" << " Hz";
+        std::cout << " │ ";
         std::cout << renderMeter(0, 41);
+        std::cout << " " << std::setw(3) << "--" << "¢";
         std::cout << status;
         std::cout << std::flush;
         _lastFrequency = 0.f;

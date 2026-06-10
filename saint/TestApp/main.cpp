@@ -113,7 +113,8 @@ class ConsoleRecordingListener : public saint::IRecordingListener {
     std::optional<int> _remainingSeconds;
 };
 
-int runLive(const std::string& device, const char* appName) {
+int runLive(const std::string& device, const std::optional<std::filesystem::path>& outPath,
+            const char* appName) {
     constexpr int kSampleRate = 44100;
     constexpr int kBlockSize = 512;
     constexpr int kIssueRecordingSeconds = 10;
@@ -154,7 +155,7 @@ int runLive(const std::string& device, const char* appName) {
         }
 
         if (const auto key = rawStdin.getKey(); key == 'r' || key == 'R') {
-            recordingListener.setPath(makeRecordingPath());
+            recordingListener.setPath(outPath.value_or(makeRecordingPath()));
             pitchDetector->startIssueRecording(kIssueRecordingSeconds, recordingListener);
         }
 
@@ -167,7 +168,8 @@ int runLive(const std::string& device, const char* appName) {
         std::cerr << "Make sure you have ALSA configured and a microphone connected." << std::endl;
         std::cerr << std::endl;
         std::cerr << "Available devices can be listed with: arecord -L" << std::endl;
-        std::cerr << "Usage: " << appName << " [device_name]" << std::endl;
+        std::cerr << "Usage: " << appName << " [device_name] [--out <recording.wav>]"
+                  << std::endl;
         return 1;
     }
 
@@ -180,10 +182,26 @@ int runLive(const std::string& device, const char* appName) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    std::string device = "default";
+    std::optional<std::filesystem::path> outPath;
+    for (auto i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--out") {
+            if (i + 1 == argc) {
+                std::cerr << "--out requires a file name" << std::endl;
+                std::cerr << "Usage: " << argv[0] << " [device_name] [--out <recording.wav>]"
+                          << std::endl;
+                return 1;
+            }
+            outPath = argv[++i];
+        } else {
+            device = arg;
+        }
+    }
+
     // Set up signal handler for graceful exit
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    const std::string device = argc > 1 ? argv[1] : "default";
-    return runLive(device, argv[0]);
+    return runLive(device, outPath, argv[0]);
 }
