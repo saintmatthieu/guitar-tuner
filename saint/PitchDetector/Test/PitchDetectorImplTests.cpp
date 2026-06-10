@@ -7,17 +7,8 @@
 #include <mutex>
 #include <thread>
 
-#include "AutocorrPitchDetector.h"
-#include "DummyPitchDetectorLogger.h"
-#include "OnsetDetector.h"
-#include "PitchDetectionSmoother.h"
-#include "PitchDetectorImpl.h"
-#include "PitchDetectorImplTestWrapper.h"
-#include "PitchDetectorLogger.h"
-#include "PitchDetectorMedianFilter.h"
-#include "PitchDetectorUtils.h"
+#include "BenchmarkAlgorithms.h"
 #include "TestCaseUtils.h"
-#include "Utils.h"
 #include "testUtils.h"
 
 namespace saint {
@@ -27,8 +18,12 @@ struct TestResult {
     std::string id;
     std::vector<testUtils::ProcessEstimate> estimates;
     std::optional<testUtils::Cents> cents;
-    double FPR;
-    double FNR;
+    double positiveWeight = 0.;
+    int negativeCount = 0;
+    int falsePositiveCount = 0;
+    double falseNegativeWeight = 0.;
+    double FPR = 0.;
+    double FNR = 0.;
     std::string csvLine;
     fs::path testFile;
     fs::path noiseFile;
@@ -36,6 +31,9 @@ struct TestResult {
 };
 }  // namespace
 
+// Benchmarks one algorithm per run, selected with `algorithm=<id>` (defaults to
+// the in-house algorithm). Only the in-house algorithm is gated against the
+// stored reference values; other algorithms just get their metrics reported.
 TEST(PitchDetectorImpl, benchmarking) {
     std::cout << "\n";
 
@@ -46,13 +44,25 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argIndexOfProcessToLog = getArgument<int>("indexOfProcessToLog");
     const auto argTestCaseId = getArgument<std::string>("testCaseId");
     const auto argTestWithMedianFilter = getArgument<bool>("testWithMedianFilter");
+    const auto argAlgorithm = getArgument<std::string>("algorithm");
+
+    const auto algorithmId = argAlgorithm.value_or(kDefaultAlgorithmId);
+    const auto& algorithms = getBenchmarkAlgorithms();
+    ASSERT_TRUE(algorithms.count(algorithmId) > 0) << "Unknown algorithm: " << algorithmId;
+    const auto& createDetector = algorithms.at(algorithmId);
+
+    // Output files of the default algorithm keep their historical names
+    // (eval/show*.py import them by module name); other algorithms get a
+    // suffix, so that runs of different algorithms can be compared.
+    const auto fileSuffix =
+        algorithmId == kDefaultAlgorithmId ? std::string{} : "_" + algorithmId;
 
     std::optional<std::ofstream> csvFile;
 
     if (!argTestCaseId.has_value()) {
-        const auto csvFilePath = testUtils::getOutDir() / "benchmarking.csv";
+        const auto csvFilePath = testUtils::getOutDir() / ("benchmarking" + fileSuffix + ".csv");
         csvFile.emplace(csvFilePath);
-        *csvFile << "AVG,RMS,FPR,FNR,mix,id\n";
+        *csvFile << "algorithm,AVG,RMS,FPR,FNR,mix,id\n";
     }
 
     // Build all test cases upfront
@@ -65,11 +75,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     std::atomic<int> completedCount{0};
     std::mutex progressMutex;
 
-    auto totalPositiveWeight = 0.;
-    auto totalNegativeCount = 0;
-    auto totalFalsePositiveCount = 0;
-    auto totalFalseNegativeWeight = 0.;
-
     std::cout << std::endl << "Evaluating samples..." << std::endl;
 
     // Worker function that processes a range of test cases
@@ -80,41 +85,14 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto& noisy = testCase.noisy;
             const auto blockSize = testCase.blockSize;
 
-            std::unique_ptr<PitchDetectorLoggerInterface> logger;
-            if (argIndexOfProcessToLog.has_value()) {
-                logger = std::make_unique<PitchDetectorLogger>(noisy.sampleRate,
-                                                               *argIndexOfProcessToLog);
-            } else {
-                logger = std::make_unique<DummyPitchDetectorLogger>();
-            }
-
-            const auto minFreq = getMinFreq(kTestTuning);
-            auto preprocessor =
-                std::make_unique<Preprocessor>(noisy.sampleRate, noisy.channelFormat, blockSize);
-
-            FrequencyDomainTransformer transformer(noisy.sampleRate, noisy.channelFormat, blockSize,
-                                                   minFreq, *logger);
-            AutocorrPitchDetector autocorrPitchDetector(noisy.sampleRate, transformer.fftSize(),
-                                                        transformer.window(), minFreq, *logger);
-            AutocorrEstimateDisambiguator disambiguator(noisy.sampleRate, transformer.fftSize(),
-                                                        kTestTuning, *logger);
-            OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize, minFreq);
-
-            auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
-                std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-                std::move(disambiguator), std::move(onsetDetector), std::move(logger));
-            std::unique_ptr<PitchDetector> pitchDetector;
-
-            if (!argTestWithMedianFilter.has_value() || *argTestWithMedianFilter) {
-                auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
-                    noisy.sampleRate, blockSize, std::move(internalAlgorithm));
-                const auto blocksPerSecond = noisy.sampleRate / blockSize;
-                pitchDetector = std::make_unique<PitchDetectionSmoother>(std::move(medianFilter),
-                                                                         blocksPerSecond);
-            } else {
-                pitchDetector =
-                    std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));
-            }
+            const BenchmarkAlgorithmContext context{
+                noisy.sampleRate,
+                noisy.channelFormat,
+                blockSize,
+                kTestTuning,
+                argIndexOfProcessToLog,
+                !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter};
+            const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;
             auto falseNegativeWeight = 0.;
@@ -166,11 +144,6 @@ TEST(PitchDetectorImpl, benchmarking) {
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
             }
 
-            totalPositiveWeight += positiveWeight;
-            totalNegativeCount += negativeCount;
-            totalFalsePositiveCount += falsePositiveCount;
-            totalFalseNegativeWeight += falseNegativeWeight;
-
             const auto FPR = 1. * falsePositiveCount / negativeCount;
             const auto FNR = falseNegativeWeight / positiveWeight;
 
@@ -191,14 +164,15 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
             const auto evalDir = testUtils::getEvalDir();
             std::stringstream csvLine;
-            csvLine << displayCents.avg << "," << displayCents.rms << "," << FPR << "," << FNR
-                    << "," << fs::relative(outWavName, evalDir) << "," << testCase.id << "\n";
+            csvLine << algorithmId << "," << displayCents.avg << "," << displayCents.rms << ","
+                    << FPR << "," << FNR << "," << fs::relative(outWavName, evalDir) << ","
+                    << testCase.id << "\n";
 
             if (argTestCaseId.has_value()) {
                 std::cout << csvLine.str();
 
                 std::ofstream frequencyEstimatesFile(testUtils::getOutDir() /
-                                                     "frequencyEstimates.py");
+                                                     ("frequencyEstimates" + fileSuffix + ".py"));
                 testUtils::PrintPythonVector(frequencyEstimatesFile, frequencyEstimates,
                                              "frequencyEstimates");
                 testUtils::PrintPythonVector(frequencyEstimatesFile, onsets, "onsets");
@@ -206,7 +180,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                     << "secondsPerBlock = " << static_cast<float>(blockSize) / noisy.sampleRate
                     << "\n";
 
-                testUtils::toWavFile(outWavName + "_preprocessed.wav",
+                testUtils::toWavFile(outWavName + "_preprocessed" + fileSuffix + ".wav",
                                      testUtils::Audio{std::move(*debugOutputSignal),
                                                       noisy.sampleRate, noisy.channelFormat},
                                      &tee, "Preprocessed signal");
@@ -216,7 +190,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                     testFileEstimates.begin(), testFileEstimates.end(), presenceSores.begin(),
                     [](const testUtils::ProcessEstimate& estimate) { return estimate.s; });
                 testUtils::toWavFile(
-                    testUtils::getOutDir() / "presenceScores.wav",
+                    testUtils::getOutDir() / ("presenceScores" + fileSuffix + ".wav"),
                     testUtils::Audio{std::move(presenceSores), noisy.sampleRate / blockSize,
                                      ChannelFormat::Mono},
                     &tee, "Presence");
@@ -225,6 +199,10 @@ TEST(PitchDetectorImpl, benchmarking) {
             results[idx] = TestResult{testCase.id,
                                       std::move(testFileEstimates),
                                       cents,
+                                      positiveWeight,
+                                      negativeCount,
+                                      falsePositiveCount,
+                                      falseNegativeWeight,
                                       FPR,
                                       FNR,
                                       csvLine.str(),
@@ -260,21 +238,15 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     std::cout << "\n";
 
-    // Aggregate results (sequential)
-    std::vector<testUtils::ProcessEstimate> estimatesForRoc;
-    std::vector<std::optional<testUtils::Cents>> allTestFileEstimates;
-
-    for (const auto& result : results) {
-        if (csvFile)
+    if (csvFile) {
+        for (const auto& result : results) {
             *csvFile << result.csvLine;
-        allTestFileEstimates.push_back(result.cents);
-        estimatesForRoc.insert(estimatesForRoc.end(), result.estimates.begin(),
-                               result.estimates.end());
+        }
     }
 
     {
         // For histogram
-        std::ofstream errorsFile(testUtils::getOutDir() / "errors.py");
+        std::ofstream errorsFile(testUtils::getOutDir() / ("errors" + fileSuffix + ".py"));
         std::vector<float> errors;
         std::vector<float> scores;
         for (const auto& result : results) {
@@ -295,19 +267,28 @@ TEST(PitchDetectorImpl, benchmarking) {
         return;
     }
 
+    auto totalPositiveWeight = 0.;
+    auto totalNegativeCount = 0;
+    auto totalFalsePositiveCount = 0;
+    auto totalFalseNegativeWeight = 0.;
+
     auto avgAvg = 0.;
     auto rmsAvg = 0.;
     auto count = 0;
     auto worstRms = 0.;
     auto worstRmsIndex = 0;
-    for (auto i = 0; i < allTestFileEstimates.size(); ++i) {
-        const auto& e = allTestFileEstimates[i];
-        if (e.has_value()) {
+    for (auto i = 0u; i < results.size(); ++i) {
+        const auto& result = results[i];
+        totalPositiveWeight += result.positiveWeight;
+        totalNegativeCount += result.negativeCount;
+        totalFalsePositiveCount += result.falsePositiveCount;
+        totalFalseNegativeWeight += result.falseNegativeWeight;
+        if (result.cents.has_value()) {
             ++count;
-            avgAvg += e->avg;
-            rmsAvg += e->rms;
-            if (e->rms > worstRms) {
-                worstRms = e->rms;
+            avgAvg += result.cents->avg;
+            rmsAvg += result.cents->rms;
+            if (result.cents->rms > worstRms) {
+                worstRms = result.cents->rms;
                 worstRmsIndex = i;
             }
         }
@@ -318,10 +299,35 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto globalFalsePositiveRate = 1. * totalFalsePositiveCount / totalNegativeCount;
     const auto globalFalseNegativeRate = totalFalseNegativeWeight / totalPositiveWeight;
 
-    tee << "Error across all tests:\n\tAVG: " << avgAvg << "\n\tRMS: " << rmsAvg
-        << "\n\tFPR: " << globalFalsePositiveRate << "\n\tFNR: " << globalFalseNegativeRate
-        << "\n\tworst RMS error: " << worstRms << " at index " << worstRmsIndex << "\n";
+    tee << "[" << algorithmId << "] Error across all tests:\n\tAVG: " << avgAvg
+        << "\n\tRMS: " << rmsAvg << "\n\tFPR: " << globalFalsePositiveRate
+        << "\n\tFNR: " << globalFalseNegativeRate << "\n\tworst RMS error: " << worstRms
+        << " at index " << worstRmsIndex << " (" << results[worstRmsIndex].id << ")\n";
 
+    std::vector<testUtils::ProcessEstimate> estimatesForRoc;
+    for (const auto& result : results) {
+        estimatesForRoc.insert(estimatesForRoc.end(), result.estimates.begin(),
+                               result.estimates.end());
+    }
+
+    constexpr auto allowedFalsePositiveRate = 0.01;  // 1%
+    const testUtils::RocInfo rocInfo = testUtils::GetRocInfo<testUtils::ProcessEstimate>(
+        estimatesForRoc, allowedFalsePositiveRate);
+
+    {
+        std::ofstream rocFile(testUtils::getOutDir() / ("roc_curve" + fileSuffix + ".py"));
+        rocFile << "AUC = " << rocInfo.areaUnderCurve << "\n";
+        rocFile << "threshold = " << rocInfo.threshold << "\n";
+        rocFile << "allowedFalsePositiveRate = " << allowedFalsePositiveRate << "\n";
+        testUtils::PrintPythonVector(rocFile, rocInfo.falsePositiveRates, "falsePositiveRates");
+        testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates, "truePositiveRates");
+    }
+
+    if (algorithmId != kDefaultAlgorithmId) {
+        return;
+    }
+
+    // Only the in-house algorithm is gated against the stored reference values.
     constexpr auto previousRmsError = 7.089565788764084;
     constexpr auto previousAuc = 0.8709150094747889;
     constexpr auto previousFNR = 0.2832534962249292;
@@ -340,19 +346,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     EXPECT_TRUE(rmsErrorIsUnchanged)
         << "RMS error has changed! Previous RMS error: " << previousRmsError
         << ", new RMS error: " << rmsAvg;
-
-    constexpr auto allowedFalsePositiveRate = 0.01;  // 1%
-    const testUtils::RocInfo rocInfo = testUtils::GetRocInfo<testUtils::ProcessEstimate>(
-        estimatesForRoc, allowedFalsePositiveRate);
-
-    {
-        std::ofstream rocFile(testUtils::getOutDir() / "roc_curve.py");
-        rocFile << "AUC = " << rocInfo.areaUnderCurve << "\n";
-        rocFile << "threshold = " << rocInfo.threshold << "\n";
-        rocFile << "allowedFalsePositiveRate = " << allowedFalsePositiveRate << "\n";
-        testUtils::PrintPythonVector(rocFile, rocInfo.falsePositiveRates, "falsePositiveRates");
-        testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates, "truePositiveRates");
-    }
 
     const auto classifierQualityIsUnchanged =
         testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt",

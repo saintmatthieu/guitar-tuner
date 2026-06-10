@@ -133,7 +133,7 @@ The test harness writes several files for offline analysis:
 
 | File | Contents |
 |------|----------|
-| `benchmarking.csv` | Per-test-case AVG, RMS, FPR, FNR, mix ID |
+| `benchmarking.csv` | Per-test-case algorithm, AVG, RMS, FPR, FNR, mix ID |
 | `frequencyEstimates.py` | Frequency estimates over time (for plotting) |
 | `presenceScores.py` | Presence scores over time |
 | `errors.py` | Per-block cent errors |

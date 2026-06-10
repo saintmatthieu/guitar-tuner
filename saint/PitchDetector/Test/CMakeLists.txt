@@ -1,4 +1,5 @@
 add_executable(PitchDetectorImplTests
+  BenchmarkAlgorithms.cpp
   PitchDetectorImplTests.cpp
   PitchDetectorImplTestWrapper.cpp
 )
