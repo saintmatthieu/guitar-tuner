@@ -20,9 +20,25 @@ target_include_directories(ReplayApp
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Real-time tuner app (requires ALSA)
-find_library(ALSA_LIBRARY asound)
-if(ALSA_LIBRARY)
+# Real-time tuner app (requires ALSA on Linux, CoreAudio on macOS)
+if(APPLE)
+  set(SAINT_AUDIO_SOURCES CoreAudioInput.cpp CoreAudioInput.h)
+  find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox)
+  set(SAINT_AUDIO_LIBRARIES ${AUDIOTOOLBOX_FRAMEWORK})
+  set(SAINT_BUILD_TESTAPP TRUE)
+else()
+  find_library(ALSA_LIBRARY asound)
+  if(ALSA_LIBRARY)
+    set(SAINT_AUDIO_SOURCES AlsaAudioInput.cpp AlsaAudioInput.h)
+    set(SAINT_AUDIO_LIBRARIES asound)
+    set(SAINT_BUILD_TESTAPP TRUE)
+  else()
+    set(SAINT_BUILD_TESTAPP FALSE)
+    message(STATUS "ALSA not found, skipping TestApp build")
+  endif()
+endif()
+
+if(SAINT_BUILD_TESTAPP)
   add_executable(TestApp)
 
   target_compile_options(TestApp PRIVATE ${SAINT_ANNOYING_WARNINGS})
@@ -30,8 +46,8 @@ if(ALSA_LIBRARY)
   target_sources(TestApp
     PRIVATE
       main.cpp
-      AlsaAudioInput.cpp
-      AlsaAudioInput.h
+      AudioInput.h
+      ${SAINT_AUDIO_SOURCES}
       TunerDisplay.cpp
       TunerDisplay.h
   )
@@ -39,13 +55,11 @@ if(ALSA_LIBRARY)
   target_link_libraries(TestApp
     PRIVATE
       PitchDetector
-      asound
+      ${SAINT_AUDIO_LIBRARIES}
   )
 
   target_include_directories(TestApp
     PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}
   )
-else()
-  message(STATUS "ALSA not found, skipping TestApp build")
 endif()

@@ -11,7 +11,7 @@
 #include <optional>
 #include <sstream>
 
-#include "AlsaAudioInput.h"
+#include "AudioInput.h"
 #include "PitchDetector/PitchDetectorFactory.h"
 #include "PitchDetector/Recording/IRecordingListener.h"
 #include "PitchDetector/Recording/IssueReportingPitchDetector.h"
@@ -144,7 +144,7 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
     saint::TunerDisplay display;
     ConsoleRecordingListener recordingListener(display);
     RawStdin rawStdin;
-    saint::AlsaAudioInput audioInput(kSampleRate, kBlockSize, device);
+    saint::AudioInput audioInput(kSampleRate, kBlockSize, device);
 
     bool success = audioInput.start([&](const float* samples, int numSamples) {
         if (!gRunning) {
@@ -165,11 +165,16 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
 
     if (!success) {
         std::cerr << std::endl << "Failed to start audio capture." << std::endl;
+#ifdef __APPLE__
+        std::cerr << "Make sure a microphone is connected and the terminal has microphone "
+                     "permission (System Settings > Privacy & Security > Microphone)."
+                  << std::endl;
+#else
         std::cerr << "Make sure you have ALSA configured and a microphone connected." << std::endl;
         std::cerr << std::endl;
         std::cerr << "Available devices can be listed with: arecord -L" << std::endl;
-        std::cerr << "Usage: " << appName << " [device_name] [--out <recording.wav>]"
-                  << std::endl;
+#endif
+        std::cerr << "Usage: " << appName << " [device_name] [--out <recording.wav>]" << std::endl;
         return 1;
     }
 

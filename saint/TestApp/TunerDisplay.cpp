@@ -1,6 +1,9 @@
 #include "TunerDisplay.h"
 
+#include <unistd.h>
+
 #include <cmath>
+#include <cstdio>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -14,16 +17,20 @@ constexpr int kA4MidiNote = 69;
 const char* kNoteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 }  // namespace
 
-TunerDisplay::TunerDisplay() {
-    // Hide cursor
-    std::cout << "\033[?25l";
-    std::cout << std::flush;
+TunerDisplay::TunerDisplay() : _isTty(isatty(fileno(stdout)) != 0) {
+    if (_isTty) {
+        // Hide cursor
+        std::cout << "\033[?25l";
+        std::cout << std::flush;
+    }
 }
 
 TunerDisplay::~TunerDisplay() {
-    // Show cursor
-    std::cout << "\033[?25h";
-    std::cout << std::flush;
+    if (_isTty) {
+        // Show cursor
+        std::cout << "\033[?25h";
+        std::cout << std::flush;
+    }
 }
 
 TunerDisplay::NoteInfo TunerDisplay::frequencyToNote(float frequencyHz) {
@@ -43,7 +50,7 @@ TunerDisplay::NoteInfo TunerDisplay::frequencyToNote(float frequencyHz) {
     return {kNoteNames[noteIndex], octave, cents};
 }
 
-std::string TunerDisplay::renderMeter(float cents, int width) {
+std::string TunerDisplay::renderMeter(float cents, int width, bool useColor) {
     std::ostringstream oss;
 
     // Clamp cents to [-50, 50]
@@ -56,14 +63,18 @@ std::string TunerDisplay::renderMeter(float cents, int width) {
     // Build the meter string
     for (int i = 0; i < width; ++i) {
         if (i == needlePos) {
-            // Color the needle based on how close to center
-            const float absCents = std::abs(cents);
-            if (absCents < 5.0f) {
-                oss << "\033[32m▼\033[0m";  // Green - in tune
-            } else if (absCents < 15.0f) {
-                oss << "\033[33m▼\033[0m";  // Yellow - close
+            if (!useColor) {
+                oss << "▼";
             } else {
-                oss << "\033[31m▼\033[0m";  // Red - off
+                // Color the needle based on how close to center
+                const float absCents = std::abs(cents);
+                if (absCents < 5.0f) {
+                    oss << "\033[32m▼\033[0m";  // Green - in tune
+                } else if (absCents < 15.0f) {
+                    oss << "\033[33m▼\033[0m";  // Yellow - close
+                } else {
+                    oss << "\033[31m▼\033[0m";  // Red - off
+                }
             }
         } else if (i == centerPos) {
             oss << "|";  // Center marker
@@ -78,8 +89,16 @@ std::string TunerDisplay::renderMeter(float cents, int width) {
 }
 
 void TunerDisplay::update(float frequencyHz, const std::string& status) {
-    // Move cursor to beginning of line and clear it
-    std::cout << "\r\033[K";
+    if (!_isTty) {
+        // No in-place updating possible: print a plain line a couple of times per second.
+        constexpr int kThrottle = 32;
+        if (_updateCount++ % kThrottle != 0) {
+            return;
+        }
+    } else {
+        // Move cursor to beginning of line and clear it
+        std::cout << "\r\033[K";
+    }
 
     if (frequencyHz <= 0.f) {
         // Same column layout as the pitch branch below, so that the meter doesn't shift when
@@ -88,9 +107,12 @@ void TunerDisplay::update(float frequencyHz, const std::string& status) {
         std::cout << " │ ";
         std::cout << std::setw(6) << "---.-" << " Hz";
         std::cout << " │ ";
-        std::cout << renderMeter(0, 41);
+        std::cout << renderMeter(0, 41, _isTty);
         std::cout << " " << std::setw(3) << "--" << "¢";
         std::cout << status;
+        if (!_isTty) {
+            std::cout << "\n";
+        }
         std::cout << std::flush;
         _lastFrequency = 0.f;
         return;
@@ -105,12 +127,16 @@ void TunerDisplay::update(float frequencyHz, const std::string& status) {
     // Color the note name based on tuning accuracy
     const float absCents = std::abs(note.cents);
     std::string colorCode;
-    if (absCents < 5.0f) {
-        colorCode = "\033[32m";  // Green
-    } else if (absCents < 15.0f) {
-        colorCode = "\033[33m";  // Yellow
-    } else {
-        colorCode = "\033[31m";  // Red
+    std::string resetCode;
+    if (_isTty) {
+        resetCode = "\033[0m";
+        if (absCents < 5.0f) {
+            colorCode = "\033[32m";  // Green
+        } else if (absCents < 15.0f) {
+            colorCode = "\033[33m";  // Yellow
+        } else {
+            colorCode = "\033[31m";  // Red
+        }
     }
 
     // Format cents with sign
@@ -118,20 +144,25 @@ void TunerDisplay::update(float frequencyHz, const std::string& status) {
     centsStr << std::showpos << std::fixed << std::setprecision(0) << std::setw(3) << note.cents;
 
     // Print the tuner display
-    std::cout << colorCode << std::setw(3) << noteStr.str() << "\033[0m";
+    std::cout << colorCode << std::setw(3) << noteStr.str() << resetCode;
     std::cout << " │ ";
     std::cout << std::fixed << std::setprecision(1) << std::setw(6) << frequencyHz << " Hz";
     std::cout << " │ ";
-    std::cout << renderMeter(note.cents, 41);
+    std::cout << renderMeter(note.cents, 41, _isTty);
     std::cout << " " << centsStr.str() << "¢";
     std::cout << status;
+    if (!_isTty) {
+        std::cout << "\n";
+    }
     std::cout << std::flush;
 
     _lastFrequency = frequencyHz;
 }
 
 void TunerDisplay::clear() {
-    std::cout << "\r\033[K" << std::flush;
+    if (_isTty) {
+        std::cout << "\r\033[K" << std::flush;
+    }
 }
 
 }  // namespace saint

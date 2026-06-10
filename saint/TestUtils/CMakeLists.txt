@@ -9,7 +9,10 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/libsndfile/libsndfile.git
   GIT_TAG        1.2.2
 )
+# libsndfile 1.2.2 declares a cmake_minimum_required CMake 4 no longer accepts
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 FetchContent_MakeAvailable(sndfile)
+unset(CMAKE_POLICY_VERSION_MINIMUM)
 
 target_sources(TestUtils
   PUBLIC

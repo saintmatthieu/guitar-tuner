@@ -25,9 +25,13 @@ class TunerDisplay {
     };
 
     static NoteInfo frequencyToNote(float frequencyHz);
-    static std::string renderMeter(float cents, int width);
+    static std::string renderMeter(float cents, int width, bool useColor);
 
     float _lastFrequency = 0.f;
+    // When stdout isn't a terminal (e.g. a debugger console or a pipe), `\r` overwriting and
+    // ANSI escapes don't work; fall back to plain, throttled line-per-update output.
+    const bool _isTty;
+    int _updateCount = 0;
 };
 
 }  // namespace saint

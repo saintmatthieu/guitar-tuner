@@ -6,7 +6,7 @@ endif()
 
 add_subdirectory(Utils)
 
-# Tuner apps: offline replay (ReplayApp) and real-time tuner (TestApp, Linux only, requires ALSA)
-if(UNIX AND NOT APPLE)
+# Tuner apps: offline replay (ReplayApp) and real-time tuner (TestApp; ALSA on Linux, CoreAudio on macOS)
+if(UNIX)
   add_subdirectory(TestApp)
 endif()
