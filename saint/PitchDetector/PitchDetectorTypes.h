@@ -29,8 +29,8 @@ constexpr int numChannels(ChannelFormat format) {
     return static_cast<int>(format);
 }
 
-struct PitchDetectorConfig {
-    const std::optional<Pitch> lowestPitch;
-    const std::optional<Pitch> highestPitch;
+enum class Tuning {
+    Standard,
+    // to be continued
 };
 }  // namespace saint

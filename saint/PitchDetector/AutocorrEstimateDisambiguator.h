@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "Cepstrum.h"
@@ -14,8 +13,7 @@ class PitchDetectorLoggerInterface;
 namespace saint {
 class AutocorrEstimateDisambiguator {
    public:
-    AutocorrEstimateDisambiguator(int sampleRate, int fftSize,
-                                  const std::optional<PitchDetectorConfig>& config,
+    AutocorrEstimateDisambiguator(int sampleRate, int fftSize, Tuning tuning,
                                   PitchDetectorLoggerInterface& logger);
 
     float process(float xcorrEstimate, const std::vector<float>& dbSpectrum,

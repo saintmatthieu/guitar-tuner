@@ -127,14 +127,7 @@ inline std::vector<Noise> loadNoiseData(int numFrames, const fs::path& silenceFi
     return noiseData;
 }
 
-// Targeting tuning of acoustic guitar:
-// - min note accounts for a drop-D tuning and an additional tone to account for
-// pitch changes while tuning
-// - max note is the high E on the first string, adding a tone for margin
-constexpr PitchDetectorConfig kTestConfig{
-    Pitch{PitchClass::Db, 2},
-    Pitch{PitchClass::Gb, 4},
-};
+constexpr Tuning kTestTuning = Tuning::Standard;
 
 // Create a single test case from a parsed ID
 inline std::optional<TestCase> createTestCaseFromId(const std::string& testCaseId) {

@@ -98,7 +98,7 @@ void writeToWavFile(const std::vector<DebugOutput>& debugOutputs, int sampleRate
 TEST(OnsetDetector, calibration) {
     std::cout << "\n";
 
-    const auto minFreq = getMinFreq(kTestConfig);
+    const auto minFreq = getMinFreq(kTestTuning);
 
     const auto logFilePath = testUtils::getOutDir() / "onset_calibration.log";
     std::ofstream logFile(logFilePath);

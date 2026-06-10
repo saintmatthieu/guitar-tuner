@@ -302,15 +302,14 @@ float AutocorrEstimateDisambiguator::disambiguateEstimate(float priorEstimate,
 }
 
 AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
-    int sampleRate, int fftSize, const std::optional<PitchDetectorConfig>& config,
-    PitchDetectorLoggerInterface& logger)
+    int sampleRate, int fftSize, Tuning tuning, PitchDetectorLoggerInterface& logger)
     : _sampleRate(sampleRate),
       _logger(logger),
       _fftSize(fftSize),
       _binFreq(static_cast<float>(sampleRate) / _fftSize),
       _cepstrumFft(_fftSize),
-      _minFreq(getMinFreq(config)),
-      _maxFreq(getMaxFreq(config)) {}
+      _minFreq(getMinFreq(tuning)),
+      _maxFreq(getMaxFreq(tuning)) {}
 
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
                                              const std::vector<float>& dbSpectrum,

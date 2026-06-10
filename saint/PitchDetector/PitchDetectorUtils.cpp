@@ -1,5 +1,6 @@
 #include "PitchDetectorUtils.h"
 
+#include <cassert>
 #include <cmath>
 #include <unordered_map>
 
@@ -17,17 +18,24 @@ float pitchToFrequency(const saint::Pitch& pitch) {
     const int semitonesFromA4 = semitonesFromA.at(pitch.pitchClass) + (pitch.octave - 4) * 12;
     return 440.f * std::pow(2.f, semitonesFromA4 / 12.f);
 }
-
-static const float defaultLeastFrequencyToDetect = pitchToFrequency({saint::PitchClass::Db, 2});
-
 }  // namespace
 
-float saint::getMinFreq(const std::optional<PitchDetectorConfig>& config) {
-    return config && config->lowestPitch.has_value() ? pitchToFrequency(*config->lowestPitch)
-                                                     : defaultLeastFrequencyToDetect;
+float saint::getMinFreq(Tuning tuning) {
+    switch (tuning) {
+        case Tuning::Standard:
+            return pitchToFrequency({saint::PitchClass::Db, 2});
+        default:
+            assert(false);
+            return getMinFreq(Tuning::Standard);
+    }
 }
 
-float saint::getMaxFreq(const std::optional<PitchDetectorConfig>& config) {
-    return config && config->highestPitch.has_value() ? pitchToFrequency(*config->highestPitch)
-                                                      : 2000.f;
+float saint::getMaxFreq(Tuning tuning) {
+    switch (tuning) {
+        case Tuning::Standard:
+            return pitchToFrequency({saint::PitchClass::Gb, 4});
+        default:
+            assert(false);
+            return getMaxFreq(Tuning::Standard);
+    }
 }

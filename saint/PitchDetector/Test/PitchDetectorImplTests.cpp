@@ -88,7 +88,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                 logger = std::make_unique<DummyPitchDetectorLogger>();
             }
 
-            const auto minFreq = getMinFreq(kTestConfig);
+            const auto minFreq = getMinFreq(kTestTuning);
             auto preprocessor =
                 std::make_unique<Preprocessor>(noisy.sampleRate, noisy.channelFormat, blockSize);
 
@@ -97,7 +97,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             AutocorrPitchDetector autocorrPitchDetector(noisy.sampleRate, transformer.fftSize(),
                                                         transformer.window(), minFreq, *logger);
             AutocorrEstimateDisambiguator disambiguator(noisy.sampleRate, transformer.fftSize(),
-                                                        kTestConfig, *logger);
+                                                        kTestTuning, *logger);
             OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize, minFreq);
 
             auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
