@@ -116,6 +116,7 @@ class ConsoleRecordingListener : public saint::IRecordingListener {
 int runLive(const std::string& device, const char* appName) {
     constexpr int kSampleRate = 44100;
     constexpr int kBlockSize = 512;
+    constexpr int kIssueRecordingSeconds = 10;
 
     std::cout << "╔══════════════════════════════════════════════════════════════════════════╗"
               << std::endl;
@@ -127,8 +128,8 @@ int runLive(const std::string& device, const char* appName) {
     std::cout << "║  Sample rate: " << kSampleRate << " Hz, Block size: " << kBlockSize
               << " samples                          ║" << std::endl;
     std::ostringstream reportLine;
-    reportLine << "  Press 'r' to report an issue (records the next "
-               << saint::RecordingPitchDetector::maxRecordingSeconds << " s for offline replay)";
+    reportLine << "  Press 'r' to report an issue (records the next " << kIssueRecordingSeconds
+               << " s for offline replay)";
     std::cout << "║" << std::left << std::setw(74) << reportLine.str() << "║" << std::endl;
     std::cout << "║  Press Ctrl+C to exit                                                    ║"
               << std::endl;
@@ -154,7 +155,7 @@ int runLive(const std::string& device, const char* appName) {
 
         if (const auto key = rawStdin.getKey(); key == 'r' || key == 'R') {
             recordingListener.setPath(makeRecordingPath());
-            pitchDetector->startIssueRecording(recordingListener);
+            pitchDetector->startIssueRecording(kIssueRecordingSeconds, recordingListener);
         }
 
         const float frequency = pitchDetector->process(samples);
