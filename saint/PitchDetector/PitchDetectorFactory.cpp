@@ -9,11 +9,13 @@
 #include "PitchDetectorMedianFilter.h"
 #include "PitchDetectorUtils.h"
 #include "Preprocessor.h"
+#include "Recording/IssueReportingPitchDetector.h"
 
 namespace saint {
 
-std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
-    int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning) {
+namespace {
+std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelFormat channelFormat,
+                                                    int samplesPerBlockPerChannel, Tuning tuning) {
     auto logger = std::make_unique<DummyPitchDetectorLogger>();
 
     const auto minFreq = getMinFreq(tuning);
@@ -41,5 +43,16 @@ std::unique_ptr<PitchDetector> PitchDetectorFactory::createInstance(
     const auto blocksPerSecond = sampleRate / samplesPerBlockPerChannel;
 
     return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
+}
+}  // namespace
+
+std::unique_ptr<IssueReportingPitchDetector> PitchDetectorFactory::createInstance(
+    int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning) {
+    const recording::PitchDetectorConfig config{sampleRate, channelFormat,
+                                                samplesPerBlockPerChannel, tuning};
+    return std::make_unique<IssueReportingPitchDetector>(config, [config] {
+        return createImplementation(config.sampleRate, config.channelFormat,
+                                    config.samplesPerBlockPerChannel, config.tuning);
+    });
 }
 }  // namespace saint

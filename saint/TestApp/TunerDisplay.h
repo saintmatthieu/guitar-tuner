@@ -11,7 +11,8 @@ class TunerDisplay {
 
     // Update the display with new pitch info
     // frequencyHz: 0 if no pitch detected
-    void update(float frequencyHz);
+    // status: optional text appended after the meter (e.g. a recording indicator)
+    void update(float frequencyHz, const std::string& status = "");
 
     // Clear the display
     void clear();

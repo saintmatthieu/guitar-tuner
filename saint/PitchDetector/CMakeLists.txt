@@ -17,6 +17,10 @@ target_sources(PitchDetector
     OnsetDetector.cpp
     PitchDetectionSmoother.cpp
     Upsampler.cpp
+    Recording/IssueReportingPitchDetector.cpp
+    Recording/PitchDetectorRecording.cpp
+    Recording/RecordingPitchDetector.cpp
+    Recording/ReplayPitchDetector.cpp
 )
 
 target_link_libraries(PitchDetector

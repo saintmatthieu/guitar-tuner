@@ -42,6 +42,20 @@ target_link_libraries(PreprocessorTests
     gmock
 )
 
+add_executable(RecordingPitchDetectorTests
+  RecordingPitchDetectorTests.cpp
+)
+
+target_compile_options(RecordingPitchDetectorTests PRIVATE ${SAINT_ANNOYING_WARNINGS})
+
+target_link_libraries(RecordingPitchDetectorTests
+  PRIVATE
+    PitchDetector
+    TestUtils
+    gtest_main
+    gmock
+)
+
 add_executable(UpsamplerTests
   UpsamplerTests.cpp
 )

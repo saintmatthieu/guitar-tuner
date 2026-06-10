@@ -77,13 +77,14 @@ std::string TunerDisplay::renderMeter(float cents, int width) {
     return oss.str();
 }
 
-void TunerDisplay::update(float frequencyHz) {
+void TunerDisplay::update(float frequencyHz, const std::string& status) {
     // Move cursor to beginning of line and clear it
     std::cout << "\r\033[K";
 
     if (frequencyHz <= 0.f) {
         std::cout << "  --  │  ---.-  Hz  │  ";
         std::cout << renderMeter(0, 41);
+        std::cout << status;
         std::cout << std::flush;
         _lastFrequency = 0.f;
         return;
@@ -117,6 +118,7 @@ void TunerDisplay::update(float frequencyHz) {
     std::cout << " │ ";
     std::cout << renderMeter(note.cents, 41);
     std::cout << " " << centsStr.str() << "¢";
+    std::cout << status;
     std::cout << std::flush;
 
     _lastFrequency = frequencyHz;
