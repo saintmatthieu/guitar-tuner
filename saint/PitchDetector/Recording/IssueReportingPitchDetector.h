@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <memory>
 
@@ -45,11 +46,22 @@ class IssueReportingPitchDetector : public PitchDetector {
     void startIssueRecording(int durationSeconds, IRecordingListener&);
     bool isRecording() const;
 
+    /**
+     * @brief CPU load of `process` calls, as a percentage of the audio frame duration
+     * (100 * processingTime / frameDuration), smoothed by a first-order lowpass with a decay
+     * time of 1 second. 0 until `process` was first called. May be called from any thread.
+     */
+    int realtimePercentage() const;
+
    private:
     const recording::PitchDetectorConfig _config;
     const std::function<std::unique_ptr<PitchDetector>()> _detectorFactory;
     std::unique_ptr<PitchDetector> _detector;
     std::unique_ptr<RecordingPitchDetector> _recorder;
     bool _recordingComplete = false;
+    const double _frameDuration;
+    const double _lowpassCoeff;
+    double _smoothedPercentage = 0;
+    std::atomic<int> _realtimePercentage = 0;
 };
 }  // namespace saint

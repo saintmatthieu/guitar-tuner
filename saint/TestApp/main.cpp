@@ -160,7 +160,10 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         }
 
         const float frequency = pitchDetector->process(samples);
-        display.update(frequency, recordingListener.status());
+        std::ostringstream status;
+        status << "  CPU: " << std::setw(3) << pitchDetector->realtimePercentage() << "%"
+               << recordingListener.status();
+        display.update(frequency, status.str());
     });
 
     if (!success) {

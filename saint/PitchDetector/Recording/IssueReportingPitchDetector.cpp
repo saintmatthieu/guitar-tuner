@@ -1,29 +1,45 @@
 #include "IssueReportingPitchDetector.h"
 
 #include <cassert>
+#include <chrono>
+#include <cmath>
 
 namespace saint {
 IssueReportingPitchDetector::IssueReportingPitchDetector(
     recording::PitchDetectorConfig config,
     std::function<std::unique_ptr<PitchDetector>()> detectorFactory)
-    : _config(config), _detectorFactory(std::move(detectorFactory)) {
+    : _config(config),
+      _detectorFactory(std::move(detectorFactory)),
+      _frameDuration(static_cast<double>(config.samplesPerBlockPerChannel) / config.sampleRate),
+      // One-pole lowpass whose step response reaches 0.9 after 1 second, i.e.
+      // 1 - coeff^(1s / frameDuration) = 0.9.
+      _lowpassCoeff(std::pow(0.1, _frameDuration)) {
     assert(_detectorFactory);
     _detector = _detectorFactory();
 }
 
 float IssueReportingPitchDetector::process(const float* input, DebugOutput* debugOutput,
                                            std::vector<float>* debugOutputSignal) {
-    if (_recorder) {
-        const auto result = _recorder->process(input, debugOutput, debugOutputSignal);
-        if (_recordingComplete) {
-            // The recorder fired its completion callback during process(), handing its detector
-            // back (see startIssueRecording); it is now empty and can be dropped.
-            _recorder.reset();
-            _recordingComplete = false;
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = [&] {
+        if (_recorder) {
+            const auto result = _recorder->process(input, debugOutput, debugOutputSignal);
+            if (_recordingComplete) {
+                // The recorder fired its completion callback during process(), handing its
+                // detector back (see startIssueRecording); it is now empty and can be dropped.
+                _recorder.reset();
+                _recordingComplete = false;
+            }
+            return result;
         }
-        return result;
-    }
-    return _detector->process(input, debugOutput, debugOutputSignal);
+        return _detector->process(input, debugOutput, debugOutputSignal);
+    }();
+    const std::chrono::duration<double> processingTime = std::chrono::steady_clock::now() - start;
+    const auto percentage = 100 * processingTime.count() / _frameDuration;
+    _smoothedPercentage = _lowpassCoeff * _smoothedPercentage + (1 - _lowpassCoeff) * percentage;
+    _realtimePercentage.store(static_cast<int>(std::lround(_smoothedPercentage)),
+                              std::memory_order_relaxed);
+    return result;
 }
 
 int IssueReportingPitchDetector::delaySamples() const {
@@ -54,5 +70,9 @@ void IssueReportingPitchDetector::startIssueRecording(int durationSeconds,
 
 bool IssueReportingPitchDetector::isRecording() const {
     return _recorder != nullptr;
+}
+
+int IssueReportingPitchDetector::realtimePercentage() const {
+    return _realtimePercentage.load(std::memory_order_relaxed);
 }
 }  // namespace saint
