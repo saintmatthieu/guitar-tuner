@@ -15,6 +15,7 @@
         // "indexOfProcessToLog=96",
         // "testCaseId=testFiles/notes/guitar_1/e2.wav | testFiles/noise/PC_fan_noise.wav | -40"
         // "/home/matthieu/github/saintmatthieu/guitar-tuner2/build/tuner-recordring-20260610-160549.wav"
+        "--pesto"
       ],
       "cwd": "${workspaceFolder}",
       "env": {

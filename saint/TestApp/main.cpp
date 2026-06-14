@@ -17,6 +17,10 @@
 #include "PitchDetector/Recording/IssueReportingPitchDetector.h"
 #include "TunerDisplay.h"
 
+#ifdef SAINT_WITH_PESTO
+#include "PestoPitchDetector.h"
+#endif
+
 namespace {
 std::atomic<bool> gRunning{true};
 
@@ -113,8 +117,35 @@ class ConsoleRecordingListener : public saint::IRecordingListener {
     std::optional<int> _remainingSeconds;
 };
 
+std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(int sampleRate,
+                                                                        int blockSize,
+                                                                        bool usePesto) {
+#ifdef SAINT_WITH_PESTO
+    if (usePesto) {
+        const saint::recording::PitchDetectorConfig config{
+            sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard};
+        return std::make_unique<saint::IssueReportingPitchDetector>(config, [config] {
+            const auto modelPath = std::filesystem::path(SAINT_PESTO_MODEL_DIR) /
+                                   ("mir-1k_g7_" + std::to_string(config.sampleRate) + "_" +
+                                    std::to_string(config.samplesPerBlockPerChannel) + ".onnx");
+            // 0.11 is the benchmark ROC's 1%-FPR operating point; the
+            // checkpoint's nominal 0.5 is far too conservative on guitar
+            // (see pesto-benchmark-results.md).
+            constexpr auto confidenceThreshold = 0.11f;
+            return std::make_unique<saint::PestoPitchDetector>(
+                modelPath, config.sampleRate, config.channelFormat,
+                config.samplesPerBlockPerChannel, confidenceThreshold);
+        });
+    }
+#else
+    (void)usePesto;
+#endif
+    return saint::PitchDetectorFactory::createInstance(sampleRate, saint::ChannelFormat::Mono,
+                                                       blockSize);
+}
+
 int runLive(const std::string& device, const std::optional<std::filesystem::path>& outPath,
-            const char* appName) {
+            bool usePesto, const char* appName) {
     constexpr int kSampleRate = 44100;
     constexpr int kBlockSize = 512;
     constexpr int kIssueRecordingSeconds = 10;
@@ -128,6 +159,8 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
     std::cout << "║  Device: " << std::left << std::setw(63) << device << " ║" << std::endl;
     std::cout << "║  Sample rate: " << kSampleRate << " Hz, Block size: " << kBlockSize
               << " samples                          ║" << std::endl;
+    std::cout << "║  Algorithm: " << std::left << std::setw(60) << (usePesto ? "PESTO" : "SAINT")
+              << " ║" << std::endl;
     std::ostringstream reportLine;
     reportLine << "  Press 'r' to report an issue (records the next " << kIssueRecordingSeconds
                << " s for offline replay)";
@@ -138,8 +171,7 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
               << std::endl;
     std::cout << std::endl;
 
-    auto pitchDetector = saint::PitchDetectorFactory::createInstance(
-        kSampleRate, saint::ChannelFormat::Mono, kBlockSize);
+    const auto pitchDetector = createPitchDetector(kSampleRate, kBlockSize, usePesto);
 
     saint::TunerDisplay display;
     ConsoleRecordingListener recordingListener(display);
@@ -177,7 +209,8 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         std::cerr << std::endl;
         std::cerr << "Available devices can be listed with: arecord -L" << std::endl;
 #endif
-        std::cerr << "Usage: " << appName << " [device_name] [--out <recording.wav>]" << std::endl;
+        std::cerr << "Usage: " << appName << " [device_name] [--out <recording.wav>] [--pesto]"
+                  << std::endl;
         return 1;
     }
 
@@ -192,16 +225,26 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
 int main(int argc, char* argv[]) {
     std::string device = "default";
     std::optional<std::filesystem::path> outPath;
+    bool usePesto = false;
     for (auto i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--out") {
             if (i + 1 == argc) {
                 std::cerr << "--out requires a file name" << std::endl;
-                std::cerr << "Usage: " << argv[0] << " [device_name] [--out <recording.wav>]"
-                          << std::endl;
+                std::cerr << "Usage: " << argv[0]
+                          << " [device_name] [--out <recording.wav>] [--pesto]" << std::endl;
                 return 1;
             }
             outPath = argv[++i];
+        } else if (arg == "--pesto") {
+#ifdef SAINT_WITH_PESTO
+            usePesto = true;
+#else
+            std::cerr << "This build does not include PESTO - reconfigure with "
+                         "-DSAINT_WITH_PESTO=ON (see pesto-benchmark-results.md)."
+                      << std::endl;
+            return 1;
+#endif
         } else {
             device = arg;
         }
@@ -211,5 +254,5 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    return runLive(device, outPath, argv[0]);
+    return runLive(device, outPath, usePesto, argv[0]);
 }
