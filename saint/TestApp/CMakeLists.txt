@@ -62,4 +62,10 @@ if(SAINT_BUILD_TESTAPP)
     PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}
   )
+
+  if(SAINT_WITH_PESTO)
+    target_link_libraries(TestApp PRIVATE PestoPitchDetector)
+    set_target_properties(TestApp PROPERTIES
+      BUILD_RPATH ${SAINT_ONNXRUNTIME_LIB_DIR})
+  endif()
 endif()

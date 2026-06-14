@@ -13,6 +13,13 @@
 #include "PitchDetectorUtils.h"
 #include "Preprocessor.h"
 
+#ifdef SAINT_WITH_PESTO
+#include <gtest/gtest.h>
+
+#include "PestoPitchDetector.h"
+#include "TestCaseUtils.h"
+#endif
+
 namespace saint {
 
 const std::string kDefaultAlgorithmId = "impl";
@@ -51,11 +58,28 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     const auto blocksPerSecond = ctx.sampleRate / ctx.blockSize;
     return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
 }
+
+#ifdef SAINT_WITH_PESTO
+std::unique_ptr<PitchDetector> createPesto(const BenchmarkAlgorithmContext& ctx) {
+    // Models are exported with realtime.export_onnx, which freezes sample rate
+    // and chunk size and encodes them in the filename.
+    const auto modelPath = std::filesystem::path(SAINT_PESTO_MODEL_DIR) /
+                           ("mir-1k_g7_" + std::to_string(ctx.sampleRate) + "_" +
+                            std::to_string(ctx.blockSize) + ".onnx");
+    const auto argThreshold = getArgument<std::string>("pestoThreshold");
+    const auto threshold = argThreshold.has_value() ? std::stof(*argThreshold) : 0.5f;
+    return std::make_unique<PestoPitchDetector>(modelPath, ctx.sampleRate, ctx.channelFormat,
+                                                ctx.blockSize, threshold);
+}
+#endif
 }  // namespace
 
 const std::map<std::string, BenchmarkAlgorithmFactory>& getBenchmarkAlgorithms() {
     static const std::map<std::string, BenchmarkAlgorithmFactory> algorithms{
         {kDefaultAlgorithmId, createImpl},
+#ifdef SAINT_WITH_PESTO
+        {"pesto", createPesto},
+#endif
     };
     return algorithms;
 }

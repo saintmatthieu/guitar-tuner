@@ -40,6 +40,8 @@ target_include_directories(PitchDetector SYSTEM
     ${GUITAR_TUNER_ROOT}/pffft
 )
 
+add_subdirectory(Pesto)
+
 if(NOT NO_GTEST)
   add_subdirectory(Test)
 endif()

@@ -14,6 +14,12 @@ target_link_libraries(PitchDetectorImplTests
     gmock
 )
 
+if(SAINT_WITH_PESTO)
+  target_link_libraries(PitchDetectorImplTests PRIVATE PestoPitchDetector)
+  set_target_properties(PitchDetectorImplTests PROPERTIES
+    BUILD_RPATH ${SAINT_ONNXRUNTIME_LIB_DIR})
+endif()
+
 add_executable(OnsetDetectorCalibrationTests
   OnsetDetectorCalibrationTests.cpp
 )

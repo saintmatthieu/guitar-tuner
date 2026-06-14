@@ -1,4 +1,6 @@
 {
+  "git.repositoryScanMaxDepth": 0,
+  "git.detectSubmodules": false,
   "cmake.configureArgs": [
     // "-DPFFFT_DISABLE_LINK_WITH_M=ON",
   ],
