@@ -87,6 +87,35 @@ AUC 0.449 just reflects the label ordering, not discrimination) and the 1 %-FPR 
 out **0** — i.e. ungated. specacf's confidence is effectively constant ≥ 0.85, so its threshold
 (0.85) never fires and it stays ungated too. Their accuracy is poor regardless (RMS 876–1530).
 
+### 7. Giving yinfast the in-house window makes voicing better but pitch worse
+The in-house algorithm resolves the low E with a long, low-frequency-resolving window (a
+16384-point FFT). Does yinfast improve if given the same? Sweeping its analysis window
+`bufSize` (ungated, to isolate the raw effect):
+
+| bufSize | window | AVG | RMS | FPR | FNR | AUC |
+|---|---|---|---|---|---|---|
+| 2048 (baseline) | ~46 ms |  +11 | 1498 | 0.427 | 0.060 | 0.855 |
+| 4096            | ~93 ms | −160 | 1733 | 0.433 | 0.060 | 0.864 |
+| 8192            | ~186 ms | −290 | 2028 | 0.447 | 0.062 | 0.871 |
+| 16384 (= in-house FFT) | ~371 ms | −382 | 2329 | 0.472 | 0.066 | **0.876** |
+
+Two opposite trends as the window grows:
+
+- **Accuracy gets *worse*** — RMS climbs 1498 → 2329, and the AVG drifts increasingly *negative*
+  (+11 → −382 cents). A negative signed mean means estimates are too *low*: octave-**down**
+  (subharmonic) errors. A longer YIN window has more deep minima in its difference function at
+  integer multiples of the true period, so it locks onto a sub-multiple more often. More data
+  makes plain YIN's pitch *less* reliable, not more. (The worst case stays ~8800 cents on E2.)
+- **Confidence gets *better*** — AUC rises monotonically 0.855 → 0.876, edging *past* the
+  in-house 0.870 at bufSize 16384. A longer window gives a cleaner, more stable confidence, so
+  the "is a note present?" decision improves even as "which note?" degrades.
+
+The takeaway: the in-house algorithm's accuracy does **not** come from its window length —
+yinfast has the same long window here and gets *more* octave errors. The in-house edge comes
+from the **`AutocorrEstimateDisambiguator`** stacked on top, the stage that resolves exactly
+these octave/subharmonic ambiguities. Window length buys voicing confidence; disambiguation
+buys cents accuracy, and aubio's YIN has none.
+
 ## Conclusion
 
 The integration is healthy and the methods perform at roughly their published general-purpose
@@ -95,4 +124,6 @@ methods with a meaningful confidence (AUC 0.855) and are the fastest, but even g
 of 207 cents rules them out for tuning. **yinfft**, despite being aubio's default, is the worst
 and has an inverted confidence on this corpus. The in-house algorithm wins decisively on
 accuracy, at ~8× the compute. If aubio were ever to be used, yinfast is the only candidate, and
-only as a cheap coarse/voicing front-end — never as the pitch source.
+only as a cheap coarse/voicing front-end — never as the pitch source. Widening its window to
+match the in-house FFT pushes its voicing AUC past the in-house algorithm's (0.876 vs 0.870)
+while *worsening* its pitch (RMS 2329), which only reinforces that split.
