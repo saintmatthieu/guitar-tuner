@@ -20,6 +20,10 @@ if(SAINT_WITH_PESTO)
     BUILD_RPATH ${SAINT_ONNXRUNTIME_LIB_DIR})
 endif()
 
+if(SAINT_WITH_AUBIO)
+  target_link_libraries(PitchDetectorImplTests PRIVATE AubioPitchDetector)
+endif()
+
 add_executable(OnsetDetectorCalibrationTests
   OnsetDetectorCalibrationTests.cpp
 )

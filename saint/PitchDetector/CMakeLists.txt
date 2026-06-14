@@ -41,6 +41,7 @@ target_include_directories(PitchDetector SYSTEM
 )
 
 add_subdirectory(Pesto)
+add_subdirectory(Aubio)
 
 if(NOT NO_GTEST)
   add_subdirectory(Test)

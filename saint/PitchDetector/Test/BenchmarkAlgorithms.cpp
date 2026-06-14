@@ -13,11 +13,18 @@
 #include "PitchDetectorUtils.h"
 #include "Preprocessor.h"
 
-#ifdef SAINT_WITH_PESTO
+#if defined(SAINT_WITH_PESTO) || defined(SAINT_WITH_AUBIO)
 #include <gtest/gtest.h>
 
-#include "PestoPitchDetector.h"
 #include "TestCaseUtils.h"
+#endif
+
+#ifdef SAINT_WITH_PESTO
+#include "PestoPitchDetector.h"
+#endif
+
+#ifdef SAINT_WITH_AUBIO
+#include "AubioPitchDetector.h"
 #endif
 
 namespace saint {
@@ -72,15 +79,46 @@ std::unique_ptr<PitchDetector> createPesto(const BenchmarkAlgorithmContext& ctx)
                                                 ctx.blockSize, threshold);
 }
 #endif
+
+#ifdef SAINT_WITH_AUBIO
+// aubio exposes several pitch methods; each is registered as its own benchmark
+// algorithm ("aubio-<method>") so runs are directly comparable.
+const std::vector<std::string> kAubioMethods{"yin",   "yinfft", "yinfast", "mcomb",
+                                             "fcomb", "schmitt", "specacf"};
+
+std::unique_ptr<PitchDetector> createAubio(const std::string& method,
+                                           const BenchmarkAlgorithmContext& ctx) {
+    // Optional tuning knobs shared by all aubio methods (the wrapper picks
+    // sensible defaults when these are absent):
+    //   aubioBufSize=<n>     analysis window (power of two, >= blockSize)
+    //   aubioConfidence=<f>  return 0 Hz below this confidence
+    const auto argBufSize = getArgument<int>("aubioBufSize");
+    const auto argConfidence = getArgument<std::string>("aubioConfidence");
+    const auto bufSize = argBufSize.value_or(0);
+    const auto confidence = argConfidence.has_value() ? std::stof(*argConfidence) : 0.f;
+    return std::make_unique<AubioPitchDetector>(method, ctx.sampleRate, ctx.channelFormat,
+                                                ctx.blockSize, bufSize, confidence);
+}
+#endif
 }  // namespace
 
 const std::map<std::string, BenchmarkAlgorithmFactory>& getBenchmarkAlgorithms() {
-    static const std::map<std::string, BenchmarkAlgorithmFactory> algorithms{
-        {kDefaultAlgorithmId, createImpl},
+    static const std::map<std::string, BenchmarkAlgorithmFactory> algorithms = [] {
+        std::map<std::string, BenchmarkAlgorithmFactory> map{
+            {kDefaultAlgorithmId, createImpl},
 #ifdef SAINT_WITH_PESTO
-        {"pesto", createPesto},
+            {"pesto", createPesto},
 #endif
-    };
+        };
+#ifdef SAINT_WITH_AUBIO
+        for (const auto& method : kAubioMethods) {
+            map["aubio-" + method] = [method](const BenchmarkAlgorithmContext& ctx) {
+                return createAubio(method, ctx);
+            };
+        }
+#endif
+        return map;
+    }();
     return algorithms;
 }
 

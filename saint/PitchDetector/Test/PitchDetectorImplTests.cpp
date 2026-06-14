@@ -49,13 +49,15 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto algorithmId = argAlgorithm.value_or(kDefaultAlgorithmId);
     const auto& algorithms = getBenchmarkAlgorithms();
     ASSERT_TRUE(algorithms.count(algorithmId) > 0) << "Unknown algorithm: " << algorithmId;
+
+    std::cout << "Selected algorithm: " << algorithmId << " ("
+              << algorithms.at(algorithmId).target_type().name() << ")\n";
     const auto& createDetector = algorithms.at(algorithmId);
 
     // Output files of the default algorithm keep their historical names
     // (eval/show*.py import them by module name); other algorithms get a
     // suffix, so that runs of different algorithms can be compared.
-    const auto fileSuffix =
-        algorithmId == kDefaultAlgorithmId ? std::string{} : "_" + algorithmId;
+    const auto fileSuffix = algorithmId == kDefaultAlgorithmId ? std::string{} : "_" + algorithmId;
 
     std::optional<std::ofstream> csvFile;
 

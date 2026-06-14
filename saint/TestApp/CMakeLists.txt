@@ -68,4 +68,8 @@ if(SAINT_BUILD_TESTAPP)
     set_target_properties(TestApp PROPERTIES
       BUILD_RPATH ${SAINT_ONNXRUNTIME_LIB_DIR})
   endif()
+
+  if(SAINT_WITH_AUBIO)
+    target_link_libraries(TestApp PRIVATE AubioPitchDetector)
+  endif()
 endif()
