@@ -9,8 +9,18 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${file}",
+      "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
       "args": "${workspaceFolder}/out"
+    },
+    {
+      "name": "Python Debugger: Current File (venv, no args)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "args": []
     }
   ]
 }

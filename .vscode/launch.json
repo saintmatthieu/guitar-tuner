@@ -37,8 +37,18 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${file}",
+      "python": "${workspaceFolder}/eval/.venv/bin/python",
       "console": "integratedTerminal",
-      "args": "${workspaceFolder}/eval/out"
+      // "args": "${workspaceFolder}/eval/out"
+    },
+    {
+      "name": "Python Debugger: Current File (eval venv, no args)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "python": "${workspaceFolder}/eval/.venv/bin/python",
+      "console": "integratedTerminal",
+      "args": []
     }
   ]
 }

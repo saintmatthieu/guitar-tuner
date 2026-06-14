@@ -1,4 +1,5 @@
 {
+  "python.defaultInterpreterPath": "${workspaceFolder}/eval/.venv/bin/python",
   "cmake.configureArgs": [
     // "-DPFFFT_DISABLE_LINK_WITH_M=ON",
   ],
