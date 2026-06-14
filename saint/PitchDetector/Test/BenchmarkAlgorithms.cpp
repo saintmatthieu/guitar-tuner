@@ -91,11 +91,12 @@ std::unique_ptr<PitchDetector> createAubio(const std::string& method,
     // Optional tuning knobs shared by all aubio methods (the wrapper picks
     // sensible defaults when these are absent):
     //   aubioBufSize=<n>     analysis window (power of two, >= blockSize)
-    //   aubioConfidence=<f>  return 0 Hz below this confidence
+    //   aubioConfidence=<f>  return 0 Hz below this confidence (overrides the
+    //                        method's built-in 1%-FPR default)
     const auto argBufSize = getArgument<int>("aubioBufSize");
     const auto argConfidence = getArgument<std::string>("aubioConfidence");
     const auto bufSize = argBufSize.value_or(0);
-    const auto confidence = argConfidence.has_value() ? std::stof(*argConfidence) : 0.f;
+    const auto confidence = argConfidence.has_value() ? std::stof(*argConfidence) : -1.f;
     return std::make_unique<AubioPitchDetector>(method, ctx.sampleRate, ctx.channelFormat,
                                                 ctx.blockSize, bufSize, confidence);
 }

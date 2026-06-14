@@ -30,9 +30,19 @@ class AubioPitchDetector : public PitchDetector {
     // default FFT backend requires it) and >= blockSize. Pass <= 0 to let the
     // wrapper pick a sensible default (next power of two >= 4 * blockSize,
     // floored at 2048).
+    //
+    // confidenceThreshold gates the output: process() returns 0 Hz when aubio's
+    // confidence for the frame is below it. Pass < 0 (the default) to use the
+    // method's built-in threshold (defaultConfidenceThreshold), calibrated to a
+    // ~1% false-positive rate on the benchmark corpus.
     AubioPitchDetector(const std::string& method, int sampleRate, ChannelFormat channelFormat,
-                       int blockSize, int bufSize = 0, float confidenceThreshold = 0.f);
+                       int blockSize, int bufSize = 0, float confidenceThreshold = -1.f);
     ~AubioPitchDetector() override;
+
+    // The per-method confidence threshold at the ~1% false-positive-rate operating
+    // point of the benchmark ROC. 0 for methods whose confidence carries no usable
+    // voicing information (so they are effectively ungated).
+    static float defaultConfidenceThreshold(const std::string& method);
 
     AubioPitchDetector(const AubioPitchDetector&) = delete;
     AubioPitchDetector& operator=(const AubioPitchDetector&) = delete;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <unordered_map>
 
 #include <aubio.h>
 
@@ -24,13 +25,28 @@ int defaultBufSize(int blockSize) {
 
 }  // namespace
 
+float AubioPitchDetector::defaultConfidenceThreshold(const std::string& method) {
+    // Confidence at the ~1% false-positive-rate operating point of each method's
+    // benchmark ROC (eval/out/roc_curve_aubio-<method>.py, with
+    // updateBenchmarkReferences). mcomb/fcomb/schmitt return a constant confidence
+    // (aubio has no confidence callback for them), so their ROC is degenerate and
+    // the operating point is 0 - i.e. effectively ungated.
+    static const std::unordered_map<std::string, float> thresholds{
+        {"yin", 0.957062f},  {"yinfft", 0.787948f}, {"yinfast", 0.957064f}, {"mcomb", 0.f},
+        {"fcomb", 0.f},      {"schmitt", 0.f},      {"specacf", 0.85f},
+    };
+    const auto it = thresholds.find(method);
+    return it != thresholds.end() ? it->second : 0.f;
+}
+
 AubioPitchDetector::AubioPitchDetector(const std::string& method, int sampleRate,
                                        ChannelFormat channelFormat, int blockSize, int bufSize,
                                        float confidenceThreshold)
     : _blockSize(blockSize),
       _numChannels(numChannels(channelFormat)),
       _bufSize(bufSize > 0 ? bufSize : defaultBufSize(blockSize)),
-      _confidenceThreshold(confidenceThreshold),
+      _confidenceThreshold(confidenceThreshold >= 0.f ? confidenceThreshold
+                                                      : defaultConfidenceThreshold(method)),
       _monoBuffer(static_cast<size_t>(blockSize)) {
     _pitch = new_aubio_pitch(method.c_str(), static_cast<uint_t>(_bufSize),
                              static_cast<uint_t>(_blockSize), static_cast<uint_t>(sampleRate));
