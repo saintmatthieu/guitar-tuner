@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <mutex>
 #include <thread>
 
@@ -29,11 +32,36 @@ struct TestResult {
     fs::path noiseFile;
     std::string noiseRmsDb;
 };
+
+struct ReferenceCheck {
+    bool passed = false;
+    bool seeded = false;  // golden file was just created (or refreshed)
+    double reference = 0.;
+};
+
+// Compares an algorithm metric against its golden reference file. The file is
+// seeded with the current value when it does not yet exist (or when `update` is
+// set), and otherwise treated as the authority - a mismatch fails the gate
+// without silently rewriting the file.
+ReferenceCheck checkReference(const fs::path& path, double actual, double tolerance, bool update) {
+    std::error_code ec;
+    if (update || !fs::exists(path, ec)) {
+        fs::create_directories(path.parent_path(), ec);
+        std::ofstream file{path};
+        file << std::setprecision(std::numeric_limits<double>::digits10 + 1) << actual;
+        return {true, true, actual};
+    }
+    std::ifstream file{path};
+    double reference = 0.;
+    file >> reference;
+    return {std::abs(actual - reference) <= tolerance, false, reference};
+}
 }  // namespace
 
 // Benchmarks one algorithm per run, selected with `algorithm=<id>` (defaults to
-// the in-house algorithm). Only the in-house algorithm is gated against the
-// stored reference values; other algorithms just get their metrics reported.
+// the in-house algorithm). Each algorithm declares its own pass/fail gates (see
+// getBenchmarkAlgorithms); the reference values are golden files seeded on first
+// run and compared within tolerance afterwards.
 TEST(PitchDetectorImpl, benchmarking) {
     std::cout << "\n";
 
@@ -45,14 +73,15 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argTestCaseId = getArgument<std::string>("testCaseId");
     const auto argTestWithMedianFilter = getArgument<bool>("testWithMedianFilter");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
+    const auto updateReferences = getArgument<bool>("updateBenchmarkReferences").value_or(false);
 
     const auto algorithmId = argAlgorithm.value_or(kDefaultAlgorithmId);
     const auto& algorithms = getBenchmarkAlgorithms();
     ASSERT_TRUE(algorithms.count(algorithmId) > 0) << "Unknown algorithm: " << algorithmId;
 
-    std::cout << "Selected algorithm: " << algorithmId << " ("
-              << algorithms.at(algorithmId).target_type().name() << ")\n";
-    const auto& createDetector = algorithms.at(algorithmId);
+    std::cout << "Selected algorithm: " << algorithmId << "\n";
+    const auto& algorithm = algorithms.at(algorithmId);
+    const auto& createDetector = algorithm.create;
 
     // Output files of the default algorithm keep their historical names
     // (eval/show*.py import them by module name); other algorithms get a
@@ -325,39 +354,31 @@ TEST(PitchDetectorImpl, benchmarking) {
         testUtils::PrintPythonVector(rocFile, rocInfo.truePositiveRates, "truePositiveRates");
     }
 
-    if (algorithmId != kDefaultAlgorithmId) {
-        return;
+    // Pass/fail gating. Each algorithm declares which metrics it is gated on (see
+    // getBenchmarkAlgorithms); the reference values live in golden files under
+    // eval/BenchmarkingOutput, seeded on the first run (or with
+    // updateBenchmarkReferences=true) and compared within tolerance afterwards.
+    // The in-house algorithm's golden files are committed, so it is gated from the
+    // start; a brand-new third-party algorithm seeds its references on first run.
+    const BenchmarkMetrics metrics{avgAvg, rmsAvg, globalFalsePositiveRate, globalFalseNegativeRate,
+                                   rocInfo.areaUnderCurve};
+    const auto referenceDir = testUtils::getEvalDir() / "BenchmarkingOutput";
+    for (const auto& gate : algorithm.gates) {
+        const auto refPath = referenceDir / (gate.fileStem + fileSuffix + ".txt");
+        const auto actual = gate.value(metrics);
+        const auto check = checkReference(refPath, actual, gate.tolerance, updateReferences);
+        if (check.seeded) {
+            tee << "[" << algorithmId << "] seeded reference " << gate.displayName << " = "
+                << actual << " (" << refPath.filename().string() << ")\n";
+            continue;
+        }
+        // A change for the better is probably good, but worth keeping an eye on;
+        // a change for the worse is either justified or a regression.
+        EXPECT_TRUE(check.passed)
+            << "[" << algorithmId << "] " << gate.displayName
+            << " has changed! reference: " << check.reference << ", now: " << actual
+            << " (tolerance " << gate.tolerance
+            << "; rerun with updateBenchmarkReferences=true to accept the new value)";
     }
-
-    // Only the in-house algorithm is gated against the stored reference values.
-    constexpr auto previousRmsError = 7.089565788764084;
-    constexpr auto previousAuc = 0.8709150094747889;
-    constexpr auto previousFNR = 0.2832534962249292;
-
-    constexpr auto comparisonTolerance = 0.01;
-
-    const auto fnrIsUnchanged =
-        testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "FNR.txt",
-                                    previousFNR, globalFalseNegativeRate, comparisonTolerance);
-    EXPECT_TRUE(fnrIsUnchanged) << "False Negative Rate has changed! Previous FNR: " << previousFNR
-                                << ", new FNR: " << globalFalseNegativeRate;
-
-    const auto rmsErrorIsUnchanged = testUtils::valueIsUnchanged(
-        testUtils::getEvalDir() / "BenchmarkingOutput" / "RMS_error.txt", previousRmsError, rmsAvg,
-        comparisonTolerance);
-    EXPECT_TRUE(rmsErrorIsUnchanged)
-        << "RMS error has changed! Previous RMS error: " << previousRmsError
-        << ", new RMS error: " << rmsAvg;
-
-    const auto classifierQualityIsUnchanged =
-        testUtils::valueIsUnchanged(testUtils::getEvalDir() / "BenchmarkingOutput" / "AUC.txt",
-                                    previousAuc, rocInfo.areaUnderCurve, comparisonTolerance);
-
-    // If it changes and it's for the better, then it's probably a good thing, but
-    // let's keep an eye on it anyway. If it's for the worse, then either there is
-    // a good reason or we have a regression.
-    EXPECT_TRUE(classifierQualityIsUnchanged)
-        << "Classifier quality has changed! Previous AUC: " << previousAuc
-        << ", new AUC: " << rocInfo.areaUnderCurve;
 }
 }  // namespace saint
