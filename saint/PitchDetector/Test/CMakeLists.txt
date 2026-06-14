@@ -28,6 +28,20 @@ if(SAINT_WITH_PYIN)
   target_link_libraries(PitchDetectorImplTests PRIVATE PyinPitchDetector)
 endif()
 
+add_executable(AutocorrPeakCensusTests
+  AutocorrPeakCensusTests.cpp
+)
+
+target_compile_options(AutocorrPeakCensusTests PRIVATE ${SAINT_ANNOYING_WARNINGS})
+
+target_link_libraries(AutocorrPeakCensusTests
+  PRIVATE
+    PitchDetector
+    TestUtils
+    gtest_main
+    gmock
+)
+
 add_executable(OnsetDetectorCalibrationTests
   OnsetDetectorCalibrationTests.cpp
 )
