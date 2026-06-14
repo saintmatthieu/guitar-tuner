@@ -83,7 +83,7 @@ std::unique_ptr<PitchDetector> createPesto(const BenchmarkAlgorithmContext& ctx)
 #ifdef SAINT_WITH_AUBIO
 // aubio exposes several pitch methods; each is registered as its own benchmark
 // algorithm ("aubio-<method>") so runs are directly comparable.
-const std::vector<std::string> kAubioMethods{"yin",   "yinfft", "yinfast", "mcomb",
+const std::vector<std::string> kAubioMethods{"yin",   "yinfft",  "yinfast", "mcomb",
                                              "fcomb", "schmitt", "specacf"};
 
 std::unique_ptr<PitchDetector> createAubio(const std::string& method,
@@ -100,21 +100,37 @@ std::unique_ptr<PitchDetector> createAubio(const std::string& method,
                                                 ctx.blockSize, bufSize, confidence);
 }
 #endif
+
+// Gate builders, shared across algorithms. Each maps to a golden file basename
+// (BenchmarkingOutput/<stem>[_<algorithm>].txt) holding the reference value.
+MetricGate rmsGate() {
+    return {"RMS error", "RMS_error", [](const BenchmarkMetrics& m) { return m.rmsError; }, 0.01};
+}
+MetricGate fnrGate() {
+    return {"weighted FNR", "FNR", [](const BenchmarkMetrics& m) { return m.falseNegativeRate; },
+            0.01};
+}
+MetricGate aucGate() {
+    return {"AUC", "AUC", [](const BenchmarkMetrics& m) { return m.auc; }, 0.01};
+}
 }  // namespace
 
-const std::map<std::string, BenchmarkAlgorithmFactory>& getBenchmarkAlgorithms() {
-    static const std::map<std::string, BenchmarkAlgorithmFactory> algorithms = [] {
-        std::map<std::string, BenchmarkAlgorithmFactory> map{
-            {kDefaultAlgorithmId, createImpl},
+const std::map<std::string, BenchmarkAlgorithm>& getBenchmarkAlgorithms() {
+    static const std::map<std::string, BenchmarkAlgorithm> algorithms = [] {
+        std::map<std::string, BenchmarkAlgorithm> map;
+        // In-house: gated on RMS cents error, weighted FNR and presence-score AUC.
+        map[kDefaultAlgorithmId] = {createImpl, {rmsGate(), fnrGate(), aucGate()}};
 #ifdef SAINT_WITH_PESTO
-            {"pesto", createPesto},
+        // PESTO: only RMS error and FNR are gated; its confidence calibration is a
+        // separate concern, so its AUC is reported but not verified.
+        map["pesto"] = {createPesto, {rmsGate(), fnrGate()}};
 #endif
-        };
 #ifdef SAINT_WITH_AUBIO
+        // aubio: gated like the in-house algorithm, including the presence-score AUC.
         for (const auto& method : kAubioMethods) {
-            map["aubio-" + method] = [method](const BenchmarkAlgorithmContext& ctx) {
-                return createAubio(method, ctx);
-            };
+            map["aubio-" + method] = {
+                [method](const BenchmarkAlgorithmContext& ctx) { return createAubio(method, ctx); },
+                {rmsGate(), fnrGate(), aucGate()}};
         }
 #endif
         return map;
