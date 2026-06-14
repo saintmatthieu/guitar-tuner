@@ -21,6 +21,10 @@
 #include "PestoPitchDetector.h"
 #endif
 
+#ifdef SAINT_WITH_AUBIO
+#include "AubioPitchDetector.h"
+#endif
+
 namespace {
 std::atomic<bool> gRunning{true};
 
@@ -117,11 +121,27 @@ class ConsoleRecordingListener : public saint::IRecordingListener {
     std::optional<int> _remainingSeconds;
 };
 
-std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(int sampleRate,
-                                                                        int blockSize,
-                                                                        bool usePesto) {
+// Which pitch detector the TestApp drives. At most one of pesto/aubio is set;
+// otherwise the in-house SAINT algorithm is used.
+struct AlgorithmChoice {
+    bool usePesto = false;
+    std::optional<std::string> aubioMethod;
+
+    std::string displayName() const {
+        if (usePesto) {
+            return "PESTO";
+        }
+        if (aubioMethod.has_value()) {
+            return "aubio (" + *aubioMethod + ")";
+        }
+        return "SAINT";
+    }
+};
+
+std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
+    int sampleRate, int blockSize, const AlgorithmChoice& choice) {
 #ifdef SAINT_WITH_PESTO
-    if (usePesto) {
+    if (choice.usePesto) {
         const saint::recording::PitchDetectorConfig config{
             sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard};
         return std::make_unique<saint::IssueReportingPitchDetector>(config, [config] {
@@ -137,15 +157,26 @@ std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(int samp
                 config.samplesPerBlockPerChannel, confidenceThreshold);
         });
     }
-#else
-    (void)usePesto;
 #endif
+#ifdef SAINT_WITH_AUBIO
+    if (choice.aubioMethod.has_value()) {
+        const saint::recording::PitchDetectorConfig config{
+            sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard};
+        const auto method = *choice.aubioMethod;
+        return std::make_unique<saint::IssueReportingPitchDetector>(config, [config, method] {
+            return std::make_unique<saint::AubioPitchDetector>(method, config.sampleRate,
+                                                               config.channelFormat,
+                                                               config.samplesPerBlockPerChannel);
+        });
+    }
+#endif
+    (void)choice;
     return saint::PitchDetectorFactory::createInstance(sampleRate, saint::ChannelFormat::Mono,
                                                        blockSize);
 }
 
 int runLive(const std::string& device, const std::optional<std::filesystem::path>& outPath,
-            bool usePesto, const char* appName) {
+            const AlgorithmChoice& choice, const char* appName) {
     constexpr int kSampleRate = 44100;
     constexpr int kBlockSize = 512;
     constexpr int kIssueRecordingSeconds = 10;
@@ -159,8 +190,8 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
     std::cout << "║  Device: " << std::left << std::setw(63) << device << " ║" << std::endl;
     std::cout << "║  Sample rate: " << kSampleRate << " Hz, Block size: " << kBlockSize
               << " samples                          ║" << std::endl;
-    std::cout << "║  Algorithm: " << std::left << std::setw(60) << (usePesto ? "PESTO" : "SAINT")
-              << " ║" << std::endl;
+    std::cout << "║  Algorithm: " << std::left << std::setw(60) << choice.displayName() << " ║"
+              << std::endl;
     std::ostringstream reportLine;
     reportLine << "  Press 'r' to report an issue (records the next " << kIssueRecordingSeconds
                << " s for offline replay)";
@@ -171,7 +202,7 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
               << std::endl;
     std::cout << std::endl;
 
-    const auto pitchDetector = createPitchDetector(kSampleRate, kBlockSize, usePesto);
+    const auto pitchDetector = createPitchDetector(kSampleRate, kBlockSize, choice);
 
     saint::TunerDisplay display;
     ConsoleRecordingListener recordingListener(display);
@@ -209,7 +240,8 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         std::cerr << std::endl;
         std::cerr << "Available devices can be listed with: arecord -L" << std::endl;
 #endif
-        std::cerr << "Usage: " << appName << " [device_name] [--out <recording.wav>] [--pesto]"
+        std::cerr << "Usage: " << appName
+                  << " [device_name] [--out <recording.wav>] [--pesto] [--aubio <method>]"
                   << std::endl;
         return 1;
     }
@@ -225,23 +257,42 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
 int main(int argc, char* argv[]) {
     std::string device = "default";
     std::optional<std::filesystem::path> outPath;
-    bool usePesto = false;
+    AlgorithmChoice choice;
+    constexpr auto usage =
+        " [device_name] [--out <recording.wav>] [--pesto] [--aubio <method>]";
     for (auto i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--out") {
             if (i + 1 == argc) {
                 std::cerr << "--out requires a file name" << std::endl;
-                std::cerr << "Usage: " << argv[0]
-                          << " [device_name] [--out <recording.wav>] [--pesto]" << std::endl;
+                std::cerr << "Usage: " << argv[0] << usage << std::endl;
                 return 1;
             }
             outPath = argv[++i];
         } else if (arg == "--pesto") {
 #ifdef SAINT_WITH_PESTO
-            usePesto = true;
+            choice.usePesto = true;
 #else
             std::cerr << "This build does not include PESTO - reconfigure with "
                          "-DSAINT_WITH_PESTO=ON (see pesto-benchmark-results.md)."
+                      << std::endl;
+            return 1;
+#endif
+        } else if (arg == "--aubio") {
+            if (i + 1 == argc) {
+                std::cerr << "--aubio requires a method (yin, yinfft, yinfast, mcomb, fcomb, "
+                             "schmitt, specacf)"
+                          << std::endl;
+                std::cerr << "Usage: " << argv[0] << usage << std::endl;
+                return 1;
+            }
+            const std::string method = argv[++i];
+#ifdef SAINT_WITH_AUBIO
+            choice.aubioMethod = method;
+#else
+            (void)method;
+            std::cerr << "This build does not include aubio - reconfigure with "
+                         "-DSAINT_WITH_AUBIO=ON (see aubio-integration.md)."
                       << std::endl;
             return 1;
 #endif
@@ -254,5 +305,5 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    return runLive(device, outPath, usePesto, argv[0]);
+    return runLive(device, outPath, choice, argv[0]);
 }
