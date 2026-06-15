@@ -40,6 +40,10 @@ class AutocorrPitchDetector {
         _noiseEstimationFrozen = true;
     }
 
+    bool noiseCompensationEnabled() const {
+        return _noiseCompensation;
+    }
+
    private:
     // Attenuate each spectral bin so that |X|^2 becomes the noise-subtracted
     // power. Modifies `spectrum` in place.

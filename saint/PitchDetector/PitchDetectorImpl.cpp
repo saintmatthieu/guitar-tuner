@@ -36,33 +36,54 @@ double skewedNormalPdf(double x, double a, double loc, double scale) {
     return (2.0 / scale) * standardNormalPdf(z) * standardNormalCdf(a * z);
 }
 
+// Fitted distributions used to estimate P(correct octave | presence score),
+// together with the acceptance thresholds on that probability (with and without
+// an active estimate constraint).
+struct OctaveModel {
+    double betaA;       // good (|err|<=50c): Beta(a, b) on [0, 1]
+    double betaB;
+    double skewA;       // octaviated: skew-normal(a, loc, scale)
+    double skewLoc;
+    double skewScale;
+    double priorGood;   // mixture weight of the good class
+    double threshold;            // accept when P(good) >= this (no constraint)
+    double thresholdConstrained; // ... and this when an estimate constraint is active
+};
+
+// Fitted on the original (non-noise-compensated) presence-score distribution.
+constexpr OctaveModel kBaselineModel{3.388008757503728,  0.4029325165967037, 4.583734827154467,
+                                     0.12563587985166158, 0.364240265091698,  0.5911103997932017,
+                                     0.85,                0.7};
+
+// Re-fitted on the noise-compensated distribution: subtracting the noise floor
+// inflates the presence scores of both classes, so the good/bad models shift
+// (and the effective raw-score gate rises). Regenerate with
+// eval/fitAndShowErrorProbabilityModels.py on data captured with compensation
+// on. The thresholds are re-tuned for this model's score distribution.
+constexpr OctaveModel kNoiseCompensatedModel{4.403472452295939,   0.38299747425045966,
+                                             1.5009072813805049,  0.27308653270774064,
+                                             0.33556510698802494, 0.5547480525652233,
+                                             0.85,                0.7};
+
 // Probability of xcorrEstimate not being octaviated given presence score s.
 // Uses Bayes' theorem with fitted distributions.
-double probabilityNotOctaviated(double s) {
-    // Distribution parameters (fitted from data)
-    constexpr double kBetaA = 3.388008757503728;
-    constexpr double kBetaB = 0.4029325165967037;
-    constexpr double kSkewA = 4.583734827154467;
-    constexpr double kSkewLoc = 0.12563587985166158;
-    constexpr double kSkewScale = 0.364240265091698;
-    constexpr double kPriorGood = 0.5911103997932017;
-    constexpr double kPriorNotGood = 1. - kPriorGood;
-
+double probabilityNotOctaviated(double s, const OctaveModel& model) {
     // f_(S|G)(s|good) - likelihood of s given good estimate
-    const double likelihoodGood = betaPdf(s, kBetaA, kBetaB);
+    const double likelihoodGood = betaPdf(s, model.betaA, model.betaB);
 
     // f_(S|G)(s|not good) - likelihood of s given octaviated estimate
-    const double likelihoodNotGood = skewedNormalPdf(s, kSkewA, kSkewLoc, kSkewScale);
+    const double likelihoodNotGood = skewedNormalPdf(s, model.skewA, model.skewLoc, model.skewScale);
 
     // f_S(s) - marginal probability (mixture)
-    const double marginal = kPriorGood * likelihoodGood + kPriorNotGood * likelihoodNotGood;
+    const double marginal =
+        model.priorGood * likelihoodGood + (1. - model.priorGood) * likelihoodNotGood;
 
     if (marginal <= 0.0) {
         return 0.0;
     }
 
     // P(good|s) = f_(S|G)(s|good) * P(good) / f_S(s)
-    return (likelihoodGood * kPriorGood) / marginal;
+    return (likelihoodGood * model.priorGood) / marginal;
 }
 }  // namespace
 
@@ -124,24 +145,20 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         return 0.f;
     }
 
-    // clang-format off
-    // Evaluate the probability of xcorrEstimate not being octaviated (being "good") given presence
-    // score "s".
-    // P(good|s) = f_(S|G)(s|good) * P(good) / f_S(s) where
-    // f_(S|G)(s|good) is modeled by a beta function of s with parameters
-    //      (a, b) = (1.8116072489777812, 0.360943336209587)
-    // f_(S|G)(s|not good) is modeled by a skewed normal distribution with parameters
-    //      (a, loc, scale) = (4.551395913440457, 0.12565570910063836, 0.3627118137538335)
-    // f_S(s) is a mixture of both with weights 0.665 for the "good" distribution and 0.335 for the "not good".
-    // clang-format on
-    const double probNotOctaviated = probabilityNotOctaviated(presenceScore);
+    // Evaluate P(xcorrEstimate is the correct octave | presence score) via Bayes'
+    // theorem (see probabilityNotOctaviated / OctaveModel above) and gate on it.
+    // The noise-compensated spectrum shifts the presence-score distribution, so
+    // it uses its own re-fitted octave model; the unmodified path keeps the
+    // original calibration.
+    const auto& octaveModel = _autocorrPitchDetector.noiseCompensationEnabled()
+                                  ? kNoiseCompensatedModel
+                                  : kBaselineModel;
+    const double probNotOctaviated = probabilityNotOctaviated(presenceScore, octaveModel);
 
     // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
     // and 8% of the test cases failing by no-pitch-detected.
-    constexpr auto thresholdWithoutEstimateConstraint = 0.85;
-    constexpr auto thresholdWithEstimateConstraint = 0.7;
-    const auto threshold = _estimateConstraint.has_value() ? thresholdWithEstimateConstraint
-                                                           : thresholdWithoutEstimateConstraint;
+    const auto threshold = _estimateConstraint.has_value() ? octaveModel.thresholdConstrained
+                                                           : octaveModel.threshold;
     if (probNotOctaviated < threshold) {
         return 0.f;
     }
