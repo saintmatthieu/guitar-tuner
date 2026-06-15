@@ -13,7 +13,7 @@
 #include "PitchDetectorUtils.h"
 #include "Preprocessor.h"
 
-#if defined(SAINT_WITH_PESTO) || defined(SAINT_WITH_AUBIO)
+#if defined(SAINT_WITH_PESTO) || defined(SAINT_WITH_AUBIO) || defined(SAINT_WITH_PYIN)
 #include <gtest/gtest.h>
 
 #include "TestCaseUtils.h"
@@ -25,6 +25,10 @@
 
 #ifdef SAINT_WITH_AUBIO
 #include "AubioPitchDetector.h"
+#endif
+
+#ifdef SAINT_WITH_PYIN
+#include "PyinPitchDetector.h"
 #endif
 
 namespace saint {
@@ -102,6 +106,26 @@ std::unique_ptr<PitchDetector> createAubio(const std::string& method,
 }
 #endif
 
+#ifdef SAINT_WITH_PYIN
+std::unique_ptr<PitchDetector> createPyin(const BenchmarkAlgorithmContext& ctx) {
+    // pYIN does its own (HMM) temporal smoothing, so — like the other third-party
+    // algorithms — it is benchmarked raw, without the in-house median filter and
+    // smoother. Optional tuning knobs (the wrapper picks pYIN's reference defaults
+    // when these are absent):
+    //   pyinFrameSize=<n>      analysis window, power of two (default 2048)
+    //   pyinFixedLag=<n>       HMM smoothing lag in frames (latency = (n-1) blocks)
+    //   pyinThreshDistr=<0..4> YIN threshold-distribution prior (2 = Beta mean .15)
+    //   pyinLowAmp=<f>         block-RMS below which candidates are suppressed (default .1)
+    const auto frameSize = getArgument<int>("pyinFrameSize").value_or(2048);
+    const auto fixedLag = getArgument<int>("pyinFixedLag").value_or(20);
+    const auto threshDistr = getArgument<int>("pyinThreshDistr").value_or(2);
+    const auto argLowAmp = getArgument<std::string>("pyinLowAmp");
+    const auto lowAmp = argLowAmp.has_value() ? std::stof(*argLowAmp) : 0.1f;
+    return std::make_unique<PyinPitchDetector>(ctx.sampleRate, ctx.channelFormat, ctx.blockSize,
+                                               frameSize, fixedLag, threshDistr, lowAmp);
+}
+#endif
+
 // Gate builders, shared across algorithms. Each maps to a golden file basename
 // (BenchmarkingOutput/<stem>[_<algorithm>].txt) holding the reference value.
 MetricGate rmsGate() {
@@ -133,6 +157,10 @@ const std::map<std::string, BenchmarkAlgorithm>& getBenchmarkAlgorithms() {
                 [method](const BenchmarkAlgorithmContext& ctx) { return createAubio(method, ctx); },
                 {rmsGate(), fnrGate(), aucGate()}};
         }
+#endif
+#ifdef SAINT_WITH_PYIN
+        // pYIN: gated like the in-house algorithm, including the presence-score AUC.
+        map["pyin"] = {createPyin, {rmsGate(), fnrGate(), aucGate()}};
 #endif
         return map;
     }();

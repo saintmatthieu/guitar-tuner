@@ -24,6 +24,10 @@ if(SAINT_WITH_AUBIO)
   target_link_libraries(PitchDetectorImplTests PRIVATE AubioPitchDetector)
 endif()
 
+if(SAINT_WITH_PYIN)
+  target_link_libraries(PitchDetectorImplTests PRIVATE PyinPitchDetector)
+endif()
+
 add_executable(OnsetDetectorCalibrationTests
   OnsetDetectorCalibrationTests.cpp
 )
