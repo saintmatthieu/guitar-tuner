@@ -44,18 +44,17 @@ double probabilityNotOctaviated(double s) {
     // testWithMedianFilter=false). The fit is specific to the averaging setting, so it
     // must be regenerated whenever autocorrAveragingFrameCount changes.
     //
-    // Active set: original (committed) gate, correct for autocorrAveragingFrameCount=1
-    // since no averaging leaves the presence distribution unchanged.
-    constexpr double kBetaA = 3.388008757503728;
-    constexpr double kBetaB = 0.4029325165967037;
-    constexpr double kSkewA = 4.583734827154467;
-    constexpr double kSkewLoc = 0.12563587985166158;
-    constexpr double kSkewScale = 0.364240265091698;
-    constexpr double kPriorGood = 0.5911103997932017;
+    // Active set: autocorrAveragingFrameCount=4 (cross-frame ACF averaging).
+    constexpr double kBetaA = 2.7634801603149746;
+    constexpr double kBetaB = 0.39897836666380115;
+    constexpr double kSkewA = 6.89477379633251;
+    constexpr double kSkewLoc = 0.07457877837828505;
+    constexpr double kSkewScale = 0.3471294772559438;
+    constexpr double kPriorGood = 0.5733624834956706;
     constexpr double kPriorNotGood = 1. - kPriorGood;
-    // For autocorrAveragingFrameCount=4 (kept until averaging is decided), use:
-    //   kBetaA=2.7634801603149746, kBetaB=0.39897836666380115, kSkewA=6.89477379633251,
-    //   kSkewLoc=0.07457877837828505, kSkewScale=0.3471294772559438, kPriorGood=0.5733624834956706
+    // For autocorrAveragingFrameCount=1 (no averaging), use:
+    //   kBetaA=3.388008757503728, kBetaB=0.4029325165967037, kSkewA=4.583734827154467,
+    //   kSkewLoc=0.12563587985166158, kSkewScale=0.364240265091698, kPriorGood=0.5911103997932017
 
     // f_(S|G)(s|good) - likelihood of s given good estimate
     const double likelihoodGood = betaPdf(s, kBetaA, kBetaB);

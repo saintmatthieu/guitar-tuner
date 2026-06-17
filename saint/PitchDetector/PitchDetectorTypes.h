@@ -22,7 +22,7 @@ constexpr auto autocorrUpsamplingFactor = 4;
 // across frames while random noise averages down (variance ~1/K), which curbs
 // the noise-driven octave-jump errors. The average is reset on onset so a new
 // note never blurs into the previous one. 1 disables averaging (legacy behaviour).
-constexpr auto autocorrAveragingFrameCount = 1;
+constexpr auto autocorrAveragingFrameCount = 4;
 
 // Octaviation gate operating point (tuned in eval/gate-tuning-log.md to minimise the
 // false-negative rate while keeping the median and 99th-percentile RMS error at or
@@ -30,8 +30,8 @@ constexpr auto autocorrAveragingFrameCount = 1;
 // probNotOctaviated for an unconstrained (fresh) detection; octaviationHarmonicityFloor
 // rejects estimates whose octave-corrected fundamental lacks harmonic support, which is
 // what lets the presence cut be this permissive without admitting octave errors.
-constexpr double octaviationPresenceThreshold = 0.20;
-constexpr float octaviationHarmonicityFloor = 0.20f;
+constexpr double octaviationPresenceThreshold = 0.55;
+constexpr float octaviationHarmonicityFloor = 0.30f;
 
 constexpr auto majorThirdRatio = 1.26f;
 
