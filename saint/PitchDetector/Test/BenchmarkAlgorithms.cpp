@@ -131,6 +131,20 @@ std::unique_ptr<PitchDetector> createPyin(const BenchmarkAlgorithmContext& ctx) 
 MetricGate rmsGate() {
     return {"RMS error", "RMS_error", [](const BenchmarkMetrics& m) { return m.rmsError; }, 0.01};
 }
+// Median per-case RMS: robust central-tendency accuracy, insensitive to how large
+// the catastrophic (octave-class) errors happen to be.
+MetricGate medianRmsGate() {
+    return {"median RMS error", "median_RMS_error",
+            [](const BenchmarkMetrics& m) { return m.medianRmsError; }, 0.01};
+}
+// 99th-percentile per-case RMS: a continuous tail metric. It sits right at the
+// gross-error boundary (~57c on master), so it tracks how often catastrophic
+// (octave/competing-pitch) errors occur without conflating that with their
+// magnitude the way mean RMS does, and with finer granularity than a count.
+MetricGate p99RmsGate() {
+    return {"99th-pct RMS error", "p99_RMS_error",
+            [](const BenchmarkMetrics& m) { return m.p99RmsError; }, 0.01};
+}
 MetricGate fnrGate() {
     return {"weighted FNR", "FNR", [](const BenchmarkMetrics& m) { return m.falseNegativeRate; },
             0.01};
@@ -143,8 +157,11 @@ MetricGate aucGate() {
 const std::map<std::string, BenchmarkAlgorithm>& getBenchmarkAlgorithms() {
     static const std::map<std::string, BenchmarkAlgorithm> algorithms = [] {
         std::map<std::string, BenchmarkAlgorithm> map;
-        // In-house: gated on RMS cents error, weighted FNR and presence-score AUC.
-        map[kDefaultAlgorithmId] = {createImpl, {rmsGate(), fnrGate(), aucGate()}};
+        // In-house: gated on median RMS cents error, 99th-percentile RMS cents error,
+        // weighted FNR and presence-score AUC. (Mean RMS is still reported but not
+        // gated: it conflates catastrophic-error frequency with their magnitude.)
+        map[kDefaultAlgorithmId] = {createImpl,
+                                    {medianRmsGate(), p99RmsGate(), fnrGate(), aucGate()}};
 #ifdef SAINT_WITH_PESTO
         // PESTO: only RMS error and FNR are gated; its confidence calibration is a
         // separate concern, so its AUC is reported but not verified.

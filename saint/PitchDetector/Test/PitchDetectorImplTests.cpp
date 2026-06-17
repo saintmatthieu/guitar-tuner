@@ -377,6 +377,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     auto count = 0;
     auto worstRms = 0.;
     auto worstRmsIndex = 0;
+    std::vector<double> perCaseRms;
     for (auto i = 0u; i < results.size(); ++i) {
         const auto& result = results[i];
         totalPositiveWeight += result.positiveWeight;
@@ -387,6 +388,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             ++count;
             avgAvg += result.cents->avg;
             rmsAvg += result.cents->rms;
+            perCaseRms.push_back(result.cents->rms);
             if (result.cents->rms > worstRms) {
                 worstRms = result.cents->rms;
                 worstRmsIndex = i;
@@ -395,12 +397,30 @@ TEST(PitchDetectorImpl, benchmarking) {
     }
     avgAvg /= count;
     rmsAvg /= count;
+    // Median and 99th-percentile per-case RMS. Both are robust to the *magnitude* of
+    // the catastrophic outliers (an octave vs. two-octave error reads the same in the
+    // tuner UI), unlike the mean: the median tracks typical accuracy, the 99th
+    // percentile the tail (how often catastrophic errors occur).
+    auto medianRms = 0.;
+    auto p99Rms = 0.;
+    if (!perCaseRms.empty()) {
+        std::sort(perCaseRms.begin(), perCaseRms.end());
+        const auto mid = perCaseRms.size() / 2;
+        medianRms = perCaseRms.size() % 2 == 0 ? 0.5 * (perCaseRms[mid - 1] + perCaseRms[mid])
+                                               : perCaseRms[mid];
+        // Linear-interpolated percentile (matches numpy's default).
+        const auto rank = 0.99 * (perCaseRms.size() - 1);
+        const auto lo = static_cast<size_t>(std::floor(rank));
+        const auto hi = static_cast<size_t>(std::ceil(rank));
+        p99Rms = perCaseRms[lo] + (rank - lo) * (perCaseRms[hi] - perCaseRms[lo]);
+    }
 
     const auto globalFalsePositiveRate = 1. * totalFalsePositiveCount / totalNegativeCount;
     const auto globalFalseNegativeRate = totalFalseNegativeWeight / totalPositiveWeight;
 
     tee << "[" << algorithmId << "] Error across all tests:\n\tAVG: " << avgAvg
-        << "\n\tRMS: " << rmsAvg << "\n\tFPR: " << globalFalsePositiveRate
+        << "\n\tRMS: " << rmsAvg << "\n\tmedian RMS: " << medianRms
+        << "\n\t99th-pct RMS: " << p99Rms << "\n\tFPR: " << globalFalsePositiveRate
         << "\n\tFNR: " << globalFalseNegativeRate << "\n\tworst RMS error: " << worstRms
         << " at index " << worstRmsIndex << " (" << results[worstRmsIndex].id << ")\n";
 
@@ -429,7 +449,12 @@ TEST(PitchDetectorImpl, benchmarking) {
     // updateBenchmarkReferences=true) and compared within tolerance afterwards.
     // The in-house algorithm's golden files are committed, so it is gated from the
     // start; a brand-new third-party algorithm seeds its references on first run.
-    const BenchmarkMetrics metrics{avgAvg, rmsAvg, globalFalsePositiveRate, globalFalseNegativeRate,
+    const BenchmarkMetrics metrics{avgAvg,
+                                   rmsAvg,
+                                   medianRms,
+                                   p99Rms,
+                                   globalFalsePositiveRate,
+                                   globalFalseNegativeRate,
                                    rocInfo.areaUnderCurve};
     const auto referenceDir = testUtils::getEvalDir() / "BenchmarkingOutput";
     for (const auto& gate : algorithm.gates) {

@@ -30,8 +30,10 @@ using BenchmarkAlgorithmFactory =
 // Aggregate metrics the benchmark computes over a full-corpus run. These are the
 // inputs to an algorithm's pass/fail gates.
 struct BenchmarkMetrics {
-    double avgError = 0.;  // mean signed cents error
-    double rmsError = 0.;  // RMS cents error
+    double avgError = 0.;        // mean signed cents error
+    double rmsError = 0.;        // mean of per-case RMS cents error
+    double medianRmsError = 0.;  // median of per-case RMS cents error (robust central tendency)
+    double p99RmsError = 0.;     // 99th-percentile per-case RMS cents error (tail accuracy)
     double falsePositiveRate = 0.;
     double falseNegativeRate = 0.;  // weighted
     double auc = 0.;                // area under the presence-score ROC curve
