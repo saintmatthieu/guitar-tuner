@@ -15,7 +15,9 @@ class PitchDetectorImpl {
    public:
     PitchDetectorImpl(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
                       AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
-                      std::unique_ptr<PitchDetectorLoggerInterface> logger);
+                      std::unique_ptr<PitchDetectorLoggerInterface> logger,
+                      bool applyOctaviationGate = true, double presenceThreshold = 0.85,
+                      float harmonicityFloor = 0.f);
 
     float process(const float*, DebugOutput*, std::vector<float>* debugOutputSignal = nullptr);
     int delaySamples() const {
@@ -42,5 +44,14 @@ class PitchDetectorImpl {
 
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
     std::optional<float> _estimateConstraint;
+    // When false, the probNotOctaviated gate is bypassed so every frame emits its
+    // estimate. Used to collect the full presence-score/error distribution for
+    // re-fitting the gate's Bayesian model (see eval/fitAndShowErrorProbabilityModels.py).
+    const bool _applyOctaviationGate;
+    // Gate thresholds. _presenceThreshold (no-constraint) is the cut on the fitted
+    // probNotOctaviated; _harmonicityFloor rejects estimates lacking harmonic support
+    // (#4). Floor 0 disables the harmonicity criterion (legacy behaviour).
+    const double _presenceThreshold;
+    const float _harmonicityFloor;
 };
 }  // namespace saint

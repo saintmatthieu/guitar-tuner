@@ -22,6 +22,18 @@ struct BenchmarkAlgorithmContext {
     // In-house-specific options; other algorithms are free to ignore them.
     std::optional<int> indexOfProcessToLog;
     bool withMedianFilter = true;
+    // When false, the probNotOctaviated gate is bypassed so every frame emits an
+    // estimate. Used to collect the full presence-score/error distribution for
+    // re-fitting the gate (see eval/fitAndShowErrorProbabilityModels.py).
+    bool applyOctaviationGate = true;
+    // Gate knobs (in-house algorithm). presenceThreshold cuts the fitted
+    // probNotOctaviated; harmonicityFloor (0 = off) rejects estimates lacking
+    // harmonic support. Overridable from the CLI to sweep operating points.
+    double presenceThreshold = 0.85;
+    float harmonicityFloor = 0.f;
+    // Median-filter window (s). Drives output latency; overridable to test reverting
+    // the 0.2 s bump once other safeguards (e.g. the harmonicity floor) carry the load.
+    float medianFilterDuration = 0.2f;
 };
 
 using BenchmarkAlgorithmFactory =

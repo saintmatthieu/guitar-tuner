@@ -39,12 +39,14 @@ struct Sample {
 };
 
 struct ProcessEstimate {
-    ProcessEstimate(float truth, float score, float frequencyEstimate, float errorCents)
-        : t(truth), e(errorCents), s(score), f(frequencyEstimate) {}
+    ProcessEstimate(float truth, float score, float frequencyEstimate, float errorCents,
+                    float harmonicity = 0.f)
+        : t(truth), e(errorCents), s(score), f(frequencyEstimate), h(harmonicity) {}
     float t = 0.f;
     float e = 0.f;
     float s = 0.f;
     float f = 0.f;
+    float h = 0.f;  // harmonicity score (see AutocorrEstimateDisambiguator)
 };
 
 class TeeStream {
