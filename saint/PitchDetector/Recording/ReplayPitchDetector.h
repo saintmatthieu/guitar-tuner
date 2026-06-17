@@ -34,6 +34,15 @@ class ReplayPitchDetector : public PitchDetector {
     int numBlocks() const;
     int numBlocksLeft() const;
 
+    /**
+     * @brief Pointer to the interleaved samples of the block the next
+     * `process()` call will consume, or `nullptr` once past the end. The block
+     * spans `config().samplesPerBlockPerChannel * numChannels(...)` samples.
+     * Lets callers (e.g. the ReplayApp) play the recorded audio back as it is
+     * replayed, without re-reading the file.
+     */
+    const float* peekBlock() const;
+
    private:
     explicit ReplayPitchDetector(recording::RecordingData);
 

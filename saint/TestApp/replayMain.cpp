@@ -4,10 +4,15 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <thread>
 
 #include "PitchDetector/Recording/ReplayPitchDetector.h"
 #include "TunerDisplay.h"
+
+#ifdef SAINT_REPLAY_WITH_ALSA
+#include "AlsaAudioOutput.h"
+#endif
 
 namespace {
 std::atomic<bool> gRunning{true};
@@ -35,7 +40,12 @@ int main(int argc, char* argv[]) {
         std::cerr << "Replays an issue recording saved by the guitar tuner (TestApp)."
                   << std::endl;
         std::cerr << "Usage: " << argv[0] << " [--fast] <recording.wav>" << std::endl;
-        std::cerr << "  --fast  replay the entire file without waiting (default: real-time pace)"
+        std::cerr << "  --fast  replay the entire file without waiting and without audio "
+                     "(default: real-time pace"
+#ifdef SAINT_REPLAY_WITH_ALSA
+                     ", playing the recorded audio"
+#endif
+                     ")"
                   << std::endl;
         return 1;
     }
@@ -57,7 +67,37 @@ int main(int argc, char* argv[]) {
     saint::TunerDisplay display;
     const auto blockDuration =
         std::chrono::microseconds(1000000LL * config.samplesPerBlockPerChannel / config.sampleRate);
+
+#ifdef SAINT_REPLAY_WITH_ALSA
+    // In real-time mode, play the recorded audio through the speakers. The
+    // blocking writes pace the loop, so no extra sleep is needed while playing.
+    const auto framesPerBlock = config.samplesPerBlockPerChannel;
+    std::optional<saint::AlsaAudioOutput> player;
+    bool playing = false;
+    if (!fast) {
+        player.emplace(config.sampleRate, numChannels(config.channelFormat), framesPerBlock);
+        if (player->open()) {
+            playing = true;
+        } else {
+            std::cerr << "Continuing without audio playback." << std::endl;
+            player.reset();
+        }
+    }
+#endif
+
     while (gRunning && pitchDetector->numBlocksLeft() > 0) {
+#ifdef SAINT_REPLAY_WITH_ALSA
+        if (playing) {
+            const float* block = pitchDetector->peekBlock();
+            display.update(pitchDetector->process(nullptr));
+            if (!player->write(block, framesPerBlock)) {
+                // Playback died mid-stream; fall back to timed pacing.
+                playing = false;
+                player.reset();
+            }
+            continue;
+        }
+#endif
         const auto blockStart = std::chrono::steady_clock::now();
         display.update(pitchDetector->process(nullptr));
         if (!fast) {

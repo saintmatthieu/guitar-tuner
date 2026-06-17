@@ -47,4 +47,11 @@ int ReplayPitchDetector::numBlocks() const {
 int ReplayPitchDetector::numBlocksLeft() const {
     return numBlocks() - _blockIndex;
 }
+
+const float* ReplayPitchDetector::peekBlock() const {
+    if (_blockIndex >= numBlocks()) {
+        return nullptr;
+    }
+    return _data.interleaved.data() + static_cast<size_t>(_blockIndex) * _samplesPerBlock;
+}
 }  // namespace saint
