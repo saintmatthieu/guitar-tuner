@@ -91,8 +91,11 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         (*debugOutput)["isOnset"] = isOnset ? 1.f : 0.f;
     }
     if (isOnset) {
-        // New attack is detected, likely a new note ; reset constraint
+        // New attack is detected, likely a new note ; reset constraint and drop
+        // the cross-frame autocorrelation average so the new note doesn't blur
+        // into the previous one.
         _estimateConstraint.reset();
+        _autocorrPitchDetector.reset();
     }
 
     const auto processedAudio = _preprocessor->processBlock(audio);

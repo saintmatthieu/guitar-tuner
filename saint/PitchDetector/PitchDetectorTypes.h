@@ -17,6 +17,13 @@ static constexpr auto autocorrRolloffHz = 200;
 // Upsampling by a factor of 4, we reduce the maximal quantization to 1.5 cents.
 constexpr auto autocorrUpsamplingFactor = 4;
 
+// Number of consecutive autocorrelation frames to average before peak picking.
+// The ACF is shift-invariant, so a sustained note's signal peak adds coherently
+// across frames while random noise averages down (variance ~1/K), which curbs
+// the noise-driven octave-jump errors. The average is reset on onset so a new
+// note never blurs into the previous one. 1 disables averaging (legacy behaviour).
+constexpr auto autocorrAveragingFrameCount = 1;
+
 constexpr auto majorThirdRatio = 1.26f;
 
 struct Pitch {
