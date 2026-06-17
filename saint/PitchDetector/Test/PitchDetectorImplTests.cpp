@@ -201,8 +201,9 @@ TEST(PitchDetectorImpl, benchmarking) {
                 argIndexOfProcessToLog,
                 !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter,
                 !argDisableOctaviationGate,
-                argPresenceThreshold.value_or(0.85f),
-                argHarmonicityFloor.value_or(0.f),
+                argPresenceThreshold.value_or(
+                    static_cast<float>(octaviationPresenceThreshold)),
+                argHarmonicityFloor.value_or(octaviationHarmonicityFloor),
                 argMedianFilterDuration.value_or(0.15f)};
             const auto pitchDetector = createDetector(context);
 
