@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# For PRs: cancel redundant runs when new commits are pushed to the same branch.
+# For pushes to master: each SHA gets its own group so nothing is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # When a PR merges without rebasing the HEAD commit is identical to what the
+  # PR run already built and tested.  Query the API and skip the build if a
+  # successful PR run for this SHA already exists.
+  check-skip:
+    name: Check if build should be skipped
+    runs-on: ubuntu-latest
+    outputs:
+      should-skip: ${{ steps.check.outputs.should-skip }}
+    steps:
+      - name: Check for prior successful PR run on this commit
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName !== 'push') {
+              core.setOutput('should-skip', 'false');
+              return;
+            }
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yml',
+              head_sha: context.sha,
+              status: 'success',
+              per_page: 10,
+            });
+            const hasPrRun = data.workflow_runs.some(r => r.event === 'pull_request');
+            core.setOutput('should-skip', hasPrRun ? 'true' : 'false');
+
+  build:
+    name: Build & Test
+    needs: check-skip
+    if: needs.check-skip.outputs.should-skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libasound2-dev
+
+      - name: Configure
+        run: cmake --preset Release
+
+      - name: Build
+        run: cmake --build --preset Release -j$(nproc)
+
+      - name: Test
+        run: ctest --test-dir build/Release --output-on-failure -j$(nproc)
