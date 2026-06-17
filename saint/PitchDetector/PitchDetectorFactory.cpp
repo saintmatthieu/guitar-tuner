@@ -47,12 +47,16 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
 }  // namespace
 
 std::unique_ptr<IssueReportingPitchDetector> PitchDetectorFactory::createInstance(
-    int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning) {
+    int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning,
+    std::function<void(std::string logLine)> cpuSummaryCallback) {
     const recording::PitchDetectorConfig config{sampleRate, channelFormat,
                                                 samplesPerBlockPerChannel, tuning};
-    return std::make_unique<IssueReportingPitchDetector>(config, [config] {
-        return createImplementation(config.sampleRate, config.channelFormat,
-                                    config.samplesPerBlockPerChannel, config.tuning);
-    });
+    return std::make_unique<IssueReportingPitchDetector>(
+        config,
+        [config] {
+            return createImplementation(config.sampleRate, config.channelFormat,
+                                        config.samplesPerBlockPerChannel, config.tuning);
+        },
+        std::move(cpuSummaryCallback));
 }
 }  // namespace saint

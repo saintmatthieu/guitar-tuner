@@ -6,10 +6,12 @@
 #include <atomic>
 #include <ctime>
 #include <filesystem>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <string>
 
 #include "AudioInput.h"
 #include "PitchDetector/PitchDetectorFactory.h"
@@ -140,6 +142,9 @@ struct AlgorithmChoice {
 
 std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
     int sampleRate, int blockSize, const AlgorithmChoice& choice) {
+    const std::function<void(std::string)> cpuSummary = [](std::string line) {
+        std::cout << "\n" << line << std::endl;
+    };
 #ifdef SAINT_WITH_PESTO
     if (choice.usePesto) {
         const saint::recording::PitchDetectorConfig config{
@@ -155,7 +160,7 @@ std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
             return std::make_unique<saint::PestoPitchDetector>(
                 modelPath, config.sampleRate, config.channelFormat,
                 config.samplesPerBlockPerChannel, confidenceThreshold);
-        });
+        }, cpuSummary);
     }
 #endif
 #ifdef SAINT_WITH_AUBIO
@@ -167,12 +172,12 @@ std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
             return std::make_unique<saint::AubioPitchDetector>(method, config.sampleRate,
                                                                config.channelFormat,
                                                                config.samplesPerBlockPerChannel);
-        });
+        }, cpuSummary);
     }
 #endif
     (void)choice;
-    return saint::PitchDetectorFactory::createInstance(sampleRate, saint::ChannelFormat::Mono,
-                                                       blockSize);
+    return saint::PitchDetectorFactory::createInstance(
+        sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard, cpuSummary);
 }
 
 int runLive(const std::string& device, const std::optional<std::filesystem::path>& outPath,
@@ -202,7 +207,7 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
               << std::endl;
     std::cout << std::endl;
 
-    const auto pitchDetector = createPitchDetector(kSampleRate, kBlockSize, choice);
+    auto pitchDetector = createPitchDetector(kSampleRate, kBlockSize, choice);
 
     saint::TunerDisplay display;
     ConsoleRecordingListener recordingListener(display);
@@ -249,7 +254,11 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
     // The capture loop runs until Ctrl+C
     audioInput.stop();
 
-    std::cout << std::endl << std::endl << "Goodbye!" << std::endl;
+    // Destroy the detector now so its CPU-load summary prints here, before "Goodbye!", rather
+    // than whenever the unique_ptr would otherwise go out of scope.
+    pitchDetector.reset();
+
+    std::cout << std::endl << "Goodbye!" << std::endl;
     return 0;
 }
 }  // namespace

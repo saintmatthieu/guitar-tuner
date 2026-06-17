@@ -3,19 +3,34 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <sstream>
 
 namespace saint {
 IssueReportingPitchDetector::IssueReportingPitchDetector(
     recording::PitchDetectorConfig config,
-    std::function<std::unique_ptr<PitchDetector>()> detectorFactory)
+    std::function<std::unique_ptr<PitchDetector>()> detectorFactory,
+    std::function<void(std::string logLine)> cpuSummaryCallback)
     : _config(config),
       _detectorFactory(std::move(detectorFactory)),
+      _cpuSummaryCallback(std::move(cpuSummaryCallback)),
       _frameDuration(static_cast<double>(config.samplesPerBlockPerChannel) / config.sampleRate),
       // One-pole lowpass whose step response reaches 0.9 after 1 second, i.e.
       // 1 - coeff^(1s / frameDuration) = 0.9.
-      _lowpassCoeff(std::pow(0.1, _frameDuration)) {
+      _lowpassCoeff(std::pow(0.1, _frameDuration)),
+      _blocksPerSecond(config.sampleRate / config.samplesPerBlockPerChannel) {
     assert(_detectorFactory);
     _detector = _detectorFactory();
+}
+
+IssueReportingPitchDetector::~IssueReportingPitchDetector() {
+    if (!_cpuSummaryCallback || _cpuSampleCount == 0) {
+        return;
+    }
+    const auto avg = _cpuSampleSum / static_cast<double>(_cpuSampleCount);
+    std::ostringstream line;
+    line << "CPU load over " << _cpuSampleCount << " s: avg " << std::lround(avg) << "%, min "
+         << _cpuSampleMin << "%, max " << _cpuSampleMax << "%";
+    _cpuSummaryCallback(line.str());
 }
 
 float IssueReportingPitchDetector::process(const float* input, DebugOutput* debugOutput,
@@ -37,8 +52,15 @@ float IssueReportingPitchDetector::process(const float* input, DebugOutput* debu
     const std::chrono::duration<double> processingTime = std::chrono::steady_clock::now() - start;
     const auto percentage = 100 * processingTime.count() / _frameDuration;
     _smoothedPercentage = _lowpassCoeff * _smoothedPercentage + (1 - _lowpassCoeff) * percentage;
-    _realtimePercentage.store(static_cast<int>(std::lround(_smoothedPercentage)),
-                              std::memory_order_relaxed);
+    const auto rounded = static_cast<int>(std::lround(_smoothedPercentage));
+    _realtimePercentage.store(rounded, std::memory_order_relaxed);
+    if (++_blocksSinceLastSample >= _blocksPerSecond) {
+        _cpuSampleMin = _cpuSampleCount == 0 || rounded < _cpuSampleMin ? rounded : _cpuSampleMin;
+        _cpuSampleMax = _cpuSampleCount == 0 || rounded > _cpuSampleMax ? rounded : _cpuSampleMax;
+        _cpuSampleSum += rounded;
+        ++_cpuSampleCount;
+        _blocksSinceLastSample = 0;
+    }
     return result;
 }
 

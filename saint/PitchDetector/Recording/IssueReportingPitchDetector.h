@@ -3,6 +3,8 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "PitchDetector.h"
 #include "Recording/IRecordingListener.h"
@@ -18,7 +20,16 @@ namespace saint {
 class IssueReportingPitchDetector : public PitchDetector {
    public:
     IssueReportingPitchDetector(recording::PitchDetectorConfig,
-                                std::function<std::unique_ptr<PitchDetector>()> detectorFactory);
+                                std::function<std::unique_ptr<PitchDetector>()> detectorFactory,
+                                std::function<void(std::string logLine)> cpuSummaryCallback);
+
+    /**
+     * @brief Reports a one-line CPU-load summary to the `cpuSummaryCallback` passed to the
+     * constructor: the average, min and max of the `realtimePercentage()` values sampled once per
+     * second over the detector's lifetime. Not called if no callback was provided or no audio was
+     * ever processed.
+     */
+    ~IssueReportingPitchDetector();
 
     float process(const float* input, DebugOutput* = nullptr,
                   std::vector<float>* debugOutputSignal = nullptr) override;
@@ -56,12 +67,19 @@ class IssueReportingPitchDetector : public PitchDetector {
    private:
     const recording::PitchDetectorConfig _config;
     const std::function<std::unique_ptr<PitchDetector>()> _detectorFactory;
+    const std::function<void(std::string logLine)> _cpuSummaryCallback;
     std::unique_ptr<PitchDetector> _detector;
     std::unique_ptr<RecordingPitchDetector> _recorder;
     bool _recordingComplete = false;
     const double _frameDuration;
     const double _lowpassCoeff;
+    const int _blocksPerSecond;
     double _smoothedPercentage = 0;
     std::atomic<int> _realtimePercentage = 0;
+    int _blocksSinceLastSample = 0;
+    long long _cpuSampleSum = 0;
+    int _cpuSampleCount = 0;
+    int _cpuSampleMin = 0;
+    int _cpuSampleMax = 0;
 };
 }  // namespace saint

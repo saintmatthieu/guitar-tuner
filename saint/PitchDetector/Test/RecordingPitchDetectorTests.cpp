@@ -182,7 +182,7 @@ TEST(IssueReportingPitchDetector, exchangesTheDetectorOnStartAndKeepsItOnComplet
     IssueReportingPitchDetector detector(stubConfig, [&] {
         ++numDetectorsCreated;
         return std::make_unique<StubPitchDetector>();
-    });
+    }, {});
     EXPECT_EQ(numDetectorsCreated, 1);
 
     const std::vector<float> block(stubConfig.samplesPerBlockPerChannel, 0.f);
@@ -214,7 +214,7 @@ TEST(IssueReportingPitchDetector, restartsOnTheFlyWhenStartIsCalledWhileRecordin
     IssueReportingPitchDetector detector(stubConfig, [&] {
         ++numDetectorsCreated;
         return std::make_unique<StubPitchDetector>();
-    });
+    }, {});
     const std::vector<float> block(stubConfig.samplesPerBlockPerChannel, 0.f);
 
     StubListener firstListener;
