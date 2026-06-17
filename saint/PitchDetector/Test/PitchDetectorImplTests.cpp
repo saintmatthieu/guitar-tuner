@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -31,6 +34,8 @@ struct TestResult {
     fs::path testFile;
     fs::path noiseFile;
     std::string noiseRmsDb;
+    double processCpuSeconds = 0.;  // summed CPU time spent in process() (Release only)
+    double audioSeconds = 0.;       // audio duration fed through process()
 };
 
 struct ReferenceCheck {
@@ -56,6 +61,59 @@ ReferenceCheck checkReference(const fs::path& path, double actual, double tolera
     file >> reference;
     return {std::abs(actual - reference) <= tolerance, false, reference};
 }
+
+#ifdef NDEBUG
+// CPU time (seconds) consumed by the calling thread so far. Timing process() this
+// way rather than with a wall clock keeps the benchmark's multithreading from
+// inflating the measurement through core contention. POSIX (Linux/macOS); falls
+// back to a wall clock elsewhere.
+double threadCpuSeconds() {
+#if defined(__linux__) || defined(__APPLE__)
+    timespec ts{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) * 1e-9;
+#else
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+#endif
+}
+
+// Trimmed stdout of `git <args>`, or "unknown" if git is unavailable / fails.
+std::string gitOutput(const std::string& args) {
+    std::string out;
+    if (FILE* pipe = popen(("git " + args + " 2>/dev/null").c_str(), "r")) {
+        char buffer[512];
+        while (std::fgets(buffer, sizeof buffer, pipe) != nullptr) {
+            out += buffer;
+        }
+        pclose(pipe);
+    }
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) {
+        out.pop_back();
+    }
+    return out.empty() ? "unknown" : out;
+}
+
+// Host description (CPU model + logical core count) so RT% rows can be compared
+// like-for-like - the measurement is hardware-dependent. Linux /proc/cpuinfo; other
+// platforms fall back to just the core count.
+std::string machineDescription() {
+    std::string cpu = "unknown CPU";
+    std::ifstream cpuinfo("/proc/cpuinfo");
+    for (std::string line; std::getline(cpuinfo, line);) {
+        if (line.rfind("model name", 0) == 0) {
+            const auto colon = line.find(':');
+            const auto start =
+                colon == std::string::npos ? std::string::npos : line.find_first_not_of(" \t", colon + 1);
+            if (start != std::string::npos) {
+                cpu = line.substr(start);
+            }
+            break;
+        }
+    }
+    return cpu + " (" + std::to_string(std::thread::hardware_concurrency()) + " threads)";
+}
+#endif  // NDEBUG
 }  // namespace
 
 // Benchmarks one algorithm per run, selected with `algorithm=<id>` (defaults to
@@ -140,11 +198,20 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             std::vector<bool> onsets;
+            auto caseProcessCpuSeconds = 0.;  // Release only; 0 otherwise
+            auto caseAudioSeconds = 0.;
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 DebugOutput debugOutput;
+#ifdef NDEBUG
+                const auto cpuT0 = threadCpuSeconds();
+#endif
                 const auto finalEstimate = pitchDetector->process(
                     noisyData + i * numChannels, &debugOutput, debugOutputSignal.get());
+#ifdef NDEBUG
+                caseProcessCpuSeconds += threadCpuSeconds() - cpuT0;
+                caseAudioSeconds += static_cast<double>(blockSize) / noisy.sampleRate;
+#endif
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -239,7 +306,9 @@ TEST(PitchDetectorImpl, benchmarking) {
                                       csvLine.str(),
                                       sample.file,
                                       testCase.noise.file,
-                                      testCase.noise.rmsDb};
+                                      testCase.noise.rmsDb,
+                                      caseProcessCpuSeconds,
+                                      caseAudioSeconds};
 
             // Progress reporting (thread-safe)
             const auto completed = ++completedCount;
@@ -380,5 +449,45 @@ TEST(PitchDetectorImpl, benchmarking) {
             << " (tolerance " << gate.tolerance
             << "; rerun with updateBenchmarkReferences=true to accept the new value)";
     }
+
+#ifdef NDEBUG
+    // process() CPU cost as a fraction of real time (CPU-seconds per second of audio,
+    // in percent). Per-algorithm, machine/load dependent and so NOT gated; appended to
+    // a checked-in log keyed by branch+commit so we can compare costs across commits
+    // (e.g. how much ACF averaging adds). Release + full-benchmark only.
+    {
+        auto totalProcessCpuSeconds = 0.;
+        auto totalAudioSeconds = 0.;
+        for (const auto& result : results) {
+            totalProcessCpuSeconds += result.processCpuSeconds;
+            totalAudioSeconds += result.audioSeconds;
+        }
+        const auto realtimePercent =
+            totalAudioSeconds > 0. ? 100. * totalProcessCpuSeconds / totalAudioSeconds : 0.;
+        tee << "[" << algorithmId
+            << "] process() real-time cost: " << realtimePercent << "%\n";
+
+        std::time_t now = std::time(nullptr);
+        char dateBuf[16] = "0000-00-00";
+        std::strftime(dateBuf, sizeof dateBuf, "%Y-%m-%d", std::localtime(&now));
+
+        const auto logPath = testUtils::getEvalDir() / "cpu-realtime-log.md";
+        const bool existed = fs::exists(logPath);
+        std::ofstream cpuLog(logPath, std::ios::app);
+        if (!existed) {
+            cpuLog << "# process() real-time CPU cost\n\n"
+                   << "Release, full-benchmark only. RT% = CPU time in `process()` / audio "
+                      "duration x 100,\nmeasured with a per-thread CPU clock (contention-free). "
+                      "Machine- and load-dependent\nand not reproducible, so it is recorded here "
+                      "for comparison rather than gated.\n\n"
+                   << "| date | branch | commit | message | algorithm | machine | RT% |\n"
+                   << "|------|--------|--------|---------|-----------|---------|-----|\n";
+        }
+        cpuLog << "| " << dateBuf << " | " << gitOutput("rev-parse --abbrev-ref HEAD") << " | "
+               << gitOutput("rev-parse --short HEAD") << " | " << gitOutput("log -1 --format=%s")
+               << " | " << algorithmId << " | " << machineDescription() << " | " << std::fixed
+               << std::setprecision(2) << realtimePercent << " |\n";
+    }
+#endif  // NDEBUG
 }
 }  // namespace saint
