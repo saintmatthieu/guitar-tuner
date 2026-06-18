@@ -33,6 +33,7 @@ target_sources(ReplayApp
 target_link_libraries(ReplayApp
   PRIVATE
     PitchDetector
+    RecordingReplay
 )
 
 target_include_directories(ReplayApp

@@ -12,6 +12,9 @@ namespace saint {
  * it reads the recorded audio and config from the WAV file and feeds the
  * stored blocks to a fresh `PitchDetector` created via
  * `PitchDetectorFactory::createInstance()`.
+ *
+ * Like `readWavFile`, this is offline debug/test tooling (used by ReplayApp and
+ * the recording tests), not part of the production PitchDetector library.
  */
 class ReplayPitchDetector : public PitchDetector {
    public:

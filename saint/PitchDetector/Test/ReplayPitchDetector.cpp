@@ -1,6 +1,9 @@
 #include "ReplayPitchDetector.h"
 
 #include "PitchDetectorFactory.h"
+#include "RecordingFileReader.h"
+// createInstance() returns a unique_ptr<IssueReportingPitchDetector>; the complete type is
+// needed to convert it to the unique_ptr<PitchDetector> stored in `_inner`.
 #include "Recording/IssueReportingPitchDetector.h"
 
 namespace saint {

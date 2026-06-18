@@ -13,7 +13,8 @@
 #include "Recording/IssueReportingPitchDetector.h"
 #include "Recording/PitchDetectorRecording.h"
 #include "Recording/RecordingPitchDetector.h"
-#include "Recording/ReplayPitchDetector.h"
+#include "RecordingFileReader.h"
+#include "ReplayPitchDetector.h"
 #include "testUtils.h"
 
 namespace saint {

@@ -20,7 +20,6 @@ target_sources(PitchDetector
     Recording/IssueReportingPitchDetector.cpp
     Recording/PitchDetectorRecording.cpp
     Recording/RecordingPitchDetector.cpp
-    Recording/ReplayPitchDetector.cpp
 )
 
 target_link_libraries(PitchDetector
@@ -44,6 +43,7 @@ add_subdirectory(Pesto)
 add_subdirectory(Aubio)
 add_subdirectory(Pyin)
 
-if(NOT NO_GTEST)
-  add_subdirectory(Test)
-endif()
+# Always added: Test/ also defines the RecordingReplay library (the WAV reader +
+# ReplayPitchDetector), which the ReplayApp needs even in NO_GTEST builds. The gtest
+# executables inside are guarded by NOT NO_GTEST.
+add_subdirectory(Test)

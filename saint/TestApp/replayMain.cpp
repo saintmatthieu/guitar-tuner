@@ -8,7 +8,7 @@
 #include <string>
 #include <thread>
 
-#include "PitchDetector/Recording/ReplayPitchDetector.h"
+#include "ReplayPitchDetector.h"
 #include "TunerDisplay.h"
 
 #ifdef SAINT_REPLAY_WITH_ALSA
