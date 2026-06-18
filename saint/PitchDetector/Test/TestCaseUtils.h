@@ -240,6 +240,8 @@ std::optional<T> getArgument(const std::string& prefix) {
                 return fs::path(argStr.substr(prefix.size() + 1 /* skip "=" */));
             } else if constexpr (std::is_same_v<T, int>) {
                 return std::stoi(argStr.substr(prefix.size() + 1 /* skip "=" */));
+            } else if constexpr (std::is_same_v<T, float>) {
+                return std::stof(argStr.substr(prefix.size() + 1 /* skip "=" */));
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return argStr.substr(prefix.size() + 1 /* skip "=" */);
             } else if constexpr (std::is_same_v<T, bool>) {

@@ -288,6 +288,37 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
 
     return bestCandidate > 0.f ? bestCandidate : octaviatedIndex;
 }
+
+// Fraction of whitened-spectrum peak energy lying on the higher-harmonic (k>=2)
+// comb of f0Index. A pure tone has all its energy at k=1 -> ~0; broadband noise and
+// inharmonic/octave-misplaced locks scatter energy off-comb -> low; a genuine note
+// puts strong, comb-aligned energy in its overtones -> high.
+float computeHarmonicity(const std::vector<float>& spec, float f0Index, float minF0Index) {
+    if (f0Index <= 0.f) {
+        return 0.f;
+    }
+    const int minSearch = std::max(1, static_cast<int>(minF0Index));
+    const int maxSearch =
+        std::min(static_cast<int>(10.f * f0Index), static_cast<int>(spec.size()) / 2);
+    if (maxSearch <= minSearch) {
+        return 0.f;
+    }
+    const PeakData peaks = getPeaks(spec, minSearch, maxSearch);
+    // Tolerance for "peak sits on harmonic k": a fraction of the harmonic spacing,
+    // floored so low f0 (few bins per harmonic) isn't impossibly strict.
+    const float tol = std::max(1.5f, f0Index * 0.1f);
+    float totalEnergy = 0.f;
+    float overtoneEnergy = 0.f;
+    for (size_t i = 0; i < peaks.indices.size(); ++i) {
+        const float value = peaks.values[i];
+        totalEnergy += value;
+        const int k = std::max(1, static_cast<int>(std::round(peaks.indices[i] / f0Index)));
+        if (k >= 2 && std::abs(peaks.indices[i] - k * f0Index) <= tol) {
+            overtoneEnergy += value;
+        }
+    }
+    return totalEnergy > 0.f ? overtoneEnergy / totalEnergy : 0.f;
+}
 }  // namespace
 
 float AutocorrEstimateDisambiguator::disambiguateEstimate(float priorEstimate,
@@ -313,12 +344,18 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
 
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
                                              const std::vector<float>& dbSpectrum,
-                                             std::optional<float> constraint) {
+                                             std::optional<float> constraint,
+                                             float* harmonicityOut) {
     auto idealSpectrum = dbSpectrum;
     toIdealSpectrum(idealSpectrum);
 
     const auto disambiguatedEstimate =
         disambiguateEstimate(xcorrEstimate, idealSpectrum, constraint);
+
+    if (harmonicityOut) {
+        *harmonicityOut =
+            computeHarmonicity(idealSpectrum, disambiguatedEstimate / _binFreq, _minFreq / _binFreq);
+    }
 
     return disambiguatedEstimate;
 }

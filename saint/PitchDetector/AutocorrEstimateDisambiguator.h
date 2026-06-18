@@ -16,8 +16,12 @@ class AutocorrEstimateDisambiguator {
     AutocorrEstimateDisambiguator(int sampleRate, int fftSize, Tuning tuning,
                                   PitchDetectorLoggerInterface& logger);
 
+    // If harmonicityOut is non-null, it receives a [0,1] harmonicity score for the
+    // returned estimate: the fraction of whitened-spectrum peak energy that lies on
+    // the higher-harmonic (k>=2) comb of the estimate. Low for pure tones, broadband
+    // noise and inharmonic/octave-misplaced locks; high for genuine harmonic notes.
     float process(float xcorrEstimate, const std::vector<float>& dbSpectrum,
-                  std::optional<float> constraint = std::nullopt);
+                  std::optional<float> constraint = std::nullopt, float* harmonicityOut = nullptr);
 
    private:
     float disambiguateEstimate(float priorEstimate, const std::vector<float>& idealSpectrum,

@@ -39,14 +39,22 @@ double skewedNormalPdf(double x, double a, double loc, double scale) {
 // Probability of xcorrEstimate not being octaviated given presence score s.
 // Uses Bayes' theorem with fitted distributions.
 double probabilityNotOctaviated(double s) {
-    // Distribution parameters (fitted from data)
-    constexpr double kBetaA = 3.388008757503728;
-    constexpr double kBetaB = 0.4029325165967037;
-    constexpr double kSkewA = 4.583734827154467;
-    constexpr double kSkewLoc = 0.12563587985166158;
-    constexpr double kSkewScale = 0.364240265091698;
-    constexpr double kPriorGood = 0.5911103997932017;
+    // Distribution parameters, fitted by eval/fitAndShowErrorProbabilityModels.py from
+    // raw per-frame presence/error pairs (collected with disableOctaviationGate=true
+    // testWithMedianFilter=false). The fit is specific to the averaging setting, so it
+    // must be regenerated whenever autocorrAveragingFrameCount changes.
+    //
+    // Active set: autocorrAveragingFrameCount=4 (cross-frame ACF averaging).
+    constexpr double kBetaA = 2.7634801603149746;
+    constexpr double kBetaB = 0.39897836666380115;
+    constexpr double kSkewA = 6.89477379633251;
+    constexpr double kSkewLoc = 0.07457877837828505;
+    constexpr double kSkewScale = 0.3471294772559438;
+    constexpr double kPriorGood = 0.5733624834956706;
     constexpr double kPriorNotGood = 1. - kPriorGood;
+    // For autocorrAveragingFrameCount=1 (no averaging), use:
+    //   kBetaA=3.388008757503728, kBetaB=0.4029325165967037, kSkewA=4.583734827154467,
+    //   kSkewLoc=0.12563587985166158, kSkewScale=0.364240265091698, kPriorGood=0.5911103997932017
 
     // f_(S|G)(s|good) - likelihood of s given good estimate
     const double likelihoodGood = betaPdf(s, kBetaA, kBetaB);
@@ -72,13 +80,18 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
                                      AutocorrPitchDetector autocorrPitchDetector,
                                      AutocorrEstimateDisambiguator disambiguator,
                                      OnsetDetector onsetDetector,
-                                     std::unique_ptr<PitchDetectorLoggerInterface> logger)
+                                     std::unique_ptr<PitchDetectorLoggerInterface> logger,
+                                     bool applyOctaviationGate, double presenceThreshold,
+                                     float harmonicityFloor)
     : _preprocessor(std::move(preprocessor)),
       _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
       _onsetDetector(std::move(onsetDetector)),
-      _logger(std::move(logger)) {}
+      _logger(std::move(logger)),
+      _applyOctaviationGate(applyOctaviationGate),
+      _presenceThreshold(presenceThreshold),
+      _harmonicityFloor(harmonicityFloor) {}
 
 float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
                                  std::vector<float>* debugOutputSignal) {
@@ -91,8 +104,11 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         (*debugOutput)["isOnset"] = isOnset ? 1.f : 0.f;
     }
     if (isOnset) {
-        // New attack is detected, likely a new note ; reset constraint
+        // New attack is detected, likely a new note ; reset constraint and drop
+        // the cross-frame autocorrelation average so the new note doesn't blur
+        // into the previous one.
         _estimateConstraint.reset();
+        _autocorrPitchDetector.reset();
     }
 
     const auto processedAudio = _preprocessor->processBlock(audio);
@@ -109,34 +125,25 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _autocorrPitchDetector.process(freq, &presenceScore, _estimateConstraint);
     if (debugOutput) {
         (*debugOutput)["presenceScore"] = presenceScore;
+        (*debugOutput)["xcorrEstimate"] = xcorrEstimate;
     }
 
     if (xcorrEstimate == 0.f) {
         return 0.f;
     }
 
-    // clang-format off
-    // Evaluate the probability of xcorrEstimate not being octaviated (being "good") given presence
-    // score "s".
-    // P(good|s) = f_(S|G)(s|good) * P(good) / f_S(s) where
-    // f_(S|G)(s|good) is modeled by a beta function of s with parameters
-    //      (a, b) = (1.8116072489777812, 0.360943336209587)
-    // f_(S|G)(s|not good) is modeled by a skewed normal distribution with parameters
-    //      (a, loc, scale) = (4.551395913440457, 0.12565570910063836, 0.3627118137538335)
-    // f_S(s) is a mixture of both with weights 0.665 for the "good" distribution and 0.335 for the "not good".
-    // clang-format on
+    // Evaluate the probability of xcorrEstimate not being octaviated ("good") given
+    // the presence score "s": P(good|s) = f(s|good) P(good) / f_S(s), where f(s|good)
+    // is a Beta pdf, f(s|not good) a skewed-normal pdf, and f_S(s) their prior-weighted
+    // mixture. The fitted parameters live in probabilityNotOctaviated() above and are
+    // produced by eval/fitAndShowErrorProbabilityModels.py from errors.py.
     const double probNotOctaviated = probabilityNotOctaviated(presenceScore);
-
-    // At the time of writing, achieves 99% of estimates within +/-50 cents of the ground truth
-    // and 8% of the test cases failing by no-pitch-detected.
-    constexpr auto thresholdWithoutEstimateConstraint = 0.85;
-    constexpr auto thresholdWithEstimateConstraint = 0.7;
-    const auto threshold = _estimateConstraint.has_value() ? thresholdWithEstimateConstraint
-                                                           : thresholdWithoutEstimateConstraint;
-    if (probNotOctaviated < threshold) {
-        return 0.f;
+    if (debugOutput) {
+        (*debugOutput)["probNotOctaviated"] = static_cast<float>(probNotOctaviated);
     }
 
+    // The spectrum and disambiguation are computed before the gate so the gate can
+    // also weigh the harmonicity of the octave-corrected estimate (#4).
     std::vector<float> powerSpectrum;
     utils::getPowerSpectrum(freq, powerSpectrum);
     std::vector<float> dbSpectrum = powerSpectrum;
@@ -145,8 +152,23 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     assert(utils::isSymmetric(dbSpectrum));
     _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
 
+    float harmonicity = 0.f;
     const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, dbSpectrum, _estimateConstraint);
+        _disambiguator.process(xcorrEstimate, dbSpectrum, _estimateConstraint, &harmonicity);
+    if (debugOutput) {
+        (*debugOutput)["harmonicity"] = harmonicity;
+    }
+
+    // Gate: reject when the presence-based octaviation probability is too low, or the
+    // estimate lacks harmonic support. The with-constraint (locked) case keeps the
+    // historical 0.7 presence cut. harmonicityFloor=0 disables the harmonic criterion.
+    constexpr auto thresholdWithEstimateConstraint = 0.7;
+    const auto threshold =
+        _estimateConstraint.has_value() ? thresholdWithEstimateConstraint : _presenceThreshold;
+    if (_applyOctaviationGate &&
+        (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
+        return 0.f;
+    }
 
     return disambiguatedEstimate;
 }

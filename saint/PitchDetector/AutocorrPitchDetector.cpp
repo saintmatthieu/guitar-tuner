@@ -70,7 +70,46 @@ AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
       _fwdFft(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / minFreq))),
-      _windowXcorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)) {}
+      _windowXcorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)) {
+    if (autocorrAveragingFrameCount > 1) {
+        _xcorrHistory.assign(autocorrAveragingFrameCount, std::vector<float>(_fftSize, 0.f));
+        _averagedXcorr.resize(_fftSize, 0.f);
+    }
+}
+
+void AutocorrPitchDetector::reset() {
+    _historyWritePos = 0;
+    _historyFilled = 0;
+}
+
+const std::vector<float>& AutocorrPitchDetector::averageOverFrames(
+    const std::vector<float>& xcorr) {
+    if (autocorrAveragingFrameCount <= 1) {
+        return xcorr;
+    }
+
+    // Overwrite the oldest slot (equal-size copy, no reallocation in the RT path).
+    _xcorrHistory[_historyWritePos] = xcorr;
+    _historyWritePos = (_historyWritePos + 1) % autocorrAveragingFrameCount;
+    if (_historyFilled < autocorrAveragingFrameCount) {
+        ++_historyFilled;
+    }
+
+    // Average the valid frames. While the ring is filling, only [0, _historyFilled)
+    // hold real data; once full, _historyFilled == K and every slot is valid.
+    std::fill(_averagedXcorr.begin(), _averagedXcorr.end(), 0.f);
+    for (auto k = 0; k < _historyFilled; ++k) {
+        const auto& frame = _xcorrHistory[k];
+        for (auto i = 0u; i < _averagedXcorr.size(); ++i) {
+            _averagedXcorr[i] += frame[i];
+        }
+    }
+    const auto scale = 1.f / _historyFilled;
+    for (auto& v : _averagedXcorr) {
+        v *= scale;
+    }
+    return _averagedXcorr;
+}
 
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
                                      float* presenceScore, std::optional<float> constraint) {
@@ -80,6 +119,11 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
     // Compute cross-correlation
     getXCorr(_fwdFft, xcorr, freq, _lpWindow);
     _logger.Log(xcorr.data(), xcorr.size(), "xcorr");
+
+    // Average over the last few frames to suppress noise-driven octave errors
+    // (idea #1). `acf` aliases `xcorr` when averaging is disabled.
+    const std::vector<float>& acf = averageOverFrames(xcorr);
+    _logger.Log(acf.data(), acf.size(), "averagedXcorr");
 
     // Determine search range based on constraint
     int firstSearchIndex = 0;
@@ -99,9 +143,9 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
     auto wentNegative = false;
     auto maximum = 0.f;
     for (auto i = 0; i < lastSearchIndex; ++i) {
-        wentNegative |= xcorr[i] < 0;
-        if (wentNegative && i >= firstSearchIndex && xcorr[i] > maximum) {
-            maximum = xcorr[i];
+        wentNegative |= acf[i] < 0;
+        if (wentNegative && i >= firstSearchIndex && acf[i] > maximum) {
+            maximum = acf[i];
             maxIndex = i;
         }
     }
@@ -115,7 +159,7 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         return 0.f;
     }
 
-    const auto fracIndex = utils::quadFit(&xcorr[maxIndex - 1]);
+    const auto fracIndex = utils::quadFit(&acf[maxIndex - 1]);
     const auto refinedIndex = maxIndex + fracIndex;
 
     return maxIndex == 0 ? 0.f : static_cast<float>(_sampleRate) / refinedIndex;

@@ -22,6 +22,17 @@ struct BenchmarkAlgorithmContext {
     // In-house-specific options; other algorithms are free to ignore them.
     std::optional<int> indexOfProcessToLog;
     bool withMedianFilter = true;
+    // When false, the probNotOctaviated gate is bypassed so every frame emits an
+    // estimate. Used to collect the full presence-score/error distribution for
+    // re-fitting the gate (see eval/fitAndShowErrorProbabilityModels.py).
+    bool applyOctaviationGate = true;
+    // Gate knobs (in-house algorithm); default to the tuned production operating point
+    // (PitchDetectorTypes.h) so a plain benchmark gates exactly what ships. Overridable
+    // from the CLI to sweep operating points.
+    double presenceThreshold = octaviationPresenceThreshold;
+    float harmonicityFloor = octaviationHarmonicityFloor;
+    // Median-filter window (s); matches the production default. Drives output latency.
+    float medianFilterDuration = 0.15f;
 };
 
 using BenchmarkAlgorithmFactory =
@@ -30,8 +41,10 @@ using BenchmarkAlgorithmFactory =
 // Aggregate metrics the benchmark computes over a full-corpus run. These are the
 // inputs to an algorithm's pass/fail gates.
 struct BenchmarkMetrics {
-    double avgError = 0.;  // mean signed cents error
-    double rmsError = 0.;  // RMS cents error
+    double avgError = 0.;        // mean signed cents error
+    double rmsError = 0.;        // mean of per-case RMS cents error
+    double medianRmsError = 0.;  // median of per-case RMS cents error (robust central tendency)
+    double p99RmsError = 0.;     // 99th-percentile per-case RMS cents error (tail accuracy)
     double falsePositiveRate = 0.;
     double falseNegativeRate = 0.;  // weighted
     double auc = 0.;                // area under the presence-score ROC curve

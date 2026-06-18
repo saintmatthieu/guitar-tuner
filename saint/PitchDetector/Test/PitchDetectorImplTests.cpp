@@ -46,20 +46,29 @@ struct ReferenceCheck {
 
 // Compares an algorithm metric against its golden reference file. The file is
 // seeded with the current value when it does not yet exist (or when `update` is
-// set), and otherwise treated as the authority - a mismatch fails the gate
-// without silently rewriting the file.
+// set). On a mismatch the gate fails, but the golden file is rewritten with the
+// new value so the change is visible in the git diff (and accepted by committing
+// it) - the test still fails, so the change can't slip in unnoticed.
 ReferenceCheck checkReference(const fs::path& path, double actual, double tolerance, bool update) {
+    constexpr auto precision = std::numeric_limits<double>::digits10 + 1;
     std::error_code ec;
     if (update || !fs::exists(path, ec)) {
         fs::create_directories(path.parent_path(), ec);
         std::ofstream file{path};
-        file << std::setprecision(std::numeric_limits<double>::digits10 + 1) << actual;
+        file << std::setprecision(precision) << actual;
         return {true, true, actual};
     }
-    std::ifstream file{path};
     double reference = 0.;
-    file >> reference;
-    return {std::abs(actual - reference) <= tolerance, false, reference};
+    {
+        std::ifstream file{path};
+        file >> reference;
+    }
+    const auto passed = std::abs(actual - reference) <= tolerance;
+    if (!passed) {
+        std::ofstream file{path};
+        file << std::setprecision(precision) << actual;
+    }
+    return {passed, false, reference};
 }
 
 #ifdef NDEBUG
@@ -130,6 +139,16 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argIndexOfProcessToLog = getArgument<int>("indexOfProcessToLog");
     const auto argTestCaseId = getArgument<std::string>("testCaseId");
     const auto argTestWithMedianFilter = getArgument<bool>("testWithMedianFilter");
+    // Calibration aid: bypass the probNotOctaviated gate so every frame emits an
+    // estimate, yielding the full presence-score/error distribution that
+    // eval/fitAndShowErrorProbabilityModels.py needs to re-fit the gate. Pair with
+    // testWithMedianFilter=false to get raw per-frame (score, error) pairs.
+    const auto argDisableOctaviationGate =
+        getArgument<bool>("disableOctaviationGate").value_or(false);
+    // Gate-tuning knobs for sweeping #4 without rebuilds (see BenchmarkAlgorithmContext).
+    const auto argPresenceThreshold = getArgument<float>("presenceThreshold");
+    const auto argHarmonicityFloor = getArgument<float>("harmonicityFloor");
+    const auto argMedianFilterDuration = getArgument<float>("medianFilterDuration");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
     const auto updateReferences = getArgument<bool>("updateBenchmarkReferences").value_or(false);
 
@@ -180,7 +199,12 @@ TEST(PitchDetectorImpl, benchmarking) {
                 blockSize,
                 kTestTuning,
                 argIndexOfProcessToLog,
-                !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter};
+                !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter,
+                !argDisableOctaviationGate,
+                argPresenceThreshold.value_or(
+                    static_cast<float>(octaviationPresenceThreshold)),
+                argHarmonicityFloor.value_or(octaviationHarmonicityFloor),
+                argMedianFilterDuration.value_or(0.15f)};
             const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;
@@ -198,6 +222,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             std::vector<bool> onsets;
+            std::vector<float> xcorrEstimates;   // pre-gate period estimate (Hz)
+            std::vector<float> probsNotOctaviated;
             auto caseProcessCpuSeconds = 0.;  // Release only; 0 otherwise
             auto caseAudioSeconds = 0.;
 
@@ -212,6 +238,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 caseProcessCpuSeconds += threadCpuSeconds() - cpuT0;
                 caseAudioSeconds += static_cast<double>(blockSize) / noisy.sampleRate;
 #endif
+                xcorrEstimates.push_back(debugOutput["xcorrEstimate"]);
+                probsNotOctaviated.push_back(debugOutput["probNotOctaviated"]);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -238,7 +266,7 @@ TEST(PitchDetectorImpl, benchmarking) {
                     finalEstimate > 0.f ? 1200.f * std::log2(finalEstimate / sample.truth.frequency)
                                         : 0.f;
                 testFileEstimates.emplace_back(weight, debugOutput["presenceScore"], finalEstimate,
-                                               errorCents);
+                                               errorCents, debugOutput["harmonicity"]);
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
             }
 
@@ -268,6 +296,19 @@ TEST(PitchDetectorImpl, benchmarking) {
 
             if (argTestCaseId.has_value()) {
                 std::cout << csvLine.str();
+
+                // Per-frame diagnostic dump: pre-gate period vs. presence/octaviation
+                // gate vs. final estimate. Lets us see whether averaging moved the
+                // winning ACF peak or merely raised the gate score on an existing one.
+                std::ofstream frameDump(testUtils::getOutDir() / ("frameDump" + fileSuffix + ".csv"));
+                frameDump << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
+                             "finalHz,truthHz,errorCents\n";
+                for (size_t f = 0; f < testFileEstimates.size(); ++f) {
+                    const auto& e = testFileEstimates[f];
+                    frameDump << f << "," << (onsets[f] ? 1 : 0) << "," << e.s << ","
+                              << probsNotOctaviated[f] << "," << xcorrEstimates[f] << "," << e.f
+                              << "," << sample.truth.frequency << "," << e.e << "\n";
+                }
 
                 std::ofstream frequencyEstimatesFile(testUtils::getOutDir() /
                                                      ("frequencyEstimates" + fileSuffix + ".py"));
@@ -349,18 +390,21 @@ TEST(PitchDetectorImpl, benchmarking) {
         std::ofstream errorsFile(testUtils::getOutDir() / ("errors" + fileSuffix + ".py"));
         std::vector<float> errors;
         std::vector<float> scores;
+        std::vector<float> harmonicities;
         for (const auto& result : results) {
             if (result.cents.has_value()) {
                 for (const auto& estimate : result.estimates) {
                     if (estimate.f > 0.f) {
                         errors.push_back(estimate.e);
                         scores.push_back(estimate.s);
+                        harmonicities.push_back(estimate.h);
                     }
                 }
             }
         }
         testUtils::PrintPythonVector(errorsFile, errors, "errors");
         testUtils::PrintPythonVector(errorsFile, scores, "scores");
+        testUtils::PrintPythonVector(errorsFile, harmonicities, "harmonicities");
     }
 
     if (argTestCaseId.has_value()) {
@@ -377,6 +421,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     auto count = 0;
     auto worstRms = 0.;
     auto worstRmsIndex = 0;
+    std::vector<double> perCaseRms;
     for (auto i = 0u; i < results.size(); ++i) {
         const auto& result = results[i];
         totalPositiveWeight += result.positiveWeight;
@@ -387,6 +432,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             ++count;
             avgAvg += result.cents->avg;
             rmsAvg += result.cents->rms;
+            perCaseRms.push_back(result.cents->rms);
             if (result.cents->rms > worstRms) {
                 worstRms = result.cents->rms;
                 worstRmsIndex = i;
@@ -395,12 +441,30 @@ TEST(PitchDetectorImpl, benchmarking) {
     }
     avgAvg /= count;
     rmsAvg /= count;
+    // Median and 99th-percentile per-case RMS. Both are robust to the *magnitude* of
+    // the catastrophic outliers (an octave vs. two-octave error reads the same in the
+    // tuner UI), unlike the mean: the median tracks typical accuracy, the 99th
+    // percentile the tail (how often catastrophic errors occur).
+    auto medianRms = 0.;
+    auto p99Rms = 0.;
+    if (!perCaseRms.empty()) {
+        std::sort(perCaseRms.begin(), perCaseRms.end());
+        const auto mid = perCaseRms.size() / 2;
+        medianRms = perCaseRms.size() % 2 == 0 ? 0.5 * (perCaseRms[mid - 1] + perCaseRms[mid])
+                                               : perCaseRms[mid];
+        // Linear-interpolated percentile (matches numpy's default).
+        const auto rank = 0.99 * (perCaseRms.size() - 1);
+        const auto lo = static_cast<size_t>(std::floor(rank));
+        const auto hi = static_cast<size_t>(std::ceil(rank));
+        p99Rms = perCaseRms[lo] + (rank - lo) * (perCaseRms[hi] - perCaseRms[lo]);
+    }
 
     const auto globalFalsePositiveRate = 1. * totalFalsePositiveCount / totalNegativeCount;
     const auto globalFalseNegativeRate = totalFalseNegativeWeight / totalPositiveWeight;
 
     tee << "[" << algorithmId << "] Error across all tests:\n\tAVG: " << avgAvg
-        << "\n\tRMS: " << rmsAvg << "\n\tFPR: " << globalFalsePositiveRate
+        << "\n\tRMS: " << rmsAvg << "\n\tmedian RMS: " << medianRms
+        << "\n\t99th-pct RMS: " << p99Rms << "\n\tFPR: " << globalFalsePositiveRate
         << "\n\tFNR: " << globalFalseNegativeRate << "\n\tworst RMS error: " << worstRms
         << " at index " << worstRmsIndex << " (" << results[worstRmsIndex].id << ")\n";
 
@@ -429,7 +493,12 @@ TEST(PitchDetectorImpl, benchmarking) {
     // updateBenchmarkReferences=true) and compared within tolerance afterwards.
     // The in-house algorithm's golden files are committed, so it is gated from the
     // start; a brand-new third-party algorithm seeds its references on first run.
-    const BenchmarkMetrics metrics{avgAvg, rmsAvg, globalFalsePositiveRate, globalFalseNegativeRate,
+    const BenchmarkMetrics metrics{avgAvg,
+                                   rmsAvg,
+                                   medianRms,
+                                   p99Rms,
+                                   globalFalsePositiveRate,
+                                   globalFalseNegativeRate,
                                    rocInfo.areaUnderCurve};
     const auto referenceDir = testUtils::getEvalDir() / "BenchmarkingOutput";
     for (const auto& gate : algorithm.gates) {
