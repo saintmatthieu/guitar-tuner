@@ -8,7 +8,9 @@
 namespace saint {
 namespace recording {
 namespace {
+constexpr uint16_t pcmFormatTag = 1;
 constexpr uint16_t ieeeFloatFormatTag = 3;
+constexpr uint16_t waveFormatExtensible = 0xfffe;
 constexpr uint16_t bitsPerSample = 32;
 
 std::string tuningToString(Tuning tuning) {
@@ -78,6 +80,71 @@ bool readFourCC(std::istream& stream, char (&id)[5]) {
 // Sub-chunk payloads must be padded to an even byte count.
 uint32_t padded(uint32_t size) {
     return size + (size & 1);
+}
+
+// Converts a raw little-endian sample buffer into normalised [-1, 1] floats. Supports the
+// formats a "standard" WAV file is likely to use - 8/16/24/32-bit integer PCM and 32/64-bit
+// IEEE float - so a recording made outside the app can still be replayed. Returns false (leaving
+// `out` unspecified) for any format we cannot interpret. Assumes a little-endian host, as does
+// the rest of this file.
+bool decodeSamples(const std::vector<unsigned char>& raw, uint16_t formatTag, uint16_t bits,
+                   std::vector<float>& out) {
+    const auto bytesPerSample = bits / 8u;
+    if (bytesPerSample == 0) {
+        return false;
+    }
+    const auto numSamples = raw.size() / bytesPerSample;
+    out.resize(numSamples);
+
+    if (formatTag == ieeeFloatFormatTag && bits == 32) {
+        for (size_t i = 0; i < numSamples; ++i) {
+            std::memcpy(&out[i], raw.data() + i * 4, 4);
+        }
+        return true;
+    }
+    if (formatTag == ieeeFloatFormatTag && bits == 64) {
+        for (size_t i = 0; i < numSamples; ++i) {
+            double value = 0;
+            std::memcpy(&value, raw.data() + i * 8, 8);
+            out[i] = static_cast<float>(value);
+        }
+        return true;
+    }
+    if (formatTag == pcmFormatTag && bits == 8) {
+        // 8-bit PCM is unsigned with a bias of 128.
+        for (size_t i = 0; i < numSamples; ++i) {
+            out[i] = (static_cast<int>(raw[i]) - 128) / 128.0f;
+        }
+        return true;
+    }
+    if (formatTag == pcmFormatTag && bits == 16) {
+        for (size_t i = 0; i < numSamples; ++i) {
+            const auto value = static_cast<int16_t>(raw[i * 2] | raw[i * 2 + 1] << 8);
+            out[i] = value / 32768.0f;
+        }
+        return true;
+    }
+    if (formatTag == pcmFormatTag && bits == 24) {
+        for (size_t i = 0; i < numSamples; ++i) {
+            int32_t value = raw[i * 3] | raw[i * 3 + 1] << 8 | raw[i * 3 + 2] << 16;
+            if (value & 0x800000) {
+                value -= 0x1000000;  // sign-extend the 24-bit value
+            }
+            out[i] = value / 8388608.0f;
+        }
+        return true;
+    }
+    if (formatTag == pcmFormatTag && bits == 32) {
+        for (size_t i = 0; i < numSamples; ++i) {
+            const auto u = static_cast<uint32_t>(raw[i * 4]) | static_cast<uint32_t>(raw[i * 4 + 1])
+                                                                   << 8 |
+                           static_cast<uint32_t>(raw[i * 4 + 2]) << 16 |
+                           static_cast<uint32_t>(raw[i * 4 + 3]) << 24;
+            out[i] = static_cast<float>(static_cast<int32_t>(u) / 2147483648.0);
+        }
+        return true;
+    }
+    return false;
 }
 }  // namespace
 
@@ -185,7 +252,7 @@ bool writeWavFile(const std::filesystem::path& path, const RecordingData& data) 
     return writeWavFile(path, data.config, data.interleaved.data(), data.interleaved.size());
 }
 
-std::optional<RecordingData> readWavFile(const std::filesystem::path& path) {
+std::optional<RecordingData> readWavFile(const std::filesystem::path& path, std::string* warning) {
     std::ifstream stream(path, std::ios::binary);
     if (!stream.is_open()) {
         return std::nullopt;
@@ -200,9 +267,10 @@ std::optional<RecordingData> readWavFile(const std::filesystem::path& path) {
 
     std::optional<uint16_t> formatChannels;
     std::optional<uint32_t> formatSampleRate;
-    bool isFloat32 = false;
+    uint16_t formatTag = 0;
+    uint16_t formatBits = 0;
     std::optional<std::string> comment;
-    std::vector<float> interleaved;
+    std::vector<unsigned char> rawData;
     bool dataRead = false;
 
     while (readFourCC(stream, id)) {
@@ -212,18 +280,31 @@ std::optional<RecordingData> readWavFile(const std::filesystem::path& path) {
         }
         const auto nextChunk = static_cast<std::streamoff>(stream.tellg()) + padded(chunkSize);
         if (std::strcmp(id, "fmt ") == 0 && chunkSize >= 16) {
-            uint16_t formatTag = 0;
+            uint16_t tag = 0;
             uint16_t channels = 0;
             uint32_t sampleRate = 0;
             uint32_t byteRate = 0;
             uint16_t blockAlign = 0;
             uint16_t bits = 0;
-            if (!readU16(stream, formatTag) || !readU16(stream, channels) ||
+            if (!readU16(stream, tag) || !readU16(stream, channels) ||
                 !readU32(stream, sampleRate) || !readU32(stream, byteRate) ||
                 !readU16(stream, blockAlign) || !readU16(stream, bits)) {
                 return std::nullopt;
             }
-            isFloat32 = formatTag == ieeeFloatFormatTag && bits == bitsPerSample;
+            if (tag == waveFormatExtensible && chunkSize >= 40) {
+                // The real format tag lives in the first two bytes of the SubFormat GUID.
+                uint16_t cbSize = 0;
+                uint16_t validBits = 0;
+                uint32_t channelMask = 0;
+                uint16_t subFormatTag = 0;
+                if (!readU16(stream, cbSize) || !readU16(stream, validBits) ||
+                    !readU32(stream, channelMask) || !readU16(stream, subFormatTag)) {
+                    return std::nullopt;
+                }
+                tag = subFormatTag;
+            }
+            formatTag = tag;
+            formatBits = bits;
             formatChannels = channels;
             formatSampleRate = sampleRate;
         } else if (std::strcmp(id, "LIST") == 0 && chunkSize >= 4) {
@@ -258,9 +339,8 @@ std::optional<RecordingData> readWavFile(const std::filesystem::path& path) {
                 }
             }
         } else if (std::strcmp(id, "data") == 0) {
-            interleaved.resize(chunkSize / sizeof(float));
-            if (!stream.read(reinterpret_cast<char*>(interleaved.data()),
-                             interleaved.size() * sizeof(float))) {
+            rawData.resize(chunkSize);
+            if (!stream.read(reinterpret_cast<char*>(rawData.data()), chunkSize)) {
                 return std::nullopt;
             }
             dataRead = true;
@@ -271,14 +351,44 @@ std::optional<RecordingData> readWavFile(const std::filesystem::path& path) {
         }
     }
 
-    if (!isFloat32 || !dataRead || !comment.has_value()) {
+    if (!dataRead || !formatChannels.has_value() || !formatSampleRate.has_value()) {
         return std::nullopt;
     }
-    const auto config = deserializeConfig(*comment);
-    if (!config.has_value() ||
-        config->sampleRate != static_cast<int>(formatSampleRate.value_or(0)) ||
-        numChannels(config->channelFormat) != static_cast<int>(formatChannels.value_or(0))) {
+
+    std::vector<float> interleaved;
+    if (!decodeSamples(rawData, formatTag, formatBits, interleaved)) {
         return std::nullopt;
+    }
+
+    // A native app recording is 32-bit float carrying a config in its LIST INFO chunk that is
+    // consistent with the format header. Anything else readable is treated as a foreign WAV:
+    // converted above, replayed with a standard config, and flagged via `warning`.
+    const bool isFloat32 = formatTag == ieeeFloatFormatTag && formatBits == bitsPerSample;
+    std::optional<PitchDetectorConfig> config;
+    if (isFloat32 && comment.has_value()) {
+        if (auto parsed = deserializeConfig(*comment);
+            parsed.has_value() && parsed->sampleRate == static_cast<int>(*formatSampleRate) &&
+            numChannels(parsed->channelFormat) == static_cast<int>(*formatChannels)) {
+            config = parsed;
+        }
+    }
+
+    if (!config.has_value()) {
+        if (*formatChannels != 1 && *formatChannels != 2) {
+            // Only mono/stereo can be represented by a PitchDetectorConfig.
+            return std::nullopt;
+        }
+        if (warning != nullptr) {
+            *warning =
+                "'" + path.string() +
+                "' does not look like a guitar-tuner issue recording (expected a 32-bit float "
+                "WAV with an embedded config). Converting it and replaying with the standard "
+                "config.";
+        }
+        config = PitchDetectorConfig{
+            static_cast<int>(*formatSampleRate),
+            *formatChannels == 1 ? ChannelFormat::Mono : ChannelFormat::Stereo,
+            defaultSamplesPerBlockPerChannel, Tuning::Standard};
     }
 
     // Only whole blocks can be replayed.

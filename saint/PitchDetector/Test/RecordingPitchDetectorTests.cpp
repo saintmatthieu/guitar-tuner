@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
+#include <fstream>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "PitchDetectorFactory.h"
@@ -42,6 +45,38 @@ class StubListener : public IRecordingListener {
     std::optional<recording::RecordingData> data;
     int numCompletions = 0;
 };
+
+// Writes a plain 16-bit integer PCM WAV (no LIST INFO chunk) - i.e. a file that was *not*
+// produced by the app, to exercise the foreign-WAV path of `readWavFile`.
+void writePcm16Wav(const std::filesystem::path& path, int sampleRate, int channels,
+                   const std::vector<int16_t>& samples) {
+    std::ofstream stream(path, std::ios::binary);
+    const auto u16 = [&](uint16_t v) {
+        const char bytes[2] = {static_cast<char>(v & 0xff), static_cast<char>(v >> 8 & 0xff)};
+        stream.write(bytes, 2);
+    };
+    const auto u32 = [&](uint32_t v) {
+        const char bytes[4] = {static_cast<char>(v & 0xff), static_cast<char>(v >> 8 & 0xff),
+                               static_cast<char>(v >> 16 & 0xff), static_cast<char>(v >> 24 & 0xff)};
+        stream.write(bytes, 4);
+    };
+    const auto dataSize = static_cast<uint32_t>(samples.size() * sizeof(int16_t));
+    const auto blockAlign = static_cast<uint16_t>(channels * sizeof(int16_t));
+    stream.write("RIFF", 4);
+    u32(4 /*"WAVE"*/ + (8 + 16) /*fmt*/ + (8 + dataSize));
+    stream.write("WAVE", 4);
+    stream.write("fmt ", 4);
+    u32(16);
+    u16(1);  // WAVE_FORMAT_PCM
+    u16(static_cast<uint16_t>(channels));
+    u32(static_cast<uint32_t>(sampleRate));
+    u32(static_cast<uint32_t>(sampleRate) * blockAlign);
+    u16(blockAlign);
+    u16(16);  // bits per sample
+    stream.write("data", 4);
+    u32(dataSize);
+    stream.write(reinterpret_cast<const char*>(samples.data()), dataSize);
+}
 
 std::vector<float> sineBlocks(int numBlocks, int samplesPerBlock, float freq, int sampleRate) {
     std::vector<float> samples(static_cast<size_t>(numBlocks) * samplesPerBlock);
@@ -86,13 +121,62 @@ TEST(PitchDetectorRecording, wavFileRoundTrip) {
     const auto path = testUtils::getOutDir() / "recordingRoundTrip.wav";
 
     ASSERT_TRUE(recording::writeWavFile(path, config, samples.data(), samples.size()));
-    const auto read = recording::readWavFile(path);
+    std::string warning = "untouched";
+    const auto read = recording::readWavFile(path, &warning);
     ASSERT_TRUE(read.has_value());
     EXPECT_EQ(read->config.sampleRate, config.sampleRate);
     EXPECT_EQ(read->config.channelFormat, config.channelFormat);
     EXPECT_EQ(read->config.samplesPerBlockPerChannel, config.samplesPerBlockPerChannel);
     EXPECT_EQ(read->config.tuning, config.tuning);
     EXPECT_EQ(read->interleaved, samples);
+    // A native recording produces no warning.
+    EXPECT_EQ(warning, "untouched");
+}
+
+TEST(PitchDetectorRecording, readWavFileConvertsForeignPcmWavAndWarns) {
+    // A plain 16-bit PCM mono WAV with no embedded config: not an app recording.
+    constexpr int sampleRate = 48000;
+    constexpr int wholeBlocks = 3;
+    // A few extra frames so the leftover (non-whole) block gets truncated away.
+    const int numFrames = recording::defaultSamplesPerBlockPerChannel * wholeBlocks + 7;
+    std::vector<int16_t> pcm(numFrames);
+    for (int i = 0; i < numFrames; ++i) {
+        pcm[i] = static_cast<int16_t>((i % 200 - 100) * 300);
+    }
+    const auto path = testUtils::getOutDir() / "foreignPcm16.wav";
+    writePcm16Wav(path, sampleRate, 1, pcm);
+
+    std::string warning;
+    const auto read = recording::readWavFile(path, &warning);
+    ASSERT_TRUE(read.has_value());
+    EXPECT_FALSE(warning.empty());
+    // The standard config takes the sample rate and channel count from the file.
+    EXPECT_EQ(read->config.sampleRate, sampleRate);
+    EXPECT_EQ(read->config.channelFormat, ChannelFormat::Mono);
+    EXPECT_EQ(read->config.samplesPerBlockPerChannel,
+              recording::defaultSamplesPerBlockPerChannel);
+    EXPECT_EQ(read->config.tuning, Tuning::Standard);
+    // Truncated to whole blocks.
+    ASSERT_EQ(read->interleaved.size(),
+              static_cast<size_t>(recording::defaultSamplesPerBlockPerChannel) * wholeBlocks);
+    // 16-bit samples are normalised to [-1, 1].
+    for (size_t i = 0; i < read->interleaved.size(); ++i) {
+        EXPECT_NEAR(read->interleaved[i], pcm[i] / 32768.0f, 1e-7f) << "sample " << i;
+    }
+}
+
+TEST(PitchDetectorRecording, readWavFileMapsStereoForeignWav) {
+    constexpr int sampleRate = 44100;
+    std::vector<int16_t> pcm(recording::defaultSamplesPerBlockPerChannel * 2 * 2, 0);
+    const auto path = testUtils::getOutDir() / "foreignPcm16Stereo.wav";
+    writePcm16Wav(path, sampleRate, 2, pcm);
+
+    std::string warning;
+    const auto read = recording::readWavFile(path, &warning);
+    ASSERT_TRUE(read.has_value());
+    EXPECT_FALSE(warning.empty());
+    EXPECT_EQ(read->config.channelFormat, ChannelFormat::Stereo);
+    EXPECT_EQ(read->config.sampleRate, sampleRate);
 }
 
 TEST(RecordingPitchDetector, forwardsToInnerDetector) {

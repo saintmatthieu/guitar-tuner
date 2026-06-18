@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <thread>
 
 #include "PitchDetector/Recording/ReplayPitchDetector.h"
@@ -52,10 +53,14 @@ int main(int argc, char* argv[]) {
 
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
-    const auto pitchDetector = saint::ReplayPitchDetector::fromFile(file);
+    std::string warning;
+    const auto pitchDetector = saint::ReplayPitchDetector::fromFile(file, &warning);
     if (!pitchDetector) {
         std::cerr << "Could not load recording: " << file << std::endl;
         return 1;
+    }
+    if (!warning.empty()) {
+        std::cerr << "Warning: " << warning << std::endl;
     }
 
     const auto& config = pitchDetector->config();

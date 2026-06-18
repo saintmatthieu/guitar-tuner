@@ -5,8 +5,8 @@
 
 namespace saint {
 std::unique_ptr<ReplayPitchDetector> ReplayPitchDetector::fromFile(
-    const std::filesystem::path& path) {
-    auto data = recording::readWavFile(path);
+    const std::filesystem::path& path, std::string* warning) {
+    auto data = recording::readWavFile(path, warning);
     if (!data.has_value()) {
         return nullptr;
     }

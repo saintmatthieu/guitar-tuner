@@ -15,7 +15,10 @@ namespace saint {
  */
 class ReplayPitchDetector : public PitchDetector {
    public:
-    static std::unique_ptr<ReplayPitchDetector> fromFile(const std::filesystem::path&);
+    // If `warning` is non-null and the file isn't a native app recording, it is set to an
+    // explanatory message (the file is still loaded with a standard config; see `readWavFile`).
+    static std::unique_ptr<ReplayPitchDetector> fromFile(const std::filesystem::path&,
+                                                         std::string* warning = nullptr);
 
     /**
      * @brief Feeds the next stored block to the inner detector; `input` is
