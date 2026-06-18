@@ -100,5 +100,8 @@ enum class Tuning {
     OpenGsus42,
     PerfectFourthTuning,
     NewStandardTuning,
+    // Spans from the lowest pitch of any tuning to the highest.
+    // Used when the tuning is not known in advance.
+    Unknown,
 };
 }  // namespace saint

@@ -82,11 +82,12 @@ float saint::getMinFreq(Tuning tuning) {
         case Tuning::DropBb:
         case Tuning::DoubleDropBb:
             return pitchToFrequency({saint::PitchClass::G, 1});
-        // A1 lowest → A1 - 3 = Gb1
+        // A1 lowest → A1 - 3 = Gb1 (also the lowest of all tunings, hence Unknown)
         case Tuning::ATuning:
         case Tuning::DropA:
         case Tuning::DropA2:
         case Tuning::DoubleDropA:
+        case Tuning::Unknown:
             return pitchToFrequency({saint::PitchClass::Gb, 1});
         // G2 lowest → G2 - 3 = E2
         case Tuning::OpenG2:
@@ -168,8 +169,9 @@ float saint::getMaxFreq(Tuning tuning) {
         case Tuning::ATuning:
         case Tuning::DoubleDropA:
             return pitchToFrequency({saint::PitchClass::C, 4});
-        // G4 highest → G4 + 3 = Bb4
+        // G4 highest → G4 + 3 = Bb4 (also the highest of all tunings, hence Unknown)
         case Tuning::NewStandardTuning:
+        case Tuning::Unknown:
             return pitchToFrequency({saint::PitchClass::Bb, 4});
         // F4 highest → F4 + 3 = Ab4
         case Tuning::OpenF:
