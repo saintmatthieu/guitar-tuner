@@ -33,6 +33,14 @@ constexpr auto autocorrAveragingFrameCount = 4;
 constexpr double octaviationPresenceThreshold = 0.55;
 constexpr float octaviationHarmonicityFloor = 0.30f;
 
+// Onset detector (OnsetDetector.h) decision threshold on the spectral-flux novelty
+// function. Onsets reset the estimate constraint and the ACF cross-frame average, so
+// the threshold trades off catching a re-pluck (low threshold; see
+// OnsetDetectorCalibrationTests) against spurious resets on loud noise transients
+// during a sustained note (which cause octave errors in the benchmark). Tuned on
+// PitchDetectorImplTests.
+constexpr float onsetSpectralFluxThreshold = 0.0945148f;
+
 constexpr auto majorThirdRatio = 1.26f;
 
 struct Pitch {

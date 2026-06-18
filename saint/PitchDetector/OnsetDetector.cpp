@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <numeric>
 
 #include "Utils.h"
 
@@ -18,18 +17,25 @@ int getWindowSize(int sampleRate, float minFreq) {
     const auto minPeriod = 1. / minFreq;
     return numPeriods * minPeriod * sampleRate;
 }
+
+int nextPowerOfTwo(int n) {
+    int p = 1;
+    while (p < n) {
+        p <<= 1;
+    }
+    return p;
+}
 }  // namespace
 
 OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
-                             int samplesPerBlockPerChannel, float minFreq)
+                             int samplesPerBlockPerChannel, float minFreq, float threshold)
     : _channelFormat(channelFormat),
       _blockSize(samplesPerBlockPerChannel),
+      _threshold(threshold),
       _window(utils::getAnalysisWindow<double>(getWindowSize(sampleRate, minFreq), windowType)),
+      _fftSize(nextPowerOfTwo(static_cast<int>(_window.size()))),
+      _fft(_fftSize),
       _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f),
-      _avgFilterLength(1. * sampleRate / samplesPerBlockPerChannel * 0.25),
-      _pastPowers(_avgFilterLength, 0.f),
-      _avgWindow(utils::getAnalysisWindow<double>(_avgFilterLength, utils::WindowType::Hann)),
-      _alpha(0.7 * sampleRate / samplesPerBlockPerChannel / 100),
       _leastBlockCountBetweenOffsets(sampleRate / samplesPerBlockPerChannel * 0.1) {
     _audioBuffer.reserve(std::max<size_t>(_window.size(), samplesPerBlockPerChannel));
 }
@@ -50,31 +56,50 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
         return false;
     }
 
+    // Window the most recent _window.size() samples into a zero-padded,
+    // FFT-sized (power-of-two) buffer.
+    Aligned<std::vector<float>> timeAligned;
+    auto& time = timeAligned.value;
+    time.assign(_fftSize, 0.f);
     const auto bufferStart = _audioBuffer.end() - _window.size();
-    std::vector<double> windowed(_window.size());
-    std::transform(bufferStart, _audioBuffer.end(), _window.begin(), windowed.begin(),
-                   [](double x, double w) { return x * w; });
+    std::transform(bufferStart, _audioBuffer.end(), _window.begin(), time.begin(),
+                   [](float x, double w) { return static_cast<float>(x * w); });
 
-    // Remove old samples, keeping only what's needed for the next window
+    // Remove old samples, keeping only what's needed for the next window.
     const auto samplesToKeep = std::max(static_cast<int>(_window.size()) - _blockSize, 0);
     _audioBuffer.erase(_audioBuffer.begin(), _audioBuffer.end() - samplesToKeep);
 
-    const auto power = std::accumulate(windowed.begin(), windowed.end(), 0.f,
-                                       [](float acc, float val) { return acc + val * val; });
+    // Forward FFT -> magnitude spectrum.
+    Aligned<std::vector<std::complex<float>>> freqAligned;
+    auto& freq = freqAligned.value;
+    freq.resize(_fftSize / 2);
+    _fft.forward(time.data(), freq.data());
 
-    const auto onsetStrength = std::max(_prevPower.has_value() ? power - *_prevPower : 0., 0.);
-
-    _prevPower = power * (1 - _alpha) + _prevPower.value_or(power) * _alpha;
+    // Spectral flux: sum of the positive magnitude changes across bins. Zero on
+    // the very first frame (no previous magnitudes yet).
+    const auto numBins = freq.size();
+    auto onsetStrength = 0.f;
+    if (_prevMagnitude.size() == numBins) {
+        for (size_t i = 0; i < numBins; ++i) {
+            const auto mag = std::abs(freq[i]);
+            const auto delta = mag - _prevMagnitude[i];
+            if (delta > 0.f) {
+                onsetStrength += delta;
+            }
+            _prevMagnitude[i] = mag;
+        }
+    } else {
+        _prevMagnitude.resize(numBins);
+        for (size_t i = 0; i < numBins; ++i) {
+            _prevMagnitude[i] = std::abs(freq[i]);
+        }
+    }
 
     if (debugOutput) {
-        (*debugOutput)["power"] = power;
-        (*debugOutput)["powerAvg"] = _prevPower.value_or(0.);
         (*debugOutput)["onsetStrength"] = onsetStrength;
     }
 
-    // To get this, we run OnsetDetectorCalibrationTests and then showOnsetDetectionHistograms.py.
-    // It is set so that there are no false negatives.
-    const auto isOnset = onsetStrength > 1.75109e-07;
+    const auto isOnset = onsetStrength > _threshold;
 
     const auto output = isOnset && _countSinceLastTrueOutput >= _leastBlockCountBetweenOffsets;
     if (output) {
@@ -84,17 +109,6 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
     }
 
     return output;
-}
-
-double OnsetDetector::updatePowerAverage(double newPower) {
-    _pastPowers.erase(_pastPowers.begin());
-    _pastPowers.push_back(newPower);
-
-    auto avg = 0.;
-    for (auto i = 0; i < _avgFilterLength; ++i) {
-        avg += _pastPowers[i] * _avgWindow[i];
-    }
-    return avg;
 }
 
 bool OnsetDetector::process(const float* audio, DebugOutput* debugOutput) {
