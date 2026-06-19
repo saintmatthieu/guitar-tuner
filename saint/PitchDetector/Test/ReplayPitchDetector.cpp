@@ -20,7 +20,7 @@ ReplayPitchDetector::ReplayPitchDetector(recording::RecordingData data)
     : _data(std::move(data)),
       _inner(PitchDetectorFactory::createInstance(
           _data.config.sampleRate, _data.config.channelFormat,
-          _data.config.samplesPerBlockPerChannel, _data.config.tuning)),
+          _data.config.samplesPerBlockPerChannel, _data.config.tuning, _data.config.holdPitch)),
       _samplesPerBlock(_data.config.samplesPerBlockPerChannel *
                        numChannels(_data.config.channelFormat)) {}
 

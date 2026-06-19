@@ -147,37 +147,44 @@ std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
     };
 #ifdef SAINT_WITH_PESTO
     if (choice.usePesto) {
-        const saint::recording::PitchDetectorConfig config{
-            sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard};
-        return std::make_unique<saint::IssueReportingPitchDetector>(config, [config] {
-            const auto modelPath = std::filesystem::path(SAINT_PESTO_MODEL_DIR) /
-                                   ("mir-1k_g7_" + std::to_string(config.sampleRate) + "_" +
-                                    std::to_string(config.samplesPerBlockPerChannel) + ".onnx");
-            // 0.11 is the benchmark ROC's 1%-FPR operating point; the
-            // checkpoint's nominal 0.5 is far too conservative on guitar
-            // (see pesto-benchmark-results.md).
-            constexpr auto confidenceThreshold = 0.11f;
-            return std::make_unique<saint::PestoPitchDetector>(
-                modelPath, config.sampleRate, config.channelFormat,
-                config.samplesPerBlockPerChannel, confidenceThreshold);
-        }, cpuSummary);
+        const saint::recording::PitchDetectorConfig config{sampleRate, saint::ChannelFormat::Mono,
+                                                           blockSize, saint::Tuning::Standard};
+        return std::make_unique<saint::IssueReportingPitchDetector>(
+            config,
+            [config] {
+                const auto modelPath = std::filesystem::path(SAINT_PESTO_MODEL_DIR) /
+                                       ("mir-1k_g7_" + std::to_string(config.sampleRate) + "_" +
+                                        std::to_string(config.samplesPerBlockPerChannel) + ".onnx");
+                // 0.11 is the benchmark ROC's 1%-FPR operating point; the
+                // checkpoint's nominal 0.5 is far too conservative on guitar
+                // (see pesto-benchmark-results.md).
+                constexpr auto confidenceThreshold = 0.11f;
+                return std::make_unique<saint::PestoPitchDetector>(
+                    modelPath, config.sampleRate, config.channelFormat,
+                    config.samplesPerBlockPerChannel, confidenceThreshold);
+            },
+            cpuSummary);
     }
 #endif
 #ifdef SAINT_WITH_AUBIO
     if (choice.aubioMethod.has_value()) {
-        const saint::recording::PitchDetectorConfig config{
-            sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard};
+        const saint::recording::PitchDetectorConfig config{sampleRate, saint::ChannelFormat::Mono,
+                                                           blockSize, saint::Tuning::Standard};
         const auto method = *choice.aubioMethod;
-        return std::make_unique<saint::IssueReportingPitchDetector>(config, [config, method] {
-            return std::make_unique<saint::AubioPitchDetector>(method, config.sampleRate,
-                                                               config.channelFormat,
-                                                               config.samplesPerBlockPerChannel);
-        }, cpuSummary);
+        return std::make_unique<saint::IssueReportingPitchDetector>(
+            config,
+            [config, method] {
+                return std::make_unique<saint::AubioPitchDetector>(
+                    method, config.sampleRate, config.channelFormat,
+                    config.samplesPerBlockPerChannel);
+            },
+            cpuSummary);
     }
 #endif
     (void)choice;
-    return saint::PitchDetectorFactory::createInstance(
-        sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard, cpuSummary);
+    return saint::PitchDetectorFactory::createInstance(sampleRate, saint::ChannelFormat::Mono,
+                                                       blockSize, saint::Tuning::Standard,
+                                                       /*holdPitch=*/true, cpuSummary);
 }
 
 int runLive(const std::string& device, const std::optional<std::filesystem::path>& outPath,
@@ -270,8 +277,7 @@ int main(int argc, char* argv[]) {
     std::string device = "default";
     std::optional<std::filesystem::path> outPath;
     AlgorithmChoice choice;
-    constexpr auto usage =
-        " [device_name] [--out <recording.wav>] [--pesto] [--aubio <method>]";
+    constexpr auto usage = " [device_name] [--out <recording.wav>] [--pesto] [--aubio <method>]";
     for (auto i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--out") {

@@ -10,10 +10,12 @@ namespace saint {
 namespace recording {
 
 struct PitchDetectorConfig {
-    int sampleRate;
-    ChannelFormat channelFormat;
-    int samplesPerBlockPerChannel;
-    Tuning tuning;
+    int sampleRate = 0;
+    ChannelFormat channelFormat = ChannelFormat::Mono;
+    int samplesPerBlockPerChannel = 0;
+    Tuning tuning = Tuning::Standard;
+    bool holdPitch = true;  // Hold the last pitch for a short time after the note stopped being
+                            // detected. Avoids blinks in the UI.
 };
 
 struct RecordingData {
@@ -30,6 +32,7 @@ constexpr auto sampleRateKey = "sampleRate";
 constexpr auto channelFormatKey = "channelFormat";
 constexpr auto samplesPerBlockPerChannelKey = "samplesPerBlockPerChannel";
 constexpr auto tuningKey = "tuning";
+constexpr auto holdPitchKey = "holdPitch";
 
 std::string serializeConfig(const PitchDetectorConfig&);
 
