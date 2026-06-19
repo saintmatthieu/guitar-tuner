@@ -112,8 +112,9 @@ std::string machineDescription() {
     for (std::string line; std::getline(cpuinfo, line);) {
         if (line.rfind("model name", 0) == 0) {
             const auto colon = line.find(':');
-            const auto start =
-                colon == std::string::npos ? std::string::npos : line.find_first_not_of(" \t", colon + 1);
+            const auto start = colon == std::string::npos
+                                   ? std::string::npos
+                                   : line.find_first_not_of(" \t", colon + 1);
             if (start != std::string::npos) {
                 cpu = line.substr(start);
             }
@@ -153,6 +154,8 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argOnsetK = getArgument<float>("onsetK");
     const auto argOnsetAbsFloor = getArgument<float>("onsetAbsFloor");
     const auto argMedianFilterDuration = getArgument<float>("medianFilterDuration");
+    const auto argHoldDuration = getArgument<float>("holdDuration");
+    const auto argHoldOnsetGuard = getArgument<float>("holdOnsetGuard");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
     const auto updateReferences = getArgument<bool>("updateBenchmarkReferences").value_or(false);
 
@@ -205,14 +208,15 @@ TEST(PitchDetectorImpl, benchmarking) {
                 argIndexOfProcessToLog,
                 !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter,
                 !argDisableOctaviationGate,
-                argPresenceThreshold.value_or(
-                    static_cast<float>(octaviationPresenceThreshold)),
+                argPresenceThreshold.value_or(static_cast<float>(octaviationPresenceThreshold)),
                 argHarmonicityFloor.value_or(octaviationHarmonicityFloor),
                 argThresholdWithEstimateConstraint.value_or(
                     static_cast<float>(octaviationPresenceThresholdWithConstraint)),
                 argOnsetK.value_or(onsetFluxMedianMultiplier),
                 argOnsetAbsFloor.value_or(onsetFluxAbsFloor),
-                argMedianFilterDuration.value_or(0.15f)};
+                argMedianFilterDuration.value_or(0.15f),
+                argHoldDuration.value_or(1.0f),
+                argHoldOnsetGuard.value_or(0.5f)};
             const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;
@@ -230,7 +234,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             std::vector<bool> onsets;
-            std::vector<float> xcorrEstimates;   // pre-gate period estimate (Hz)
+            std::vector<float> xcorrEstimates;  // pre-gate period estimate (Hz)
             std::vector<float> probsNotOctaviated;
             auto caseProcessCpuSeconds = 0.;  // Release only; 0 otherwise
             auto caseAudioSeconds = 0.;
@@ -308,7 +312,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 // Per-frame diagnostic dump: pre-gate period vs. presence/octaviation
                 // gate vs. final estimate. Lets us see whether averaging moved the
                 // winning ACF peak or merely raised the gate score on an existing one.
-                std::ofstream frameDump(testUtils::getOutDir() / ("frameDump" + fileSuffix + ".csv"));
+                std::ofstream frameDump(testUtils::getOutDir() /
+                                        ("frameDump" + fileSuffix + ".csv"));
                 frameDump << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
                              "finalHz,truthHz,errorCents\n";
                 for (size_t f = 0; f < testFileEstimates.size(); ++f) {
@@ -541,8 +546,7 @@ TEST(PitchDetectorImpl, benchmarking) {
         }
         const auto realtimePercent =
             totalAudioSeconds > 0. ? 100. * totalProcessCpuSeconds / totalAudioSeconds : 0.;
-        tee << "[" << algorithmId
-            << "] process() real-time cost: " << realtimePercent << "%\n";
+        tee << "[" << algorithmId << "] process() real-time cost: " << realtimePercent << "%\n";
 
         std::time_t now = std::time(nullptr);
         char dateBuf[16] = "0000-00-00";

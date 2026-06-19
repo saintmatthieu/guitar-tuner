@@ -15,15 +15,23 @@ int getFilterSize(int sampleRate, int blockSize, float filterDuration) {
     }
     return std::max(size, 3);  // minimum 3 for median to be meaningful
 }
+
+int durationToBlocks(int sampleRate, int blockSize, float duration) {
+    const auto blockDuration = static_cast<float>(blockSize) / static_cast<float>(sampleRate);
+    return std::max(0, static_cast<int>(std::round(duration / blockDuration)));
+}
 }  // namespace
 
 PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSize,
                                                      std::unique_ptr<PitchDetectorImpl> impl,
-                                                     float filterDuration)
+                                                     float filterDuration, float holdDuration,
+                                                     float holdOnsetGuard)
     : _blockSize(blockSize),
       _impl(std::move(impl)),
       _buffer(getFilterSize(sampleRate, blockSize, filterDuration)),
-      _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
+      _delayedScores((_buffer.size() - 1) / 2, 0.f),
+      _maxHoldFrames(durationToBlocks(sampleRate, blockSize, holdDuration)),
+      _minFramesBeforeHold(durationToBlocks(sampleRate, blockSize, holdOnsetGuard)) {}
 
 int PitchDetectorMedianFilter::delaySamples() const {
     return _delayedScores.size() * _blockSize + _impl->delaySamples();
@@ -39,7 +47,14 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
 
     const auto raw = _impl->process(input, debugOutput, debugOutputSignal);
     if (const auto isOnset = debugOutput->at("isOnset") == 1.f) {
+        // New attack: drop the lock and any held pitch from the previous note, and restart
+        // the post-onset counter that guards the hold.
         _allGoodOnce = false;
+        _heldPitch = 0.f;
+        _framesHeld = 0;
+        _framesSinceOnset = 0;
+    } else {
+        ++_framesSinceOnset;
     }
 
     const auto rawPresenceScore = debugOutput->at("presenceScore");
@@ -66,13 +81,29 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     std::sort(sortedBuffer.begin(), sortedBuffer.end());
     const auto medianFiltered = sortedBuffer[sortedBuffer.size() / 2];
 
-    // Lock when median filter outputs a non-zero estimate (note onset).
-    // Update the constraint while locked to track the current pitch.
     if (medianFiltered > 0.f) {
+        // Tracking: update the constraint to follow the current pitch, remember it as the
+        // value to hold, and re-arm the hold window.
         _impl->setEstimateConstraint(medianFiltered);
+        _heldPitch = medianFiltered;
+        _framesHeld = 0;
+        return medianFiltered;
     }
 
-    return medianFiltered;
+    // Locked but no estimate this block: the presence score dipped under the gate. Hold the
+    // last pitch for up to _maxHoldFrames so the indicator doesn't blink off on a transient
+    // dip, but only once we are well past the onset (_framesSinceOnset >= _minFramesBeforeHold)
+    // so we never hold a still-settling attack. The constraint is left in place, so tracking
+    // resumes from the same anchor the moment the note re-emerges (medianFiltered > 0 above).
+    // Past the cap the held note is considered gone and we emit 0; the lock is kept (it is
+    // dropped only on an onset), so a later re-emergence still resumes and re-arms the hold.
+    if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames &&
+        _framesSinceOnset >= _minFramesBeforeHold) {
+        ++_framesHeld;
+        return _heldPitch;
+    }
+
+    return 0.f;
 }
 
 }  // namespace saint

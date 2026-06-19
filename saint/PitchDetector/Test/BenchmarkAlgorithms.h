@@ -41,6 +41,12 @@ struct BenchmarkAlgorithmContext {
     float onsetAbsFloor = onsetFluxAbsFloor;
     // Median-filter window (s); matches the production default. Drives output latency.
     float medianFilterDuration = 0.15f;
+    // Hold window (s): once locked, keep emitting the last pitch through a presence dip
+    // for up to this long before declaring the note gone. 0 disables the hold (legacy).
+    float holdDuration = 1.f;
+    // The hold only engages this long (s) after the last onset, so it acts on the settled
+    // tail of a note rather than the still-resolving attack.
+    float holdOnsetGuard = 0.5f;
 };
 
 using BenchmarkAlgorithmFactory =

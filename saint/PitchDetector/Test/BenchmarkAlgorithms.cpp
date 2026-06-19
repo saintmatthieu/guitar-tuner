@@ -68,7 +68,8 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     }
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
-        ctx.sampleRate, ctx.blockSize, std::move(internalAlgorithm), ctx.medianFilterDuration);
+        ctx.sampleRate, ctx.blockSize, std::move(internalAlgorithm), ctx.medianFilterDuration,
+        ctx.holdDuration, ctx.holdOnsetGuard);
     const auto blocksPerSecond = ctx.sampleRate / ctx.blockSize;
     return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
 }
