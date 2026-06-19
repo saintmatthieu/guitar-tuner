@@ -21,6 +21,11 @@ std::atomic<bool> gRunning{true};
 void signalHandler(int) {
     gRunning = false;
 }
+
+bool wasOnset(const saint::DebugOutput& debug) {
+    const auto it = debug.find("isOnset");
+    return it != debug.end() && it->second != 0.f;
+}
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -94,7 +99,9 @@ int main(int argc, char* argv[]) {
 #ifdef SAINT_REPLAY_WITH_ALSA
         if (playing) {
             const float* block = pitchDetector->peekBlock();
-            display.update(pitchDetector->process(nullptr));
+            saint::DebugOutput debug;
+            const float frequency = pitchDetector->process(nullptr, &debug);
+            display.update(frequency, wasOnset(debug));
             if (!player->write(block, framesPerBlock)) {
                 // Playback died mid-stream; fall back to timed pacing.
                 playing = false;
@@ -104,7 +111,9 @@ int main(int argc, char* argv[]) {
         }
 #endif
         const auto blockStart = std::chrono::steady_clock::now();
-        display.update(pitchDetector->process(nullptr));
+        saint::DebugOutput debug;
+        const float frequency = pitchDetector->process(nullptr, &debug);
+        display.update(frequency, wasOnset(debug));
         if (!fast) {
             std::this_thread::sleep_until(blockStart + blockDuration);
         }

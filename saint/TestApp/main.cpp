@@ -227,11 +227,14 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
             pitchDetector->startIssueRecording(kIssueRecordingSeconds, recordingListener);
         }
 
-        const float frequency = pitchDetector->process(samples);
+        saint::DebugOutput debug;
+        const float frequency = pitchDetector->process(samples, &debug);
+        const auto onsetIt = debug.find("isOnset");
+        const bool onsetDetected = onsetIt != debug.end() && onsetIt->second != 0.f;
         std::ostringstream status;
         status << "  CPU: " << std::setw(3) << pitchDetector->realtimePercentage() << "%"
                << recordingListener.status();
-        display.update(frequency, status.str());
+        display.update(frequency, onsetDetected, status.str());
     });
 
     if (!success) {

@@ -15,6 +15,11 @@ constexpr float kA4Frequency = 440.0f;
 constexpr int kA4MidiNote = 69;
 
 const char* kNoteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+
+// A note attack spans a single block (~11 ms at the TestApp's 512/44100 block rate), far too
+// brief to see. Latch the onset indicator for this many display updates (~230 ms) so a pluck
+// registers visually before it decays.
+constexpr int kOnsetHoldFrames = 20;
 }  // namespace
 
 TunerDisplay::TunerDisplay() : _isTty(isatty(fileno(stdout)) != 0) {
@@ -88,7 +93,11 @@ std::string TunerDisplay::renderMeter(float cents, int width, bool useColor) {
     return oss.str();
 }
 
-void TunerDisplay::update(float frequencyHz, const std::string& status) {
+void TunerDisplay::update(float frequencyHz, bool onsetDetected, const std::string& status) {
+    if (onsetDetected) {
+        _onsetHoldFrames = kOnsetHoldFrames;
+    }
+
     if (!_isTty) {
         // No in-place updating possible: print a plain line a couple of times per second.
         constexpr int kThrottle = 32;
@@ -100,6 +109,15 @@ void TunerDisplay::update(float frequencyHz, const std::string& status) {
         std::cout << "\r\033[K";
     }
 
+    // Note-attack indicator, latched (see kOnsetHoldFrames) so a momentary onset is visible and
+    // decays a few frames later. The line is cleared on every update, so an empty string when
+    // idle leaves no residue.
+    std::string onsetStr;
+    if (_onsetHoldFrames > 0) {
+        onsetStr = _isTty ? "  \033[93m● ONSET\033[0m" : "  ● ONSET";
+        --_onsetHoldFrames;
+    }
+
     if (frequencyHz <= 0.f) {
         // Same column layout as the pitch branch below, so that the meter doesn't shift when
         // detection toggles.
@@ -109,6 +127,7 @@ void TunerDisplay::update(float frequencyHz, const std::string& status) {
         std::cout << " │ ";
         std::cout << renderMeter(0, 41, _isTty);
         std::cout << " " << std::setw(3) << "--" << "¢";
+        std::cout << onsetStr;
         std::cout << status;
         if (!_isTty) {
             std::cout << "\n";
@@ -150,6 +169,7 @@ void TunerDisplay::update(float frequencyHz, const std::string& status) {
     std::cout << " │ ";
     std::cout << renderMeter(note.cents, 41, _isTty);
     std::cout << " " << centsStr.str() << "¢";
+    std::cout << onsetStr;
     std::cout << status;
     if (!_isTty) {
         std::cout << "\n";
