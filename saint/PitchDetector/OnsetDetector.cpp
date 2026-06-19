@@ -28,16 +28,23 @@ int nextPowerOfTwo(int n) {
 }  // namespace
 
 OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
-                             int samplesPerBlockPerChannel, float minFreq, float threshold)
+                             int samplesPerBlockPerChannel, float minFreq, float k, float absFloor)
     : _channelFormat(channelFormat),
       _blockSize(samplesPerBlockPerChannel),
-      _threshold(threshold),
+      _k(k),
+      _absFloor(absFloor),
       _window(utils::getAnalysisWindow<double>(getWindowSize(sampleRate, minFreq), windowType)),
       _fftSize(nextPowerOfTwo(static_cast<int>(_window.size()))),
       _fft(_fftSize),
       _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f),
       _leastBlockCountBetweenOffsets(sampleRate / samplesPerBlockPerChannel * 0.1) {
     _audioBuffer.reserve(std::max<size_t>(_window.size(), samplesPerBlockPerChannel));
+    // ~0.4 s causal window for the adaptive-threshold median. Frames per second =
+    // sampleRate / blockSize (blockSize = sampleRate/100, so ~100 fps at any SR).
+    const auto medianWindowSize =
+        std::max(1, static_cast<int>(std::lround(0.4 * sampleRate / samplesPerBlockPerChannel)));
+    _fluxHistory.assign(medianWindowSize, absFloor);  // pre-seed with the silence floor
+    _medianScratch.resize(medianWindowSize);
 }
 
 bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
@@ -95,11 +102,27 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
         }
     }
 
+    // Level-adaptive threshold: k times the causal running median of recent flux,
+    // floored for silence. The median is taken over PAST frames only (computed
+    // before inserting the current flux), so an onset spike never raises its own
+    // bar, and the median's robustness plus the refractory prevent re-triggering.
+    std::copy(_fluxHistory.begin(), _fluxHistory.end(), _medianScratch.begin());
+    const auto mid = _medianScratch.size() / 2;
+    std::nth_element(_medianScratch.begin(), _medianScratch.begin() + mid, _medianScratch.end());
+    const auto baseline = std::max(_medianScratch[mid], _absFloor);
+    const auto adaptiveThreshold = _k * baseline;
+
+    _fluxHistory[_fluxHistoryPos] = onsetStrength;
+    _fluxHistoryPos = (_fluxHistoryPos + 1) % static_cast<int>(_fluxHistory.size());
+
     if (debugOutput) {
         (*debugOutput)["onsetStrength"] = onsetStrength;
+        (*debugOutput)["onsetMedian"] = baseline;
+        (*debugOutput)["onsetThreshold"] = adaptiveThreshold;
+        (*debugOutput)["onsetRatio"] = onsetStrength / baseline;
     }
 
-    const auto isOnset = onsetStrength > _threshold;
+    const auto isOnset = onsetStrength > adaptiveThreshold;
 
     const auto output = isOnset && _countSinceLastTrueOutput >= _leastBlockCountBetweenOffsets;
     if (output) {

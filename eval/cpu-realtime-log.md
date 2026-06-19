@@ -10,3 +10,4 @@ and not reproducible, so it is recorded here for comparison rather than gated.
 | 2026-06-17 | HEAD | 93a740b | harmonicity-gate tuning -> RMS99 reduced a lot | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 2.90 |
 | 2026-06-17 | harmonic-gate | d9fd71b | Enable acf avg -> FNR looses 2% | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 3.52 |
 | 2026-06-18 | master | 8e56b95 | Merge pull request #3 from saintmatthieu/harmonic-gate | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 3.54 |
+| 2026-06-19 | onset-detection-improvements | ebe8ea3 | backup | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 3.52 |

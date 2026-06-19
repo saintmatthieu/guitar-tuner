@@ -55,7 +55,7 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     AutocorrEstimateDisambiguator disambiguator(ctx.sampleRate, transformer.fftSize(), ctx.tuning,
                                                 *logger);
     OnsetDetector onsetDetector(ctx.sampleRate, ctx.channelFormat, ctx.blockSize, minFreq,
-                                ctx.onsetThreshold);
+                                ctx.onsetK, ctx.onsetAbsFloor);
 
     auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),

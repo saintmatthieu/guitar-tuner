@@ -31,9 +31,10 @@ struct BenchmarkAlgorithmContext {
     // from the CLI to sweep operating points.
     double presenceThreshold = octaviationPresenceThreshold;
     float harmonicityFloor = octaviationHarmonicityFloor;
-    // Onset detector decision threshold (spectral-flux novelty). Overridable from the
-    // CLI to sweep the onset operating point (onsetThreshold=...).
-    float onsetThreshold = onsetSpectralFluxThreshold;
+    // Onset detector level-adaptive decision: flux > onsetK * max(runningMedian, onsetAbsFloor).
+    // Overridable from the CLI to sweep the onset operating point (onsetK=..., onsetAbsFloor=...).
+    float onsetK = onsetFluxMedianMultiplier;
+    float onsetAbsFloor = onsetFluxAbsFloor;
     // Median-filter window (s); matches the production default. Drives output latency.
     float medianFilterDuration = 0.15f;
 };

@@ -33,13 +33,20 @@ constexpr auto autocorrAveragingFrameCount = 4;
 constexpr double octaviationPresenceThreshold = 0.55;
 constexpr float octaviationHarmonicityFloor = 0.30f;
 
-// Onset detector (OnsetDetector.h) decision threshold on the spectral-flux novelty
-// function. Onsets reset the estimate constraint and the ACF cross-frame average, so
-// the threshold trades off catching a re-pluck (low threshold; see
-// OnsetDetectorCalibrationTests) against spurious resets on loud noise transients
-// during a sustained note (which cause octave errors in the benchmark). Tuned on
-// PitchDetectorImplTests.
-constexpr float onsetSpectralFluxThreshold = 0.0945148f;
+// Onset detector (OnsetDetector.h) decision: a level-adaptive threshold on the
+// spectral-flux novelty function. An onset fires when the flux exceeds
+// onsetFluxMedianMultiplier times a causal running median of the recent flux, floored
+// by onsetFluxAbsFloor. Spectral flux scales with input amplitude, so a fixed absolute
+// threshold only works near the level it was tuned for (a quiet/unplugged instrument
+// then needs hard plucks); dividing by the recent-flux median makes the decision
+// input-level invariant while keeping the flux's noise separation. onsetFluxAbsFloor is
+// the silence guard: it sets the lowest input level at which onsets are still detected
+// (must clear ambient/digital silence yet stay below the quietest target note's running
+// median). onsetFluxMedianMultiplier is derived for zero false negatives on the
+// calibration corpus (eval/showOnsetDetectionHistograms.py); both are validated against
+// OnsetDetectorCalibrationTests and PitchDetectorImplTests.
+constexpr float onsetFluxMedianMultiplier = 3.0f;
+constexpr float onsetFluxAbsFloor = 0.001f;
 
 constexpr auto majorThirdRatio = 1.26f;
 
