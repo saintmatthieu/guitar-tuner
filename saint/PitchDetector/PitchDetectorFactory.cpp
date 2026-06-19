@@ -15,8 +15,7 @@ namespace saint {
 
 namespace {
 std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelFormat channelFormat,
-                                                    int samplesPerBlockPerChannel, Tuning tuning,
-                                                    bool holdPitch) {
+                                                    int samplesPerBlockPerChannel, Tuning tuning) {
     auto logger = std::make_unique<DummyPitchDetectorLogger>();
 
     const auto minFreq = getMinFreq(tuning);
@@ -38,15 +37,8 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
         std::move(disambiguator), std::move(onsetDetector), std::move(logger));
 
-    // PitchDetectorConfig::holdPitch toggles the median filter's pitch-hold. Enabled, it uses
-    // the filter's default hold window; disabled, a zero-length hold window turns it off. (The
-    // default analysis window, 0.15 s, is restated for the disabled case so only the hold
-    // window is overridden.)
-    auto medianFilter =
-        holdPitch ? std::make_unique<PitchDetectorMedianFilter>(
-                        sampleRate, samplesPerBlockPerChannel, std::move(impl))
-                  : std::make_unique<PitchDetectorMedianFilter>(
-                        sampleRate, samplesPerBlockPerChannel, std::move(impl), 0.15f, 0.f);
+    auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
+        sampleRate, samplesPerBlockPerChannel, std::move(impl));
 
     const auto blocksPerSecond = sampleRate / samplesPerBlockPerChannel;
 
@@ -56,15 +48,14 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
 
 std::unique_ptr<IssueReportingPitchDetector> PitchDetectorFactory::createInstance(
     int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning,
-    bool holdPitch, std::function<void(std::string logLine)> cpuSummaryCallback) {
+    std::function<void(std::string logLine)> cpuSummaryCallback) {
     const recording::PitchDetectorConfig config{sampleRate, channelFormat,
-                                                samplesPerBlockPerChannel, tuning, holdPitch};
+                                                samplesPerBlockPerChannel, tuning};
     return std::make_unique<IssueReportingPitchDetector>(
         config,
         [config] {
             return createImplementation(config.sampleRate, config.channelFormat,
-                                        config.samplesPerBlockPerChannel, config.tuning,
-                                        config.holdPitch);
+                                        config.samplesPerBlockPerChannel, config.tuning);
         },
         std::move(cpuSummaryCallback));
 }

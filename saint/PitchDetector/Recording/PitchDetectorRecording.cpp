@@ -40,8 +40,7 @@ std::string serializeConfig(const PitchDetectorConfig& config) {
            channelFormatKey + "=" +
            (config.channelFormat == ChannelFormat::Mono ? "Mono" : "Stereo") + ";" +
            samplesPerBlockPerChannelKey + "=" + std::to_string(config.samplesPerBlockPerChannel) +
-           ";" + tuningKey + "=" + tuningToString(config.tuning) + ";" + holdPitchKey + "=" +
-           (config.holdPitch ? "true" : "false");
+           ";" + tuningKey + "=" + tuningToString(config.tuning);
 }
 
 bool writeWavFile(const std::filesystem::path& path, const PitchDetectorConfig& config,

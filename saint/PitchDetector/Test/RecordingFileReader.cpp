@@ -117,8 +117,8 @@ bool decodeSamples(const std::vector<unsigned char>& raw, uint16_t formatTag, ui
     }
     if (formatTag == pcmFormatTag && bits == 32) {
         for (size_t i = 0; i < numSamples; ++i) {
-            const auto u = static_cast<uint32_t>(raw[i * 4]) |
-                           static_cast<uint32_t>(raw[i * 4 + 1]) << 8 |
+            const auto u = static_cast<uint32_t>(raw[i * 4]) | static_cast<uint32_t>(raw[i * 4 + 1])
+                                                                   << 8 |
                            static_cast<uint32_t>(raw[i * 4 + 2]) << 16 |
                            static_cast<uint32_t>(raw[i * 4 + 3]) << 24;
             out[i] = static_cast<float>(static_cast<int32_t>(u) / 2147483648.0);
@@ -157,14 +157,8 @@ std::optional<PitchDetectorConfig> deserializeConfig(const std::string& serializ
     }
 
     try {
-        PitchDetectorConfig config{std::stoi(entries[sampleRateKey]), *channelFormat,
+        return PitchDetectorConfig{std::stoi(entries[sampleRateKey]), *channelFormat,
                                    std::stoi(entries[samplesPerBlockPerChannelKey]), *tuning};
-        // holdPitch is optional so recordings made before it existed still parse (they keep
-        // the struct default). Any value other than "false" is treated as enabled.
-        if (const auto it = entries.find(holdPitchKey); it != entries.end()) {
-            config.holdPitch = it->second != "false";
-        }
-        return config;
     } catch (const std::exception&) {
         return std::nullopt;
     }
@@ -303,10 +297,10 @@ std::optional<RecordingData> readWavFile(const std::filesystem::path& path, std:
                 "WAV with an embedded config). Converting it and replaying with the standard "
                 "config.";
         }
-        config =
-            PitchDetectorConfig{static_cast<int>(*formatSampleRate),
-                                *formatChannels == 1 ? ChannelFormat::Mono : ChannelFormat::Stereo,
-                                defaultSamplesPerBlockPerChannel, Tuning::Standard};
+        config = PitchDetectorConfig{
+            static_cast<int>(*formatSampleRate),
+            *formatChannels == 1 ? ChannelFormat::Mono : ChannelFormat::Stereo,
+            defaultSamplesPerBlockPerChannel, Tuning::Standard};
     }
 
     // Only whole blocks can be replayed.

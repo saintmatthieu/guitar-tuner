@@ -96,25 +96,14 @@ constexpr auto stubCapacityBlocks = stubRecordingSeconds * 10;
 }  // namespace
 
 TEST(PitchDetectorRecording, configSerializationRoundTrip) {
-    // holdPitch=false (non-default) so the round-trip actually exercises the field.
     const recording::PitchDetectorConfig config{48000, ChannelFormat::Stereo, 512,
-                                                Tuning::Standard, /*holdPitch=*/false};
+                                                Tuning::Standard};
     const auto deserialized = recording::deserializeConfig(recording::serializeConfig(config));
     ASSERT_TRUE(deserialized.has_value());
     EXPECT_EQ(deserialized->sampleRate, config.sampleRate);
     EXPECT_EQ(deserialized->channelFormat, config.channelFormat);
     EXPECT_EQ(deserialized->samplesPerBlockPerChannel, config.samplesPerBlockPerChannel);
     EXPECT_EQ(deserialized->tuning, config.tuning);
-    EXPECT_EQ(deserialized->holdPitch, config.holdPitch);
-}
-
-TEST(PitchDetectorRecording, deserializeConfigDefaultsHoldPitchWhenAbsent) {
-    // Recordings made before holdPitch existed carry no key; they must still parse, keeping the
-    // struct's default (hold enabled).
-    const auto deserialized = recording::deserializeConfig(
-        "sampleRate=48000;channelFormat=Mono;samplesPerBlockPerChannel=512;tuning=Standard");
-    ASSERT_TRUE(deserialized.has_value());
-    EXPECT_TRUE(deserialized->holdPitch);
 }
 
 TEST(PitchDetectorRecording, deserializeConfigRejectsIncompleteInput) {
