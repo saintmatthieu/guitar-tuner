@@ -31,6 +31,10 @@ struct BenchmarkAlgorithmContext {
     // from the CLI to sweep operating points.
     double presenceThreshold = octaviationPresenceThreshold;
     float harmonicityFloor = octaviationHarmonicityFloor;
+    // Locked-phase (tracking) presence cut; see octaviationPresenceThresholdWithConstraint.
+    // Overridable from the CLI (thresholdWithEstimateConstraint=...) to sweep how long a
+    // decaying note keeps being tracked.
+    double presenceThresholdWithConstraint = octaviationPresenceThresholdWithConstraint;
     // Onset detector level-adaptive decision: flux > onsetK * max(runningMedian, onsetAbsFloor).
     // Overridable from the CLI to sweep the onset operating point (onsetK=..., onsetAbsFloor=...).
     float onsetK = onsetFluxMedianMultiplier;

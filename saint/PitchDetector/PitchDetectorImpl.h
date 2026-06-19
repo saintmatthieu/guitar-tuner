@@ -18,7 +18,9 @@ class PitchDetectorImpl {
                       std::unique_ptr<PitchDetectorLoggerInterface> logger,
                       bool applyOctaviationGate = true,
                       double presenceThreshold = octaviationPresenceThreshold,
-                      float harmonicityFloor = octaviationHarmonicityFloor);
+                      float harmonicityFloor = octaviationHarmonicityFloor,
+                      double presenceThresholdWithConstraint =
+                          octaviationPresenceThresholdWithConstraint);
 
     float process(const float*, DebugOutput*, std::vector<float>* debugOutputSignal = nullptr);
     int delaySamples() const {
@@ -52,7 +54,10 @@ class PitchDetectorImpl {
     // Gate thresholds. _presenceThreshold (no-constraint) is the cut on the fitted
     // probNotOctaviated; _harmonicityFloor rejects estimates lacking harmonic support
     // (#4). Floor 0 disables the harmonicity criterion (legacy behaviour).
+    // _presenceThresholdWithConstraint replaces _presenceThreshold once a constraint is
+    // locked (phase 2 / tracking); see octaviationPresenceThresholdWithConstraint.
     const double _presenceThreshold;
     const float _harmonicityFloor;
+    const double _presenceThresholdWithConstraint;
 };
 }  // namespace saint

@@ -148,6 +148,8 @@ TEST(PitchDetectorImpl, benchmarking) {
     // Gate-tuning knobs for sweeping #4 without rebuilds (see BenchmarkAlgorithmContext).
     const auto argPresenceThreshold = getArgument<float>("presenceThreshold");
     const auto argHarmonicityFloor = getArgument<float>("harmonicityFloor");
+    const auto argThresholdWithEstimateConstraint =
+        getArgument<float>("thresholdWithEstimateConstraint");
     const auto argOnsetK = getArgument<float>("onsetK");
     const auto argOnsetAbsFloor = getArgument<float>("onsetAbsFloor");
     const auto argMedianFilterDuration = getArgument<float>("medianFilterDuration");
@@ -206,6 +208,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 argPresenceThreshold.value_or(
                     static_cast<float>(octaviationPresenceThreshold)),
                 argHarmonicityFloor.value_or(octaviationHarmonicityFloor),
+                argThresholdWithEstimateConstraint.value_or(
+                    static_cast<float>(octaviationPresenceThresholdWithConstraint)),
                 argOnsetK.value_or(onsetFluxMedianMultiplier),
                 argOnsetAbsFloor.value_or(onsetFluxAbsFloor),
                 argMedianFilterDuration.value_or(0.15f)};

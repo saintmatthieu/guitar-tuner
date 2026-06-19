@@ -60,7 +60,8 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
         std::move(disambiguator), std::move(onsetDetector), std::move(logger),
-        ctx.applyOctaviationGate, ctx.presenceThreshold, ctx.harmonicityFloor);
+        ctx.applyOctaviationGate, ctx.presenceThreshold, ctx.harmonicityFloor,
+        ctx.presenceThresholdWithConstraint);
 
     if (!ctx.withMedianFilter) {
         return std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));

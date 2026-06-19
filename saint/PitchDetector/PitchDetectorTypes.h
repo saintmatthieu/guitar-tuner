@@ -33,6 +33,19 @@ constexpr auto autocorrAveragingFrameCount = 4;
 constexpr double octaviationPresenceThreshold = 0.55;
 constexpr float octaviationHarmonicityFloor = 0.30f;
 
+// The probNotOctaviated cut applied once an estimate constraint is locked (phase 2 /
+// tracking). In the locked phase the autocorrelation search and the octave
+// disambiguation are already restricted to within a major third of the constraint, so
+// octave errors are essentially impossible; this cut then acts purely as a
+// presence/confidence gate, deciding how long the note keeps being tracked as it decays
+// into the noise. Lowering it below octaviationPresenceThreshold trades a little RMS for
+// a markedly lower FNR (the harmonicity floor still rejects frames that have decayed into
+// noise). Lowered from the historical 0.7 to 0.3: recovers ~15% of the weighted FNR
+// (0.247 -> 0.210) for an inaudible median-RMS change (2.43 -> 2.60 cents), while keeping
+// the catastrophic tail (p99 RMS) and FPR contained. See eval/gate-tuning-log.md for the
+// full sweep.
+constexpr double octaviationPresenceThresholdWithConstraint = 0.3;
+
 // Onset detector (OnsetDetector.h) decision: a level-adaptive threshold on the
 // spectral-flux novelty function. An onset fires when the flux exceeds
 // onsetFluxMedianMultiplier times a causal running median of the recent flux, floored

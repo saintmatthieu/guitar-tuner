@@ -82,7 +82,8 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
                                      OnsetDetector onsetDetector,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger,
                                      bool applyOctaviationGate, double presenceThreshold,
-                                     float harmonicityFloor)
+                                     float harmonicityFloor,
+                                     double presenceThresholdWithConstraint)
     : _preprocessor(std::move(preprocessor)),
       _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
@@ -91,7 +92,8 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
       _logger(std::move(logger)),
       _applyOctaviationGate(applyOctaviationGate),
       _presenceThreshold(presenceThreshold),
-      _harmonicityFloor(harmonicityFloor) {}
+      _harmonicityFloor(harmonicityFloor),
+      _presenceThresholdWithConstraint(presenceThresholdWithConstraint) {}
 
 float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
                                  std::vector<float>* debugOutputSignal) {
@@ -160,11 +162,12 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     }
 
     // Gate: reject when the presence-based octaviation probability is too low, or the
-    // estimate lacks harmonic support. The with-constraint (locked) case keeps the
-    // historical 0.7 presence cut. harmonicityFloor=0 disables the harmonic criterion.
-    constexpr auto thresholdWithEstimateConstraint = 0.7;
-    const auto threshold =
-        _estimateConstraint.has_value() ? thresholdWithEstimateConstraint : _presenceThreshold;
+    // estimate lacks harmonic support. Once locked, the search/disambiguation are already
+    // clamped to a major third of the constraint, so this cut is a pure presence gate and
+    // is set more permissively (it governs how long a decaying note keeps being tracked).
+    // harmonicityFloor=0 disables the harmonic criterion.
+    const auto threshold = _estimateConstraint.has_value() ? _presenceThresholdWithConstraint
+                                                           : _presenceThreshold;
     if (_applyOctaviationGate &&
         (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
         return 0.f;
