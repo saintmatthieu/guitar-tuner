@@ -164,19 +164,80 @@ max=T rate, all noise levels pooled: attack [0, 0.1 s): 75.2 % | head [0.1 s, 1 
 - Errors are broad, not concentrated: at −40, 82 % of note×noise cells contain at
   least one error block in the head stratum.
 
-## Suggested next step
+## E. Prototype: multi-candidate Bayesian octave scorer (`peakCensusScorer.py`)
 
-Per-peak probability model (logistic to start): features raw value, v(T/2)/v(T),
-v(2T)/v(T), comb support count, absolute lag (range awareness), possibly signed
-lag deviation (inharmonicity skew). Train/evaluate on
-`peakCensus_blockSummary.csv.gz` with per-recording splits; compare per-block
-argmax accuracy against the A-table baselines above.
+Tests whether section C's separability translates into a usable disambiguator using
+**autocorrelation peaks alone** (no spectral disambiguator, no gate). For each
+head-stratum block it anchors on the max-raw peak L_max, forms octave candidates at
+L_max·{1/3, 1/2, 1, 2, 3} (kept only if in the detectable range and supported by a
+real peak), reads each candidate's comb by nearest-peak lookup, and scores
+candidates by a naive-Bayes model + octave-class prior, taking the argmax. Densities,
+priors, and accuracy use a **per-recording (noteFile) train/test split** — no
+within-note leakage. Baseline = always keep the max peak.
+
+**Key modeling finding — pool by octave class, don't pool globally.** The
+per-candidate signature of a *true* fundamental is not homogeneous:
+
+| candidate is true fundamental, octave context | rHalf=v(L/2)/v(L) | rDouble=v(2L)/v(L) |
+|---|---|---|
+| normal (factor 1) | med 0.02 | med 1.00 |
+| max under-shot it (octave-down err, factor ½) | med 0.04 | **med 1.24** |
+| max over-shot it (octave-up err, factor 2) | **med 0.99** | med 0.02 |
+
+A single pooled "fundamental" density (dominated by the 342 k factor-1 samples)
+*penalises* exactly the rare true candidates we must recover (their rDouble looks
+abnormal — but it is abnormal *because* the strong neighbour stole the max). Result:
+
+| model (held-out test fold) | octave acc | octave-down recovered | octave-up recovered |
+|---|---|---|---|
+| baseline (keep max) | 96.49 % | 0 % | 0 % |
+| pooled generative MAP | 96.31 % (net −40) | 5 % | 25 % |
+| per-octave-class discriminative LLR | 96.6–96.7 % | 37 % | 67 % |
+
+**Operating point (decision margin τ — override the max only if the best alternative
+beats it by τ in log-odds):**
+
+| τ | octave acc | fixed | broken | net |
+|---|---|---|---|---|
+| baseline | 96.49 % | – | – | – |
+| 0 (pure argmax) | 96.60 % | 763 | 545 | +218 |
+| 1 | **96.68 %** | 565 | 175 | +390 |
+| 5 | 96.55 % | 125 | 5 | +120 |
+| 8 | 96.50 % | 14 | 0 | +14 |
+
+τ is a clean precision/recall knob: τ≈5 fixes 25× more than it breaks (the
+"don't take risks" regime, matching the current disambiguator's intent); τ≈1
+maximises net.
+
+**Reading of the result.** The relational features genuinely recover octave errors
+from the ACF alone, on unseen recordings, *if* modelled per-octave-class and
+discriminatively. Caveats: (1) this is ACF-only — the production pipeline's spectral
+disambiguator already fixes many of these, so this is the *ceiling of the peaks
+alone*, not a head-to-head; (2) absolute gain is modest (~0.2 pp) because octave
+errors are only ~3.5 % of head blocks, but recovery *within the recoverable
+population* is 37–67 %; (3) pooled prior (SNR unknown at runtime) — per-SNR priors
+would help if SNR could be estimated; (4) only octave-comb candidates are
+considered, so off-comb ("other") truths are unreachable here.
+
+## Suggested next steps
+
+1. **Add the third-harmonic feature** v(3L)/v(L) (occurrence ~34 %, see A1) and the
+   comb-support count — likely improves the rare factor-3 / factor-⅓ classes.
+2. **Exploit the reciprocal structure** (r₂(L)=1/r½(2L)): the adjacent-octave
+   decision is a 1-D threshold on the longer/shorter value ratio — cross-check the
+   LLR against that simpler discriminator.
+3. **Calibrate τ** against a cost that counts a *broken* block as worse than a
+   *fixed* one (a persistent wrong lock is costly under the constraint stage).
+4. **Then** port the winning model to C++ as a generalisation of the existing
+   Bayesian gate (`PitchDetectorImpl.cpp:probabilityNotOctaviated`), potentially
+   unifying gate + disambiguator into one calibrated stage.
 
 ## To reproduce
 
 ```
 cmake --build build/Release --target AutocorrPeakCensusTests
 ./build/Release/saint/PitchDetector/Test/AutocorrPeakCensusTests   # writes eval/out/peakCensus_*.csv
-eval/.venv/bin/python eval/peakCensus.py [--tolerance 25]          # prints report
+eval/.venv/bin/python eval/peakCensus.py [--tolerance 25]          # census report
 eval/.venv/bin/python eval/peakCensusTolerance.py                  # tolerance measurement
+eval/.venv/bin/python eval/peakCensusScorer.py                     # scorer prototype (caches candidates)
 ```
