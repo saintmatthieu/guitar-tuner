@@ -25,8 +25,7 @@ namespace saint {
 class OnsetDetector {
    public:
     OnsetDetector(int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel,
-                  float minFreq, float k = onsetFluxMedianMultiplier,
-                  float absFloor = onsetFluxAbsFloor);
+                  float minFreq, OnsetDetectorConfig = {});
 
     bool process(const float* audio, DebugOutput* = nullptr);
     bool process(float* audio, DebugOutput* = nullptr);

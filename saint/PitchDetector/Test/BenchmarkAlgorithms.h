@@ -28,31 +28,14 @@ struct BenchmarkAlgorithmContext {
     // In-house-specific options; other algorithms are free to ignore them.
     std::optional<int> indexOfProcessToLog;
     bool withMedianFilter = true;
-    // When false, the probNotOctaviated gate is bypassed so every frame emits an
-    // estimate. Used to collect the full presence-score/error distribution for
-    // re-fitting the gate (see eval/fitAndShowErrorProbabilityModels.py).
-    bool applyOctaviationGate = true;
-    // Gate knobs (in-house algorithm); default to the tuned production operating point
-    // (PitchDetectorTypes.h) so a plain benchmark gates exactly what ships. Overridable
-    // from the CLI to sweep operating points.
-    double presenceThreshold = octaviationPresenceThreshold;
-    float harmonicityFloor = octaviationHarmonicityFloor;
-    // Locked-phase (tracking) presence cut; see octaviationPresenceThresholdWithConstraint.
-    // Overridable from the CLI (thresholdWithEstimateConstraint=...) to sweep how long a
-    // decaying note keeps being tracked.
-    double presenceThresholdWithConstraint = octaviationPresenceThresholdWithConstraint;
-    // Onset detector level-adaptive decision: flux > onsetK * max(runningMedian, onsetAbsFloor).
-    // Overridable from the CLI to sweep the onset operating point (onsetK=..., onsetAbsFloor=...).
-    float onsetK = onsetFluxMedianMultiplier;
-    float onsetAbsFloor = onsetFluxAbsFloor;
-    // Median-filter window (s); drives output latency. See defaultMedianFilterDuration.
-    float medianFilterDuration = defaultMedianFilterDuration;
-    // Hold window (s): once locked, keep emitting the last pitch through a presence dip for up
-    // to this long before declaring the note gone. Disabled in the benchmark; see
-    // benchmarkHoldDuration. Override: holdDuration=<s>.
-    float holdDuration = benchmarkHoldDuration;
-    // How long (s) after the last onset the hold begins engaging; see defaultHoldOnsetGuard.
-    float holdOnsetGuard = defaultHoldOnsetGuard;
+    // In-house gate-tuning knobs (see PitchDetectorTypes.h). Each config defaults to the tuned
+    // production operating point so a plain benchmark runs exactly what ships; the CLI overrides
+    // individual fields to sweep operating points (see PitchDetectorImplTests.cpp). The one
+    // deliberate deviation from production is that the benchmark disables the median-filter hold
+    // (gate.apply / medianFilter.holdDuration are set there): see benchmarkHoldDuration.
+    OctaviationGateConfig gate;
+    OnsetDetectorConfig onset;
+    MedianFilterConfig medianFilter;
 };
 
 using BenchmarkAlgorithmFactory =

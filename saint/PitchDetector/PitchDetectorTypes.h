@@ -46,6 +46,18 @@ constexpr float octaviationHarmonicityFloor = 0.30f;
 // full sweep.
 constexpr double octaviationPresenceThresholdWithConstraint = 0.3;
 
+// Octaviation-gate configuration for PitchDetectorImpl. Defaults are the tuned production
+// operating point (the constants above). `apply` is a calibration toggle: set it false to
+// bypass the probNotOctaviated gate so every frame emits its estimate (used to collect the
+// full presence/error distribution for re-fitting the gate; see
+// eval/fitAndShowErrorProbabilityModels.py).
+struct OctaviationGateConfig {
+    bool apply = true;
+    double presenceThreshold = octaviationPresenceThreshold;
+    float harmonicityFloor = octaviationHarmonicityFloor;
+    double presenceThresholdWithConstraint = octaviationPresenceThresholdWithConstraint;
+};
+
 // Onset detector (OnsetDetector.h) decision: a level-adaptive threshold on the
 // spectral-flux novelty function. An onset fires when the flux exceeds
 // onsetFluxMedianMultiplier times a causal running median of the recent flux, floored
@@ -61,6 +73,12 @@ constexpr double octaviationPresenceThresholdWithConstraint = 0.3;
 constexpr float onsetFluxMedianMultiplier = 3.0f;
 constexpr float onsetFluxAbsFloor = 0.001f;
 
+// Onset-detector configuration. Defaults are the tuned operating point (the constants above).
+struct OnsetDetectorConfig {
+    float k = onsetFluxMedianMultiplier;  // multiplier on the running-median flux baseline
+    float absFloor = onsetFluxAbsFloor;   // floor on the baseline; guards true silence
+};
+
 constexpr auto majorThirdRatio = 1.26f;
 
 // PitchDetectorMedianFilter operating point (production defaults). defaultMedianFilterDuration
@@ -71,6 +89,14 @@ constexpr auto majorThirdRatio = 1.26f;
 constexpr float defaultMedianFilterDuration = 0.15f;
 constexpr float defaultHoldDuration = 1.0f;
 constexpr float defaultHoldOnsetGuard = 0.5f;
+
+// Median-filter configuration for PitchDetectorMedianFilter. Defaults are the production
+// operating point (the constants above).
+struct MedianFilterConfig {
+    float filterDuration = defaultMedianFilterDuration;
+    float holdDuration = defaultHoldDuration;
+    float holdOnsetGuard = defaultHoldOnsetGuard;
+};
 
 struct Pitch {
     const PitchClass pitchClass;

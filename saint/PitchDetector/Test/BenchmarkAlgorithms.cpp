@@ -55,21 +55,18 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     AutocorrEstimateDisambiguator disambiguator(ctx.sampleRate, transformer.fftSize(), ctx.tuning,
                                                 *logger);
     OnsetDetector onsetDetector(ctx.sampleRate, ctx.channelFormat, ctx.blockSize, minFreq,
-                                ctx.onsetK, ctx.onsetAbsFloor);
+                                ctx.onset);
 
     auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-        std::move(disambiguator), std::move(onsetDetector), std::move(logger),
-        ctx.applyOctaviationGate, ctx.presenceThreshold, ctx.harmonicityFloor,
-        ctx.presenceThresholdWithConstraint);
+        std::move(disambiguator), std::move(onsetDetector), std::move(logger), ctx.gate);
 
     if (!ctx.withMedianFilter) {
         return std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));
     }
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
-        ctx.sampleRate, ctx.blockSize, std::move(internalAlgorithm), ctx.medianFilterDuration,
-        ctx.holdDuration, ctx.holdOnsetGuard);
+        ctx.sampleRate, ctx.blockSize, std::move(internalAlgorithm), ctx.medianFilter);
     const auto blocksPerSecond = ctx.sampleRate / ctx.blockSize;
     return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
 }

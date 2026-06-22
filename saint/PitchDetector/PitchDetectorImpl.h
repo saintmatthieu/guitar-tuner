@@ -16,11 +16,7 @@ class PitchDetectorImpl {
     PitchDetectorImpl(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
                       AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger,
-                      bool applyOctaviationGate = true,
-                      double presenceThreshold = octaviationPresenceThreshold,
-                      float harmonicityFloor = octaviationHarmonicityFloor,
-                      double presenceThresholdWithConstraint =
-                          octaviationPresenceThresholdWithConstraint);
+                      OctaviationGateConfig gate = {});
 
     float process(const float*, DebugOutput*, std::vector<float>* debugOutputSignal = nullptr);
     int delaySamples() const {

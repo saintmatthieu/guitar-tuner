@@ -81,19 +81,17 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
                                      AutocorrEstimateDisambiguator disambiguator,
                                      OnsetDetector onsetDetector,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger,
-                                     bool applyOctaviationGate, double presenceThreshold,
-                                     float harmonicityFloor,
-                                     double presenceThresholdWithConstraint)
+                                     OctaviationGateConfig gate)
     : _preprocessor(std::move(preprocessor)),
       _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
       _onsetDetector(std::move(onsetDetector)),
       _logger(std::move(logger)),
-      _applyOctaviationGate(applyOctaviationGate),
-      _presenceThreshold(presenceThreshold),
-      _harmonicityFloor(harmonicityFloor),
-      _presenceThresholdWithConstraint(presenceThresholdWithConstraint) {}
+      _applyOctaviationGate(gate.apply),
+      _presenceThreshold(gate.presenceThreshold),
+      _harmonicityFloor(gate.harmonicityFloor),
+      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint) {}
 
 float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
                                  std::vector<float>* debugOutputSignal) {

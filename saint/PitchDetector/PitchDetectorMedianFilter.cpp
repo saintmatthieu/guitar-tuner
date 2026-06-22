@@ -24,14 +24,13 @@ int durationToBlocks(int sampleRate, int blockSize, float duration) {
 
 PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSize,
                                                      std::unique_ptr<PitchDetectorImpl> impl,
-                                                     float filterDuration, float holdDuration,
-                                                     float holdOnsetGuard)
+                                                     MedianFilterConfig config)
     : _blockSize(blockSize),
       _impl(std::move(impl)),
-      _buffer(getFilterSize(sampleRate, blockSize, filterDuration)),
+      _buffer(getFilterSize(sampleRate, blockSize, config.filterDuration)),
       _delayedScores((_buffer.size() - 1) / 2, 0.f),
-      _maxHoldFrames(durationToBlocks(sampleRate, blockSize, holdDuration)),
-      _minFramesBeforeHold(durationToBlocks(sampleRate, blockSize, holdOnsetGuard)) {}
+      _maxHoldFrames(durationToBlocks(sampleRate, blockSize, config.holdDuration)),
+      _minFramesBeforeHold(durationToBlocks(sampleRate, blockSize, config.holdOnsetGuard)) {}
 
 int PitchDetectorMedianFilter::delaySamples() const {
     return _delayedScores.size() * _blockSize + _impl->delaySamples();

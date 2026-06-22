@@ -183,7 +183,7 @@ TEST(OnsetDetector, calibration) {
                 const auto blockSize = testCase.blockSize;
 
                 OnsetDetector onsetDetector(noisy.sampleRate, noisy.channelFormat, blockSize,
-                                            minFreq, onsetK, onsetAbsFloor);
+                                            minFreq, OnsetDetectorConfig{onsetK, onsetAbsFloor});
 
                 const auto numChannels = noisy.channelFormat == ChannelFormat::Mono ? 1 : 2;
                 const auto numFrames = noisy.interleaved.size() / numChannels;

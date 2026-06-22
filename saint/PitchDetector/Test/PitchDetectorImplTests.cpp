@@ -200,23 +200,39 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto& noisy = testCase.noisy;
             const auto blockSize = testCase.blockSize;
 
-            const BenchmarkAlgorithmContext context{
-                noisy.sampleRate, noisy.channelFormat, blockSize, kTestTuning,
-                argIndexOfProcessToLog,
-                !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter,
-                !argDisableOctaviationGate,
-                argPresenceThreshold.value_or(static_cast<float>(octaviationPresenceThreshold)),
-                argHarmonicityFloor.value_or(octaviationHarmonicityFloor),
-                argThresholdWithEstimateConstraint.value_or(
-                    static_cast<float>(octaviationPresenceThresholdWithConstraint)),
-                argOnsetK.value_or(onsetFluxMedianMultiplier),
-                argOnsetAbsFloor.value_or(onsetFluxAbsFloor),
-                argMedianFilterDuration.value_or(defaultMedianFilterDuration),
-                // Hold off by default in the benchmark so the golden refs reflect the
-                // detector's intrinsic behaviour, not the hold's note-persistence (see
-                // benchmarkHoldDuration). Override with holdDuration=<s>.
-                argHoldDuration.value_or(benchmarkHoldDuration),
-                argHoldOnsetGuard.value_or(defaultHoldOnsetGuard)};
+            // Each config member starts at its production default (PitchDetectorTypes.h); below
+            // we apply the benchmark's one deliberate deviation (hold off, see
+            // benchmarkHoldDuration) and any CLI overrides, leaving untouched fields at default.
+            BenchmarkAlgorithmContext context;
+            context.sampleRate = noisy.sampleRate;
+            context.channelFormat = noisy.channelFormat;
+            context.blockSize = blockSize;
+            context.tuning = kTestTuning;
+            context.indexOfProcessToLog = argIndexOfProcessToLog;
+            context.withMedianFilter =
+                !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter;
+            context.gate.apply = !argDisableOctaviationGate;
+            // Hold off by default so the golden refs reflect the detector's intrinsic behaviour,
+            // not the hold's note-persistence. Override with holdDuration=<s>.
+            context.medianFilter.holdDuration = benchmarkHoldDuration;
+            // CLI overrides to sweep the operating point without rebuilds (see
+            // BenchmarkAlgorithmContext).
+            if (argPresenceThreshold)
+                context.gate.presenceThreshold = *argPresenceThreshold;
+            if (argHarmonicityFloor)
+                context.gate.harmonicityFloor = *argHarmonicityFloor;
+            if (argThresholdWithEstimateConstraint)
+                context.gate.presenceThresholdWithConstraint = *argThresholdWithEstimateConstraint;
+            if (argOnsetK)
+                context.onset.k = *argOnsetK;
+            if (argOnsetAbsFloor)
+                context.onset.absFloor = *argOnsetAbsFloor;
+            if (argMedianFilterDuration)
+                context.medianFilter.filterDuration = *argMedianFilterDuration;
+            if (argHoldDuration)
+                context.medianFilter.holdDuration = *argHoldDuration;
+            if (argHoldOnsetGuard)
+                context.medianFilter.holdOnsetGuard = *argHoldOnsetGuard;
             const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;

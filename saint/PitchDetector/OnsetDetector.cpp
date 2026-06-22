@@ -28,11 +28,12 @@ int nextPowerOfTwo(int n) {
 }  // namespace
 
 OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
-                             int samplesPerBlockPerChannel, float minFreq, float k, float absFloor)
+                             int samplesPerBlockPerChannel, float minFreq,
+                             OnsetDetectorConfig config)
     : _channelFormat(channelFormat),
       _blockSize(samplesPerBlockPerChannel),
-      _k(k),
-      _absFloor(absFloor),
+      _k(config.k),
+      _absFloor(config.absFloor),
       _window(utils::getAnalysisWindow<double>(getWindowSize(sampleRate, minFreq), windowType)),
       _fftSize(nextPowerOfTwo(static_cast<int>(_window.size()))),
       _fft(_fftSize),
@@ -43,7 +44,7 @@ OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
     // sampleRate / blockSize (blockSize = sampleRate/100, so ~100 fps at any SR).
     const auto medianWindowSize =
         std::max(1, static_cast<int>(std::lround(0.4 * sampleRate / samplesPerBlockPerChannel)));
-    _fluxHistory.assign(medianWindowSize, absFloor);  // pre-seed with the silence floor
+    _fluxHistory.assign(medianWindowSize, _absFloor);  // pre-seed with the silence floor
     _medianScratch.resize(medianWindowSize);
 }
 
