@@ -18,7 +18,7 @@ int getFftOrder(int windowSize) {
 }
 
 int getFftSizeSamples(int windowSize) {
-    constexpr auto zeroPadding = 2;
+    constexpr auto zeroPadding = 1;
     return 1 << (getFftOrder(windowSize) + zeroPadding);
 }
 
