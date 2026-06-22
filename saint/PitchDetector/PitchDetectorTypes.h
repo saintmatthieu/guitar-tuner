@@ -44,7 +44,7 @@ constexpr float octaviationHarmonicityFloor = 0.30f;
 // (0.247 -> 0.210) for an inaudible median-RMS change (2.43 -> 2.60 cents), while keeping
 // the catastrophic tail (p99 RMS) and FPR contained. See eval/gate-tuning-log.md for the
 // full sweep.
-constexpr double octaviationPresenceThresholdWithConstraint = 0.3;
+constexpr double octaviationPresenceThresholdWithConstraint = 0.5;
 
 // Octaviation-gate configuration for PitchDetectorImpl. Defaults are the tuned production
 // operating point (the constants above). `apply` is a calibration toggle: set it false to
