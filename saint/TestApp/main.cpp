@@ -147,32 +147,38 @@ std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
     };
 #ifdef SAINT_WITH_PESTO
     if (choice.usePesto) {
-        const saint::recording::PitchDetectorConfig config{
-            sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard};
-        return std::make_unique<saint::IssueReportingPitchDetector>(config, [config] {
-            const auto modelPath = std::filesystem::path(SAINT_PESTO_MODEL_DIR) /
-                                   ("mir-1k_g7_" + std::to_string(config.sampleRate) + "_" +
-                                    std::to_string(config.samplesPerBlockPerChannel) + ".onnx");
-            // 0.11 is the benchmark ROC's 1%-FPR operating point; the
-            // checkpoint's nominal 0.5 is far too conservative on guitar
-            // (see pesto-benchmark-results.md).
-            constexpr auto confidenceThreshold = 0.11f;
-            return std::make_unique<saint::PestoPitchDetector>(
-                modelPath, config.sampleRate, config.channelFormat,
-                config.samplesPerBlockPerChannel, confidenceThreshold);
-        }, cpuSummary);
+        const saint::recording::PitchDetectorConfig config{sampleRate, saint::ChannelFormat::Mono,
+                                                           blockSize, saint::Tuning::Standard};
+        return std::make_unique<saint::IssueReportingPitchDetector>(
+            config,
+            [config] {
+                const auto modelPath = std::filesystem::path(SAINT_PESTO_MODEL_DIR) /
+                                       ("mir-1k_g7_" + std::to_string(config.sampleRate) + "_" +
+                                        std::to_string(config.samplesPerBlockPerChannel) + ".onnx");
+                // 0.11 is the benchmark ROC's 1%-FPR operating point; the
+                // checkpoint's nominal 0.5 is far too conservative on guitar
+                // (see pesto-benchmark-results.md).
+                constexpr auto confidenceThreshold = 0.11f;
+                return std::make_unique<saint::PestoPitchDetector>(
+                    modelPath, config.sampleRate, config.channelFormat,
+                    config.samplesPerBlockPerChannel, confidenceThreshold);
+            },
+            cpuSummary);
     }
 #endif
 #ifdef SAINT_WITH_AUBIO
     if (choice.aubioMethod.has_value()) {
-        const saint::recording::PitchDetectorConfig config{
-            sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard};
+        const saint::recording::PitchDetectorConfig config{sampleRate, saint::ChannelFormat::Mono,
+                                                           blockSize, saint::Tuning::Standard};
         const auto method = *choice.aubioMethod;
-        return std::make_unique<saint::IssueReportingPitchDetector>(config, [config, method] {
-            return std::make_unique<saint::AubioPitchDetector>(method, config.sampleRate,
-                                                               config.channelFormat,
-                                                               config.samplesPerBlockPerChannel);
-        }, cpuSummary);
+        return std::make_unique<saint::IssueReportingPitchDetector>(
+            config,
+            [config, method] {
+                return std::make_unique<saint::AubioPitchDetector>(
+                    method, config.sampleRate, config.channelFormat,
+                    config.samplesPerBlockPerChannel);
+            },
+            cpuSummary);
     }
 #endif
     (void)choice;
@@ -231,10 +237,21 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         const float frequency = pitchDetector->process(samples, &debug);
         const auto onsetIt = debug.find("isOnset");
         const bool onsetDetected = onsetIt != debug.end() && onsetIt->second != 0.f;
+
+        saint::TunerDisplay::State state;
+        if (frequency == 0.f) {
+            state = saint::TunerDisplay::State::NoPitch;
+        } else {
+            const auto holdIt = debug.find("hold");
+            state = holdIt != debug.end() && holdIt->second != 0.f
+                        ? saint::TunerDisplay::State::Hold
+                        : saint::TunerDisplay::State::Estimate;
+        }
+
         std::ostringstream status;
         status << "  CPU: " << std::setw(3) << pitchDetector->realtimePercentage() << "%"
                << recordingListener.status();
-        display.update(frequency, onsetDetected, status.str());
+        display.update(frequency, state, onsetDetected, status.str());
     });
 
     if (!success) {
@@ -257,6 +274,11 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
     // The capture loop runs until Ctrl+C
     audioInput.stop();
 
+    // The live display parks the terminal cursor at the start of the meter line, with the
+    // state-indicator line just below it. Step past both so the shutdown messages land on a
+    // fresh line instead of overwriting the indicator.
+    std::cout << "\n" << std::endl;
+
     // Destroy the detector now so its CPU-load summary prints here, before "Goodbye!", rather
     // than whenever the unique_ptr would otherwise go out of scope.
     pitchDetector.reset();
@@ -270,8 +292,7 @@ int main(int argc, char* argv[]) {
     std::string device = "default";
     std::optional<std::filesystem::path> outPath;
     AlgorithmChoice choice;
-    constexpr auto usage =
-        " [device_name] [--out <recording.wav>] [--pesto] [--aubio <method>]";
+    constexpr auto usage = " [device_name] [--out <recording.wav>] [--pesto] [--aubio <method>]";
     for (auto i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--out") {

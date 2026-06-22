@@ -78,15 +78,20 @@ void IssueReportingPitchDetector::startIssueRecording(int durationSeconds,
         _recorder.reset();
         _recordingComplete = false;
     }
-    _recorder = std::make_unique<RecordingPitchDetector>(
-        _detectorFactory(), _config, durationSeconds, listener,
-        [this, &listener](std::unique_ptr<PitchDetector> inner, recording::RecordingData data) {
-            // From now on, use the handed-back detector, so that we avoid a state reset of the
-            // algorithm.
-            _detector = std::move(inner);
-            _recordingComplete = true;
-            listener.onComplete(std::move(data));
-        });
+
+    auto recordingFinishedCallback = [this, &listener](std::unique_ptr<PitchDetector> inner,
+                                                       recording::RecordingData data) {
+        // From now on, use the handed-back detector, so that we avoid a state reset of the
+        // algorithm.
+        _detector = std::move(inner);
+        _recordingComplete = true;
+        listener.onComplete(std::move(data));
+    };
+
+    _recorder =
+        std::make_unique<RecordingPitchDetector>(_detectorFactory(), _config, durationSeconds,
+                                                 listener, std::move(recordingFinishedCallback));
+
     _detector.reset();
 }
 

@@ -20,6 +20,31 @@ const char* kNoteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A"
 // brief to see. Latch the onset indicator for this many display updates (~230 ms) so a pluck
 // registers visually before it decays.
 constexpr int kOnsetHoldFrames = 20;
+
+// ANSI colour for the pitch cursor in each algorithm state.
+const char* stateColorCode(TunerDisplay::State state) {
+    switch (state) {
+        case TunerDisplay::State::Estimate:
+            return "\033[92m";  // green
+        case TunerDisplay::State::Hold:
+            return "\033[93m";  // yellow
+        case TunerDisplay::State::NoPitch:
+        default:
+            return "\033[90m";  // grey
+    }
+}
+
+const char* stateLabel(TunerDisplay::State state) {
+    switch (state) {
+        case TunerDisplay::State::Estimate:
+            return "Estimated";
+        case TunerDisplay::State::Hold:
+            return "Held";
+        case TunerDisplay::State::NoPitch:
+        default:
+            return "No pitch";
+    }
+}
 }  // namespace
 
 TunerDisplay::TunerDisplay() : _isTty(isatty(fileno(stdout)) != 0) {
@@ -55,7 +80,7 @@ TunerDisplay::NoteInfo TunerDisplay::frequencyToNote(float frequencyHz) {
     return {kNoteNames[noteIndex], octave, cents};
 }
 
-std::string TunerDisplay::renderMeter(float cents, int width, bool useColor) {
+std::string TunerDisplay::renderMeter(float cents, int width, const std::string& needleColor) {
     std::ostringstream oss;
 
     // Clamp cents to [-50, 50]
@@ -68,18 +93,12 @@ std::string TunerDisplay::renderMeter(float cents, int width, bool useColor) {
     // Build the meter string
     for (int i = 0; i < width; ++i) {
         if (i == needlePos) {
-            if (!useColor) {
+            // The needle colour encodes the algorithm's state (see State); no colour when
+            // stdout isn't a terminal.
+            if (needleColor.empty()) {
                 oss << "▼";
             } else {
-                // Color the needle based on how close to center
-                const float absCents = std::abs(cents);
-                if (absCents < 5.0f) {
-                    oss << "\033[32m▼\033[0m";  // Green - in tune
-                } else if (absCents < 15.0f) {
-                    oss << "\033[33m▼\033[0m";  // Yellow - close
-                } else {
-                    oss << "\033[31m▼\033[0m";  // Red - off
-                }
+                oss << needleColor << "▼\033[0m";
             }
         } else if (i == centerPos) {
             oss << "|";  // Center marker
@@ -93,7 +112,8 @@ std::string TunerDisplay::renderMeter(float cents, int width, bool useColor) {
     return oss.str();
 }
 
-void TunerDisplay::update(float frequencyHz, bool onsetDetected, const std::string& status) {
+void TunerDisplay::update(float frequencyHz, State state, bool onsetDetected,
+                          const std::string& status) {
     if (onsetDetected) {
         _onsetHoldFrames = kOnsetHoldFrames;
     }
@@ -118,6 +138,10 @@ void TunerDisplay::update(float frequencyHz, bool onsetDetected, const std::stri
         --_onsetHoldFrames;
     }
 
+    // The pitch cursor (▼) is coloured by the algorithm state; no colour off a terminal.
+    const std::string needleColor = _isTty ? stateColorCode(state) : "";
+
+    // ----- line 1: the tuner meter -----
     if (frequencyHz <= 0.f) {
         // Same column layout as the pitch branch below, so that the meter doesn't shift when
         // detection toggles.
@@ -125,54 +149,39 @@ void TunerDisplay::update(float frequencyHz, bool onsetDetected, const std::stri
         std::cout << " │ ";
         std::cout << std::setw(6) << "---.-" << " Hz";
         std::cout << " │ ";
-        std::cout << renderMeter(0, 41, _isTty);
+        std::cout << renderMeter(0, 41, needleColor);
         std::cout << " " << std::setw(3) << "--" << "¢";
-        std::cout << onsetStr;
-        std::cout << status;
-        if (!_isTty) {
-            std::cout << "\n";
-        }
-        std::cout << std::flush;
-        _lastFrequency = 0.f;
-        return;
+    } else {
+        const auto note = frequencyToNote(frequencyHz);
+
+        // Note name with octave (e.g., "A4", "C#3"), in the default text colour.
+        std::ostringstream noteStr;
+        noteStr << std::setw(2) << note.name << note.octave;
+
+        // Format cents with sign
+        std::ostringstream centsStr;
+        centsStr << std::showpos << std::fixed << std::setprecision(0) << std::setw(3)
+                 << note.cents;
+
+        std::cout << std::setw(3) << noteStr.str();
+        std::cout << " │ ";
+        std::cout << std::fixed << std::setprecision(1) << std::setw(6) << frequencyHz << " Hz";
+        std::cout << " │ ";
+        std::cout << renderMeter(note.cents, 41, needleColor);
+        std::cout << " " << centsStr.str() << "¢";
     }
-
-    const auto note = frequencyToNote(frequencyHz);
-
-    // Format note name with octave (e.g., "A4", "C#3")
-    std::ostringstream noteStr;
-    noteStr << std::setw(2) << note.name << note.octave;
-
-    // Color the note name based on tuning accuracy
-    const float absCents = std::abs(note.cents);
-    std::string colorCode;
-    std::string resetCode;
-    if (_isTty) {
-        resetCode = "\033[0m";
-        if (absCents < 5.0f) {
-            colorCode = "\033[32m";  // Green
-        } else if (absCents < 15.0f) {
-            colorCode = "\033[33m";  // Yellow
-        } else {
-            colorCode = "\033[31m";  // Red
-        }
-    }
-
-    // Format cents with sign
-    std::ostringstream centsStr;
-    centsStr << std::showpos << std::fixed << std::setprecision(0) << std::setw(3) << note.cents;
-
-    // Print the tuner display
-    std::cout << colorCode << std::setw(3) << noteStr.str() << resetCode;
-    std::cout << " │ ";
-    std::cout << std::fixed << std::setprecision(1) << std::setw(6) << frequencyHz << " Hz";
-    std::cout << " │ ";
-    std::cout << renderMeter(note.cents, 41, _isTty);
-    std::cout << " " << centsStr.str() << "¢";
     std::cout << onsetStr;
     std::cout << status;
-    if (!_isTty) {
-        std::cout << "\n";
+
+    // ----- line 2: the cursor + current-state label, redrawn in place -----
+    const std::string cursor = needleColor.empty() ? "▼" : (needleColor + "▼\033[0m");
+    if (_isTty) {
+        // Drop to the next line, clear it, draw the indicator, then move back up so the next
+        // update overwrites line 1 again. The cursor is hidden, so this doesn't flicker.
+        std::cout << "\n\033[K" << cursor << " " << stateLabel(state) << "\033[A\r";
+    } else {
+        std::cout << "\n"
+                  << "▼ " << stateLabel(state) << "\n";
     }
     std::cout << std::flush;
 
@@ -181,7 +190,8 @@ void TunerDisplay::update(float frequencyHz, bool onsetDetected, const std::stri
 
 void TunerDisplay::clear() {
     if (_isTty) {
-        std::cout << "\r\033[K" << std::flush;
+        // Clear line 1 and the state line below it, leaving the cursor back on line 1.
+        std::cout << "\r\033[K\n\033[K\033[A\r" << std::flush;
     }
 }
 

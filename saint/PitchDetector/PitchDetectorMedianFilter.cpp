@@ -44,6 +44,7 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     if (debugOutput == nullptr) {
         debugOutput = &_debugOutput;
     }
+    debugOutput->clear();
 
     const auto raw = _impl->process(input, debugOutput, debugOutputSignal);
     if (const auto isOnset = debugOutput->at("isOnset") == 1.f) {
@@ -100,6 +101,7 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames &&
         _framesSinceOnset >= _minFramesBeforeHold) {
         ++_framesHeld;
+        (*debugOutput)["hold"] = 1.f;
         return _heldPitch;
     }
 

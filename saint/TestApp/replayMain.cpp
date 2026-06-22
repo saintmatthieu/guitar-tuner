@@ -26,6 +26,18 @@ bool wasOnset(const saint::DebugOutput& debug) {
     const auto it = debug.find("isOnset");
     return it != debug.end() && it->second != 0.f;
 }
+
+// Algorithm state for the pitch cursor: grey when there is no pitch, yellow ("Held") when the
+// median filter is holding the last pitch through a presence dip ("hold" set), green
+// ("Estimated") otherwise. Mirrors the mapping in the live TestApp (main.cpp).
+saint::TunerDisplay::State pitchState(const saint::DebugOutput& debug, float frequency) {
+    if (frequency == 0.f) {
+        return saint::TunerDisplay::State::NoPitch;
+    }
+    const auto holdIt = debug.find("hold");
+    return holdIt != debug.end() && holdIt->second != 0.f ? saint::TunerDisplay::State::Hold
+                                                          : saint::TunerDisplay::State::Estimate;
+}
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -43,8 +55,7 @@ int main(int argc, char* argv[]) {
         }
     }
     if (file.empty() || !validArgs) {
-        std::cerr << "Replays an issue recording saved by the guitar tuner (TestApp)."
-                  << std::endl;
+        std::cerr << "Replays an issue recording saved by the guitar tuner (TestApp)." << std::endl;
         std::cerr << "Usage: " << argv[0] << " [--fast] <recording.wav>" << std::endl;
         std::cerr << "  --fast  replay the entire file without waiting and without audio "
                      "(default: real-time pace"
@@ -101,7 +112,7 @@ int main(int argc, char* argv[]) {
             const float* block = pitchDetector->peekBlock();
             saint::DebugOutput debug;
             const float frequency = pitchDetector->process(nullptr, &debug);
-            display.update(frequency, wasOnset(debug));
+            display.update(frequency, pitchState(debug, frequency), wasOnset(debug));
             if (!player->write(block, framesPerBlock)) {
                 // Playback died mid-stream; fall back to timed pacing.
                 playing = false;
@@ -113,7 +124,7 @@ int main(int argc, char* argv[]) {
         const auto blockStart = std::chrono::steady_clock::now();
         saint::DebugOutput debug;
         const float frequency = pitchDetector->process(nullptr, &debug);
-        display.update(frequency, wasOnset(debug));
+        display.update(frequency, pitchState(debug, frequency), wasOnset(debug));
         if (!fast) {
             std::this_thread::sleep_until(blockStart + blockDuration);
         }
