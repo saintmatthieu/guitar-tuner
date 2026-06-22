@@ -201,10 +201,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto blockSize = testCase.blockSize;
 
             const BenchmarkAlgorithmContext context{
-                noisy.sampleRate,
-                noisy.channelFormat,
-                blockSize,
-                kTestTuning,
+                noisy.sampleRate, noisy.channelFormat, blockSize, kTestTuning,
                 argIndexOfProcessToLog,
                 !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter,
                 !argDisableOctaviationGate,
@@ -214,12 +211,12 @@ TEST(PitchDetectorImpl, benchmarking) {
                     static_cast<float>(octaviationPresenceThresholdWithConstraint)),
                 argOnsetK.value_or(onsetFluxMedianMultiplier),
                 argOnsetAbsFloor.value_or(onsetFluxAbsFloor),
-                argMedianFilterDuration.value_or(0.15f),
+                argMedianFilterDuration.value_or(defaultMedianFilterDuration),
                 // Hold off by default in the benchmark so the golden refs reflect the
                 // detector's intrinsic behaviour, not the hold's note-persistence (see
-                // BenchmarkAlgorithmContext::holdDuration). Override with holdDuration=<s>.
-                argHoldDuration.value_or(0.0f),
-                argHoldOnsetGuard.value_or(0.5f)};
+                // benchmarkHoldDuration). Override with holdDuration=<s>.
+                argHoldDuration.value_or(benchmarkHoldDuration),
+                argHoldOnsetGuard.value_or(defaultHoldOnsetGuard)};
             const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;

@@ -10,8 +10,10 @@ namespace saint {
 class PitchDetectorMedianFilter : public PitchDetector {
    public:
     PitchDetectorMedianFilter(int sampleRate, int blockSize,
-                              std::unique_ptr<PitchDetectorImpl> impl, float filterDuration = 0.15f,
-                              float holdDuration = 1.f, float holdOnsetGuard = 0.5f);
+                              std::unique_ptr<PitchDetectorImpl> impl,
+                              float filterDuration = defaultMedianFilterDuration,
+                              float holdDuration = defaultHoldDuration,
+                              float holdOnsetGuard = defaultHoldOnsetGuard);
 
     ~PitchDetectorMedianFilter() override = default;
 

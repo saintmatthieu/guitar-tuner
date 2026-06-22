@@ -12,6 +12,12 @@
 
 namespace saint {
 
+// The benchmark disables the median filter's hold by default so the golden references measure
+// the detector's intrinsic accuracy/FNR rather than the hold's note-persistence behaviour
+// (production enables it via defaultHoldDuration in PitchDetectorTypes.h). Override:
+// holdDuration=<s>.
+constexpr float benchmarkHoldDuration = 0.0f;
+
 // Everything a benchmark algorithm factory may need to build a detector
 // instance for one test case.
 struct BenchmarkAlgorithmContext {
@@ -39,17 +45,14 @@ struct BenchmarkAlgorithmContext {
     // Overridable from the CLI to sweep the onset operating point (onsetK=..., onsetAbsFloor=...).
     float onsetK = onsetFluxMedianMultiplier;
     float onsetAbsFloor = onsetFluxAbsFloor;
-    // Median-filter window (s); matches the production default. Drives output latency.
-    float medianFilterDuration = 0.15f;
-    // Hold window (s): once locked, keep emitting the last pitch through a presence dip
-    // for up to this long before declaring the note gone. 0 disables the hold (legacy).
-    // Defaults to 0 in the benchmark so the golden references measure the detector's
-    // intrinsic accuracy/FNR rather than the hold's note-persistence behaviour (production
-    // still enables it via PitchDetectorMedianFilter's own default). Override: holdDuration=<s>.
-    float holdDuration = 0.f;
-    // The hold only engages this long (s) after the last onset, so it acts on the settled
-    // tail of a note rather than the still-resolving attack.
-    float holdOnsetGuard = 0.5f;
+    // Median-filter window (s); drives output latency. See defaultMedianFilterDuration.
+    float medianFilterDuration = defaultMedianFilterDuration;
+    // Hold window (s): once locked, keep emitting the last pitch through a presence dip for up
+    // to this long before declaring the note gone. Disabled in the benchmark; see
+    // benchmarkHoldDuration. Override: holdDuration=<s>.
+    float holdDuration = benchmarkHoldDuration;
+    // How long (s) after the last onset the hold begins engaging; see defaultHoldOnsetGuard.
+    float holdOnsetGuard = defaultHoldOnsetGuard;
 };
 
 using BenchmarkAlgorithmFactory =

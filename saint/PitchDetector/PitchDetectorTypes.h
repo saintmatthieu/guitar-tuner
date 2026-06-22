@@ -63,6 +63,15 @@ constexpr float onsetFluxAbsFloor = 0.001f;
 
 constexpr auto majorThirdRatio = 1.26f;
 
+// PitchDetectorMedianFilter operating point (production defaults). defaultMedianFilterDuration
+// is the median-filter window (s) and drives output latency. The hold keeps emitting the last
+// locked pitch through a brief presence dip so the indicator does not blink off; it engages
+// only defaultHoldOnsetGuard seconds after an onset, so it acts on a note's settled tail rather
+// than its still-resolving attack. See PitchDetectorMedianFilter.h for the full rationale.
+constexpr float defaultMedianFilterDuration = 0.15f;
+constexpr float defaultHoldDuration = 1.0f;
+constexpr float defaultHoldOnsetGuard = 0.5f;
+
 struct Pitch {
     const PitchClass pitchClass;
     const int octave;
