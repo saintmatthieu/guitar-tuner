@@ -13,3 +13,4 @@ and not reproducible, so it is recorded here for comparison rather than gated.
 | 2026-06-19 | onset-detection-improvements | ebe8ea3 | backup | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 3.52 |
 | 2026-06-22 | master | 9244f4a | Remove hold from benchmarking | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 1.97 |
 | 2026-06-22 | master | cb75273 | Half FFT size | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 1.01 |
+| 2026-06-22 | master | fe5bb15 | Remove zero-padding completely | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.92 |

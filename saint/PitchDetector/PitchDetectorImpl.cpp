@@ -111,13 +111,13 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _autocorrPitchDetector.reset();
     }
 
-    const auto processedAudio = _preprocessor->processBlock(audio);
+    const auto& processedAudio = _preprocessor->processBlock(audio);
     if (debugOutputSignal) {
         debugOutputSignal->insert(debugOutputSignal->end(), processedAudio.begin(),
                                   processedAudio.end());
     }
 
-    const std::vector<std::complex<float>> freq =
+    const std::vector<std::complex<float>>& freq =
         _frequencyDomainTransformer.process(processedAudio.data());
 
     auto presenceScore = 0.f;
@@ -139,22 +139,24 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     // produced by eval/fitAndShowErrorProbabilityModels.py from errors.py.
     const double probNotOctaviated = probabilityNotOctaviated(presenceScore);
     if (debugOutput) {
-        (*debugOutput)["probNotOctaviated"] = static_cast<float>(probNotOctaviated);
+        // Reuse a static key: this label exceeds libstdc++'s 15-char small-string buffer, so a
+        // fresh temporary would heap-allocate on every block (the production median filter always
+        // passes a debug map). With an existing key in a reused map, operator[] then allocates nothing.
+        static const std::string kProbNotOctaviated = "probNotOctaviated";
+        (*debugOutput)[kProbNotOctaviated] = static_cast<float>(probNotOctaviated);
     }
 
     // The spectrum and disambiguation are computed before the gate so the gate can
     // also weigh the harmonicity of the octave-corrected estimate (#4).
-    std::vector<float> powerSpectrum;
-    utils::getPowerSpectrum(freq, powerSpectrum);
-    std::vector<float> dbSpectrum = powerSpectrum;
-    std::transform(dbSpectrum.begin(), dbSpectrum.end(), dbSpectrum.begin(),
+    utils::getPowerSpectrum(freq, _dbSpectrum);
+    std::transform(_dbSpectrum.begin(), _dbSpectrum.end(), _dbSpectrum.begin(),
                    [](float power) { return utils::FastDb(power); });
-    assert(utils::isSymmetric(dbSpectrum));
-    _logger->Log(dbSpectrum.data(), dbSpectrum.size(), "dbSpectrum");
+    assert(utils::isSymmetric(_dbSpectrum));
+    _logger->Log(_dbSpectrum.data(), _dbSpectrum.size(), "dbSpectrum");
 
     float harmonicity = 0.f;
     const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, dbSpectrum, _estimateConstraint, &harmonicity);
+        _disambiguator.process(xcorrEstimate, _dbSpectrum, _estimateConstraint, &harmonicity);
     if (debugOutput) {
         (*debugOutput)["harmonicity"] = harmonicity;
     }

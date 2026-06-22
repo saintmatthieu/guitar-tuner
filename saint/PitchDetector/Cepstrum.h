@@ -41,8 +41,8 @@ void toCepstrum(const std::vector<float>& logSpectrum, RealFft& fft,
                 Aligned<std::vector<float>>& cepstrumAligned);
 
 /**
- * @param cepstrumData
- * @return std::vector<float> Real-valued spectrum reconstructed from the cepstrum
+ * @brief Reconstruct the real-valued spectrum from the cepstrum into `out` (no
+ * allocation when `out` is already fft.size). `out` must not alias `cepstrumPtr`.
  */
-std::vector<float> fromCepstrum(RealFft& fft, const float* cepstrumPtr);
+void fromCepstrum(RealFft& fft, const float* cepstrumPtr, std::vector<float>& out);
 }  // namespace saint

@@ -6,7 +6,6 @@
 #include <limits>
 #include <numeric>
 #include <optional>
-#include <unordered_set>
 
 #include "PitchDetectorLoggerInterface.h"
 #include "PitchDetectorTypes.h"
@@ -14,95 +13,6 @@
 
 namespace saint {
 namespace {
-struct PeakData {
-    std::vector<int> indices;
-    std::vector<float> values;
-};
-
-PeakData getPeaks(const std::vector<float>& spectrum, int minIndex, int maxIndex) {
-    PeakData peaks;
-
-    for (int i = minIndex; i < maxIndex - 1; ++i) {
-        if (spectrum[i] > spectrum[i - 1] && spectrum[i] > spectrum[i + 1] && spectrum[i] > 0.f) {
-            peaks.indices.push_back(i);
-            peaks.values.push_back(spectrum[i]);
-        }
-    }
-
-    if (peaks.indices.size() == 1) {
-        return peaks;
-    }
-
-    // Remove peaks that aren't looking good because of interference with noise or another peak
-    // that's too close.
-    constexpr auto minDiffDb = 10.f;
-    std::vector<int> peakIndexIndicesToRemove;
-    for (size_t i = 0; i < peaks.indices.size(); ++i) {
-        auto leftTroughIndex = peaks.indices[i];
-        while (leftTroughIndex > 0 && spectrum[leftTroughIndex - 1] < spectrum[leftTroughIndex]) {
-            --leftTroughIndex;
-        }
-        if (leftTroughIndex == 0 ||
-            spectrum[peaks.indices[i]] - spectrum[leftTroughIndex] < minDiffDb) {
-            peakIndexIndicesToRemove.push_back(i);
-            continue;
-        }
-
-        auto rightTroughIndex = peaks.indices[i];
-        while (rightTroughIndex + 1 < maxIndex &&
-               spectrum[rightTroughIndex + 1] < spectrum[rightTroughIndex]) {
-            ++rightTroughIndex;
-        }
-        if (rightTroughIndex + 1 == maxIndex ||
-            spectrum[peaks.indices[i]] - spectrum[rightTroughIndex] < minDiffDb) {
-            peakIndexIndicesToRemove.push_back(i);
-        }
-    }
-    for (auto it = peakIndexIndicesToRemove.rbegin(); it != peakIndexIndicesToRemove.rend(); ++it) {
-        peaks.indices.erase(peaks.indices.begin() + *it);
-        peaks.values.erase(peaks.values.begin() + *it);
-    }
-
-    return peaks;
-}
-
-struct LineFitResult {
-    float slope = 0.f;  // a
-    std::vector<float> absErrors;
-    float meanSquaredError = std::numeric_limits<float>::max();  // weighted sum of squared errors
-};
-
-LineFitResult leastSquareFit(const std::vector<int>& k, const PeakData& peaks,
-                             const std::vector<float>& weights) {
-    // Fit a line y = a*x + b to the data points (k[i], peakIndices[i]) for i in activeIndices
-    // using weighted least squares.
-    const auto n = k.size();
-    if (n < 2) {
-        return {};
-    }
-
-    std::vector<float> x(n), y(n), w(n);
-    for (size_t i = 0; i < n; ++i) {
-        x[i] = static_cast<float>(k[i]);
-        y[i] = static_cast<float>(peaks.indices[i]);
-        w[i] = weights[i];
-    }
-
-    const auto a = utils::leastSquareFit(x, y, w);
-
-    // Compute weighted sum of squared errors
-    float meanSquaredError = 0.f;
-    std::vector<float> absErrors(n);
-    for (size_t i = 0; i < n; ++i) {
-        const float residual = a * x[i] - y[i];
-        absErrors[i] = std::abs(residual);
-        meanSquaredError += w[i] * residual * residual;
-    }
-    meanSquaredError /= n;
-
-    return {a, std::move(absErrors), meanSquaredError};
-}
-
 template <typename IntContainer>
 constexpr int getGcd(const IntContainer& ints) {
     if (ints.empty()) {
@@ -118,82 +28,190 @@ constexpr int getGcd(const IntContainer& ints) {
     return result;
 }
 static_assert(getGcd(std::array<int, 3>{2, 4, 6}) == 2);
+}  // namespace
 
-LineFitResult evaluateCandidate(float candidate, float absoluteErrorThreshold, PeakData peaks,
-                                std::vector<float> weights) {
-    if (peaks.indices.empty() || candidate <= 0.f) {
-        return {};
+void AutocorrEstimateDisambiguator::getPeaks(const std::vector<float>& spectrum, int minIndex,
+                                             int maxIndex, PeakData& out) {
+    out.indices.clear();
+    out.values.clear();
+
+    for (int i = minIndex; i < maxIndex - 1; ++i) {
+        if (spectrum[i] > spectrum[i - 1] && spectrum[i] > spectrum[i + 1] && spectrum[i] > 0.f) {
+            out.indices.push_back(i);
+            out.values.push_back(spectrum[i]);
+        }
     }
 
+    if (out.indices.size() == 1) {
+        return;
+    }
+
+    // Remove peaks that aren't looking good because of interference with noise or another peak
+    // that's too close.
+    constexpr auto minDiffDb = 10.f;
+    _peakRemove.clear();
+    for (size_t i = 0; i < out.indices.size(); ++i) {
+        auto leftTroughIndex = out.indices[i];
+        while (leftTroughIndex > 0 && spectrum[leftTroughIndex - 1] < spectrum[leftTroughIndex]) {
+            --leftTroughIndex;
+        }
+        if (leftTroughIndex == 0 ||
+            spectrum[out.indices[i]] - spectrum[leftTroughIndex] < minDiffDb) {
+            _peakRemove.push_back(i);
+            continue;
+        }
+
+        auto rightTroughIndex = out.indices[i];
+        while (rightTroughIndex + 1 < maxIndex &&
+               spectrum[rightTroughIndex + 1] < spectrum[rightTroughIndex]) {
+            ++rightTroughIndex;
+        }
+        if (rightTroughIndex + 1 == maxIndex ||
+            spectrum[out.indices[i]] - spectrum[rightTroughIndex] < minDiffDb) {
+            _peakRemove.push_back(i);
+        }
+    }
+    for (auto it = _peakRemove.rbegin(); it != _peakRemove.rend(); ++it) {
+        out.indices.erase(out.indices.begin() + *it);
+        out.values.erase(out.values.begin() + *it);
+    }
+}
+
+float AutocorrEstimateDisambiguator::leastSquareFit(const std::vector<int>& k,
+                                                    const PeakData& peaks,
+                                                    const std::vector<float>& weights,
+                                                    std::vector<float>& absErrorsOut) {
+    // Fit a line y = a*x through the data points (k[i], peakIndices[i]) using weighted least
+    // squares (a = sum(x*y*w) / sum(x*x*w), matching utils::leastSquareFit), and return the
+    // weighted mean squared error while writing the per-point absolute residuals to absErrorsOut.
+    const auto n = k.size();
+    if (n < 2) {
+        absErrorsOut.clear();
+        return std::numeric_limits<float>::max();
+    }
+
+    float num = 0.f;
+    float den = 0.f;
+    for (size_t i = 0; i < n; ++i) {
+        const float x = static_cast<float>(k[i]);
+        const float y = static_cast<float>(peaks.indices[i]);
+        const float w = weights[i];
+        num += x * y * w;
+        den += x * x * w;
+    }
+    const float a = num / den;
+
+    float meanSquaredError = 0.f;
+    absErrorsOut.resize(n);
+    for (size_t i = 0; i < n; ++i) {
+        const float x = static_cast<float>(k[i]);
+        const float y = static_cast<float>(peaks.indices[i]);
+        const float residual = a * x - y;
+        absErrorsOut[i] = std::abs(residual);
+        meanSquaredError += weights[i] * residual * residual;
+    }
+    meanSquaredError /= n;
+
+    return meanSquaredError;
+}
+
+float AutocorrEstimateDisambiguator::evaluateCandidate(float candidate,
+                                                       float absoluteErrorThreshold,
+                                                       const PeakData& peaks,
+                                                       const std::vector<float>& weights) {
+    if (peaks.indices.empty() || candidate <= 0.f) {
+        return std::numeric_limits<float>::max();
+    }
+
+    // Mutable working copies (the pruning loop erases entries); reusing members keeps the
+    // copies allocation-free after warm-up.
+    _peaksWork.indices.assign(peaks.indices.begin(), peaks.indices.end());
+    _peaksWork.values.assign(peaks.values.begin(), peaks.values.end());
+    _weightsWork.assign(weights.begin(), weights.end());
+
     // Derive harmonic numbers for each peak: k[i] = max(round(peakIndices[i] / candidate), 1)
-    std::vector<int> k(peaks.indices.size());
-    std::transform(peaks.indices.begin(), peaks.indices.end(), k.begin(), [candidate](int index) {
-        return std::max(1, static_cast<int>(std::round(index / candidate)));
-    });
+    _k.resize(_peaksWork.indices.size());
+    std::transform(_peaksWork.indices.begin(), _peaksWork.indices.end(), _k.begin(),
+                   [candidate](int index) {
+                       return std::max(1, static_cast<int>(std::round(index / candidate)));
+                   });
 
-    LineFitResult bestFit = {};
+    float bestMse = std::numeric_limits<float>::max();
 
-    while (k.size() > 1) {
-        const std::unordered_set<int> kSet{k.begin(), k.end()};
+    while (_k.size() > 1) {
+        // Count the DISTINCT k values and how many are divisible by 2 / 3, via a sorted copy
+        // (a node-based set would allocate per element on every call). Equivalent to the old
+        // unordered_set: the integer counts are identical.
+        _kSorted.assign(_k.begin(), _k.end());
+        std::sort(_kSorted.begin(), _kSorted.end());
+        size_t numDistinct = 0;
+        int numDivisibleBy2 = 0;
+        int numDivisibleBy3 = 0;
+        for (size_t i = 0; i < _kSorted.size(); ++i) {
+            if (i == 0 || _kSorted[i] != _kSorted[i - 1]) {
+                ++numDistinct;
+                if (_kSorted[i] % 2 == 0) ++numDivisibleBy2;
+                if (_kSorted[i] % 3 == 0) ++numDivisibleBy3;
+            }
+        }
 
         // For a candidate that's an underestimate by a factor of 2, the peaks that are present
         // will still explain very well that candidate. However, the k values for these cases will
         // look like [2, 4, 6, ...], i.e., most of them will be dividable by 2. Same goes for 3. If
         // we detect such a situation, we abort.
-        for (auto divisor : {2, 3}) {
-            const auto numDividables = std::accumulate(
-                kSet.begin(), kSet.end(), 0,
-                [divisor](int acc, int val) { return acc + (val % divisor == 0 ? 1 : 0); });
-            if (numDividables >= kSet.size() - 2) {
-                return bestFit;
-            }
+        if (numDivisibleBy2 >= numDistinct - 2) {
+            return bestMse;
+        }
+        if (numDivisibleBy3 >= numDistinct - 2) {
+            return bestMse;
         }
 
         // Next caveat: the candidate is an overestimate by a factor of 2, then the k values will
         // tend to look like [1, 1, 2, 2, ...]. The least square fit in such cases isn't that bad,
         // actually, so just relying on this isn't so robust. Instead, let's just look at how many
         // duplicates there are ...
-        if (1. * kSet.size() / k.size() < 0.9) {
-            return bestFit;
+        if (1. * numDistinct / _k.size() < 0.9) {
+            return bestMse;
         }
 
-        auto fit = leastSquareFit(k, peaks, weights);
+        const float mse = leastSquareFit(_k, _peaksWork, _weightsWork, _absErrors);
 
         // Check if it's converged
         const auto allOk =
-            std::all_of(fit.absErrors.begin(), fit.absErrors.end(),
+            std::all_of(_absErrors.begin(), _absErrors.end(),
                         [absoluteErrorThreshold](float e) { return e < absoluteErrorThreshold; });
 
-        if (allOk /*  || fit.meanSquaredError / bestFit.meanSquaredError > 0.9f */) {
-            bestFit = fit;
+        if (allOk) {
+            bestMse = mse;
             break;
         }
 
         // Find the index with the largest weighted error and remove it
         const auto maxErrorPos = std::distance(
-            fit.absErrors.begin(), std::max_element(fit.absErrors.begin(), fit.absErrors.end()));
-        k.erase(k.begin() + maxErrorPos);
+            _absErrors.begin(), std::max_element(_absErrors.begin(), _absErrors.end()));
+        _k.erase(_k.begin() + maxErrorPos);
 
-        const auto kGcd = getGcd(k);
+        const auto kGcd = getGcd(_k);
         if (kGcd > 1) {
             // We could multiply the result of the next evaluation by kGcd, or break now and let
             // another, dedicated evaluation find out for itself.
             break;
         }
 
-        peaks.indices.erase(peaks.indices.begin() + maxErrorPos);
-        peaks.values.erase(peaks.values.begin() + maxErrorPos);
-        weights.erase(weights.begin() + maxErrorPos);
+        _peaksWork.indices.erase(_peaksWork.indices.begin() + maxErrorPos);
+        _peaksWork.values.erase(_peaksWork.values.begin() + maxErrorPos);
+        _weightsWork.erase(_weightsWork.begin() + maxErrorPos);
 
-        if (fit.meanSquaredError < bestFit.meanSquaredError)
-            bestFit = fit;
+        if (mse < bestMse)
+            bestMse = mse;
     }
 
-    return bestFit;
+    return bestMse;
 }
 
-float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<float>& idealSpectrum,
-                                   float minF0, std::optional<float> constraintIndex) {
+float AutocorrEstimateDisambiguator::disambiguateFundamentalIndex(
+    float octaviatedIndex, const std::vector<float>& idealSpectrum, float minF0,
+    std::optional<float> constraintIndex) {
     const auto& spec = idealSpectrum;
     // `octaviatedIndex` is the fundamental frequency estimate based on autocorrelation.
     // At the time of writing, the parent commit yields an accuracy histogram where
@@ -207,21 +225,21 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
                                              octaviatedIndex / 2, octaviatedIndex / 3};
 
     // If constrained, filter candidates to those within a major third of the constraint
-    std::vector<float> candidates;
+    _candidates.clear();
     for (const auto& c : allCandidates) {
         if (!constraintIndex.has_value()) {
-            candidates.push_back(c);
+            _candidates.push_back(c);
         } else {
             const auto minIndex = constraintIndex.value() / majorThirdRatio;
             const auto maxIndex = constraintIndex.value() * majorThirdRatio;
             if (c >= minIndex && c <= maxIndex) {
-                candidates.push_back(c);
+                _candidates.push_back(c);
             }
         }
     }
 
     // If no candidates remain after filtering, just return the original estimate
-    if (candidates.empty()) {
+    if (_candidates.empty()) {
         return octaviatedIndex;
     }
 
@@ -239,49 +257,51 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
     // 3. Get candidate that corresponds to the least error.
 
     // Step 1: Get peaks from the ideal spectrum
-    const auto minCandidate = *std::min_element(candidates.begin(), candidates.end());
+    const auto minCandidate = *std::min_element(_candidates.begin(), _candidates.end());
     const auto minSearchIndex = std::max(minCandidate * 0.9f, minF0);
     const auto maxSearchIndex =
         static_cast<int>(std::min(20.f * octaviatedIndex, static_cast<float>(spec.size()) / 2));
-    const PeakData peaks = getPeaks(spec, minSearchIndex, maxSearchIndex);
+    getPeaks(spec, minSearchIndex, maxSearchIndex, _peaks);
 
-    if (peaks.indices.empty()) {
+    if (_peaks.indices.empty()) {
         return octaviatedIndex;  // No peaks found, return original estimate
     }
 
     // Step 2: Compute weights w[i] = peakValues[i] / sum(peakValues)
-    const float sumValues = std::accumulate(peaks.values.begin(), peaks.values.end(), 0.f);
-    std::vector<float> weights(peaks.values.size());
+    const float sumValues = std::accumulate(_peaks.values.begin(), _peaks.values.end(), 0.f);
+    _weights.resize(_peaks.values.size());
     if (sumValues > 0.f) {
-        std::transform(peaks.values.begin(), peaks.values.end(), weights.begin(),
+        std::transform(_peaks.values.begin(), _peaks.values.end(), _weights.begin(),
                        [sumValues](float v) { return v / sumValues; });
     } else {
         // Fall back to uniform weights if all values are non-positive
-        std::fill(weights.begin(), weights.end(), 1.f / weights.size());
+        std::fill(_weights.begin(), _weights.end(), 1.f / _weights.size());
     }
 
     // Step 3: Evaluate each candidate and find the best one
-    std::optional<LineFitResult> bestFit;
+    bool haveBest = false;
+    float bestMseValue = 0.f;
     auto bestCandidate = 0.f;
-    for (auto c = 0; c < candidates.size(); ++c) {
-        const auto candidate = candidates[c];
+    for (auto c = 0; c < _candidates.size(); ++c) {
+        const auto candidate = _candidates[c];
         // Skip candidates below the minimum detectable frequency
         if (candidate < minF0) {
             continue;
         }
 
         const auto absoluteErrorThreshold = candidate / 20.f;
-        const LineFitResult candidateFit =
-            evaluateCandidate(candidate, absoluteErrorThreshold, peaks, weights);
+        const float candidateMse =
+            evaluateCandidate(candidate, absoluteErrorThreshold, _peaks, _weights);
 
         const auto squaredErrorThreshold = absoluteErrorThreshold * absoluteErrorThreshold;
-        if (!bestFit.has_value() && candidateFit.meanSquaredError < squaredErrorThreshold) {
+        if (!haveBest && candidateMse < squaredErrorThreshold) {
             // The original estimate looks good already, no need to take risks.
             return octaviatedIndex;
         }
 
-        if (!bestFit.has_value() || candidateFit.meanSquaredError < bestFit->meanSquaredError) {
-            bestFit = candidateFit;
+        if (!haveBest || candidateMse < bestMseValue) {
+            haveBest = true;
+            bestMseValue = candidateMse;
             bestCandidate = candidate;
         }
     }
@@ -293,7 +313,8 @@ float disambiguateFundamentalIndex(float octaviatedIndex, const std::vector<floa
 // comb of f0Index. A pure tone has all its energy at k=1 -> ~0; broadband noise and
 // inharmonic/octave-misplaced locks scatter energy off-comb -> low; a genuine note
 // puts strong, comb-aligned energy in its overtones -> high.
-float computeHarmonicity(const std::vector<float>& spec, float f0Index, float minF0Index) {
+float AutocorrEstimateDisambiguator::computeHarmonicity(const std::vector<float>& spec,
+                                                        float f0Index, float minF0Index) {
     if (f0Index <= 0.f) {
         return 0.f;
     }
@@ -303,27 +324,26 @@ float computeHarmonicity(const std::vector<float>& spec, float f0Index, float mi
     if (maxSearch <= minSearch) {
         return 0.f;
     }
-    const PeakData peaks = getPeaks(spec, minSearch, maxSearch);
+    getPeaks(spec, minSearch, maxSearch, _peaks);
     // Tolerance for "peak sits on harmonic k": a fraction of the harmonic spacing,
     // floored so low f0 (few bins per harmonic) isn't impossibly strict.
     const float tol = std::max(1.5f, f0Index * 0.1f);
     float totalEnergy = 0.f;
     float overtoneEnergy = 0.f;
-    for (size_t i = 0; i < peaks.indices.size(); ++i) {
-        const float value = peaks.values[i];
+    for (size_t i = 0; i < _peaks.indices.size(); ++i) {
+        const float value = _peaks.values[i];
         totalEnergy += value;
-        const int k = std::max(1, static_cast<int>(std::round(peaks.indices[i] / f0Index)));
-        if (k >= 2 && std::abs(peaks.indices[i] - k * f0Index) <= tol) {
+        const int k = std::max(1, static_cast<int>(std::round(_peaks.indices[i] / f0Index)));
+        if (k >= 2 && std::abs(_peaks.indices[i] - k * f0Index) <= tol) {
             overtoneEnergy += value;
         }
     }
     return totalEnergy > 0.f ? overtoneEnergy / totalEnergy : 0.f;
 }
-}  // namespace
 
 float AutocorrEstimateDisambiguator::disambiguateEstimate(float priorEstimate,
                                                           const std::vector<float>& idealSpectrum,
-                                                          std::optional<float> constraint) const {
+                                                          std::optional<float> constraint) {
     const auto priorIndex = priorEstimate / _binFreq;
     const auto minF0 = _minFreq / _binFreq;
     const auto constraintIndex =
@@ -340,21 +360,41 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
       _binFreq(static_cast<float>(sampleRate) / _fftSize),
       _cepstrumFft(_fftSize),
       _minFreq(getMinFreq(tuning)),
-      _maxFreq(getMaxFreq(tuning)) {}
+      _maxFreq(getMaxFreq(tuning)) {
+    _idealSpectrum.resize(_fftSize);
+    _cepstrumAligned.value.resize(_fftSize);
+    _lifteredCepstrum.resize(_fftSize);
+    _spectrumEnvelope.resize(_fftSize);
+
+    // Reserve peak-fitting scratch up front (peak count is bounded by the half-spectrum)
+    // so even the first block allocates nothing.
+    const auto maxPeaks = static_cast<size_t>(_fftSize) / 2;
+    _peaks.indices.reserve(maxPeaks);
+    _peaks.values.reserve(maxPeaks);
+    _peakRemove.reserve(maxPeaks);
+    _candidates.reserve(4);
+    _weights.reserve(maxPeaks);
+    _peaksWork.indices.reserve(maxPeaks);
+    _peaksWork.values.reserve(maxPeaks);
+    _weightsWork.reserve(maxPeaks);
+    _k.reserve(maxPeaks);
+    _kSorted.reserve(maxPeaks);
+    _absErrors.reserve(maxPeaks);
+}
 
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
                                              const std::vector<float>& dbSpectrum,
                                              std::optional<float> constraint,
                                              float* harmonicityOut) {
-    auto idealSpectrum = dbSpectrum;
-    toIdealSpectrum(idealSpectrum);
+    std::copy(dbSpectrum.begin(), dbSpectrum.end(), _idealSpectrum.begin());
+    toIdealSpectrum(_idealSpectrum);
 
     const auto disambiguatedEstimate =
-        disambiguateEstimate(xcorrEstimate, idealSpectrum, constraint);
+        disambiguateEstimate(xcorrEstimate, _idealSpectrum, constraint);
 
     if (harmonicityOut) {
-        *harmonicityOut =
-            computeHarmonicity(idealSpectrum, disambiguatedEstimate / _binFreq, _minFreq / _binFreq);
+        *harmonicityOut = computeHarmonicity(_idealSpectrum, disambiguatedEstimate / _binFreq,
+                                             _minFreq / _binFreq);
     }
 
     return disambiguatedEstimate;
@@ -363,19 +403,18 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
 void AutocorrEstimateDisambiguator::toIdealSpectrum(std::vector<float>& logSpectrum) {
     auto& spec = logSpectrum;
 
-    Aligned<std::vector<float>> cepstrumAligned;
-    toCepstrum(spec, _cepstrumFft, cepstrumAligned);
+    toCepstrum(spec, _cepstrumFft, _cepstrumAligned);
 
-    const std::vector<float>& cepstrum = cepstrumAligned.value;
-    std::vector<float> lifteredCepstrum = cepstrum;
+    const std::vector<float>& cepstrum = _cepstrumAligned.value;
+    std::copy(cepstrum.begin(), cepstrum.end(), _lifteredCepstrum.begin());
     const auto cutoffIndex = std::min<int>(_sampleRate / 2500.f, cepstrum.size());
-    std::fill(lifteredCepstrum.begin() + cutoffIndex, lifteredCepstrum.end() - cutoffIndex + 1,
+    std::fill(_lifteredCepstrum.begin() + cutoffIndex, _lifteredCepstrum.end() - cutoffIndex + 1,
               0.f);
 
-    const std::vector<float> spectrumEnvelope = fromCepstrum(_cepstrumFft, lifteredCepstrum.data());
-    _logger.Log(spectrumEnvelope.data(), spectrumEnvelope.size(), "spectrumEnvelope");
+    fromCepstrum(_cepstrumFft, _lifteredCepstrum.data(), _spectrumEnvelope);
+    _logger.Log(_spectrumEnvelope.data(), _spectrumEnvelope.size(), "spectrumEnvelope");
 
-    std::transform(spec.begin(), spec.end(), spectrumEnvelope.begin(), spec.begin(),
+    std::transform(spec.begin(), spec.end(), _spectrumEnvelope.begin(), spec.begin(),
                    std::minus<float>());
 
     // Calculate the variance from 5kHz to the Nyquist

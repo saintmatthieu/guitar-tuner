@@ -32,14 +32,6 @@ void applyWindow(const std::vector<float>& window, std::vector<float>& input) {
         input[i] *= window[i];
     }
 }
-
-std::vector<std::complex<float>> getSpectrum(RealFft& fft, const float* timeData) {
-    Aligned<std::vector<std::complex<float>>> freqAligned;
-    auto& freq = freqAligned.value;
-    freq.resize(fft.size / 2);
-    fft.forward(timeData, freq.data());
-    return freqAligned.value;
-}
 }  // namespace
 
 FrequencyDomainTransformer::FrequencyDomainTransformer(int sampleRate, ChannelFormat channelFormat,
@@ -54,13 +46,15 @@ FrequencyDomainTransformer::FrequencyDomainTransformer(int sampleRate, ChannelFo
                                        _windowType)),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
       _fwdFft(_fftSize),
-      _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f) {
+      _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f),
+      _timeScratch(static_cast<size_t>(_fftSize), 0.f),
+      _freqScratch(static_cast<size_t>(_fftSize) / 2) {
     //
     _audioBuffer.reserve(_window.size());
     _logger.SamplesRead(-_audioBuffer.size());
 }
 
-std::vector<std::complex<float>> FrequencyDomainTransformer::process(const float* audio) {
+const std::vector<std::complex<float>>& FrequencyDomainTransformer::process(const float* audio) {
     // Append new audio samples to buffer
     if (_channelFormat == ChannelFormat::Mono) {
         _audioBuffer.insert(_audioBuffer.end(), audio, audio + _blockSize);
@@ -79,12 +73,11 @@ std::vector<std::complex<float>> FrequencyDomainTransformer::process(const float
             std::cerr
                 << "FrequencyDomainTransformer::process called before enough samples were read\n";
         }
-        return {};
+        std::fill(_freqScratch.begin(), _freqScratch.end(), std::complex<float>{});
+        return _freqScratch;
     }
 
-    Aligned<std::vector<float>> alignedTime;
-    auto& time = alignedTime.value;
-    time.resize(_fftSize);
+    auto& time = _timeScratch;
 
     // Copy the most recent window of samples
     const auto bufferStart = _audioBuffer.end() - _window.size();
@@ -112,10 +105,10 @@ std::vector<std::complex<float>> FrequencyDomainTransformer::process(const float
     _logger.Log(time.data(), time.size(), "windowedAudio");
 
     // Forward FFT
-    std::vector<std::complex<float>> freq = getSpectrum(_fwdFft, time.data());
-    _logger.Log(freq.data(), freq.size(), "spectrum",
+    _fwdFft.forward(time.data(), _freqScratch.data());
+    _logger.Log(_freqScratch.data(), _freqScratch.size(), "spectrum",
                 [](const std::complex<float>& X) { return std::abs(X); });
 
-    return freq;
+    return _freqScratch;
 }
 }  // namespace saint

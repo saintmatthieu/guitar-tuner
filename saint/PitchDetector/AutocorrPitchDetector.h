@@ -39,6 +39,12 @@ class AutocorrPitchDetector {
     const int _lastSearchIndex;
     const std::vector<float> _windowXcorr;
 
+    // Reused scratch, so process() allocates nothing on the audio thread: _xcorr holds
+    // the (inverse-FFT) autocorrelation; _freqScratch a mutable copy of the input
+    // spectrum that getXCorr overwrites in place.
+    std::vector<float> _xcorr;
+    std::vector<std::complex<float>> _freqScratch;
+
     // Cross-frame averaging state (idea #1). Empty/unused when averaging is off.
     std::vector<std::vector<float>> _xcorrHistory;
     std::vector<float> _averagedXcorr;

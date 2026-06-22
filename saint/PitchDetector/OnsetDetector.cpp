@@ -40,6 +40,8 @@ OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
       _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f),
       _leastBlockCountBetweenOffsets(sampleRate / samplesPerBlockPerChannel * 0.1) {
     _audioBuffer.reserve(std::max<size_t>(_window.size(), samplesPerBlockPerChannel));
+    _timeScratch.assign(_fftSize, 0.f);
+    _freqScratch.resize(_fftSize / 2);
     // ~0.4 s causal window for the adaptive-threshold median. Frames per second =
     // sampleRate / blockSize (blockSize = sampleRate/100, so ~100 fps at any SR).
     const auto medianWindowSize =
@@ -48,7 +50,7 @@ OnsetDetector::OnsetDetector(int sampleRate, ChannelFormat channelFormat,
     _medianScratch.resize(medianWindowSize);
 }
 
-bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
+bool OnsetDetector::process(const float* audio, DebugOutput* debugOutput) {
     // Append new audio samples, converting stereo to mono if needed.
     if (_channelFormat == ChannelFormat::Mono) {
         _audioBuffer.insert(_audioBuffer.end(), audio, audio + _blockSize);
@@ -64,11 +66,10 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
         return false;
     }
 
-    // Window the most recent _window.size() samples into a zero-padded,
-    // FFT-sized (power-of-two) buffer.
-    Aligned<std::vector<float>> timeAligned;
-    auto& time = timeAligned.value;
-    time.assign(_fftSize, 0.f);
+    // Window the most recent _window.size() samples into the reused, zero-padded,
+    // FFT-sized buffer. The padding tail stays zero from construction; the head is
+    // fully overwritten each call.
+    auto& time = _timeScratch;
     const auto bufferStart = _audioBuffer.end() - _window.size();
     std::transform(bufferStart, _audioBuffer.end(), _window.begin(), time.begin(),
                    [](float x, double w) { return static_cast<float>(x * w); });
@@ -78,9 +79,7 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
     _audioBuffer.erase(_audioBuffer.begin(), _audioBuffer.end() - samplesToKeep);
 
     // Forward FFT -> magnitude spectrum.
-    Aligned<std::vector<std::complex<float>>> freqAligned;
-    auto& freq = freqAligned.value;
-    freq.resize(_fftSize / 2);
+    auto& freq = _freqScratch;
     _fft.forward(time.data(), freq.data());
 
     // Spectral flux: sum of the positive magnitude changes across bins. Zero on
@@ -135,12 +134,10 @@ bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
     return output;
 }
 
-bool OnsetDetector::process(const float* audio, DebugOutput* debugOutput) {
-    // For const-correctness, we can copy the input to a temporary buffer and call the non-const
-    // version.
-    std::vector<float> copy(audio,
-                            audio + _blockSize * (_channelFormat == ChannelFormat::Mono ? 1 : 2));
-    return process(copy.data(), debugOutput);
+bool OnsetDetector::process(float* audio, DebugOutput* debugOutput) {
+    // The const overload is the real implementation (it only reads the input); this
+    // mutable overload just forwards to it.
+    return process(static_cast<const float*>(audio), debugOutput);
 }
 
 }  // namespace saint

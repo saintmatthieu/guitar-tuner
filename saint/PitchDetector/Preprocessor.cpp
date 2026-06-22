@@ -12,7 +12,8 @@ Preprocessor::Preprocessor(int sampleRate, ChannelFormat channelFormat,
               ? std::make_unique<ButterworthFilter<filterOrder>>(
                     numChannels(channelFormat), 1,
                     butterworthCoefs<filterOrder>(FilterType::Lowpass, cutoffFreq, sampleRate))
-              : nullptr) {}
+              : nullptr),
+      _scratch(static_cast<size_t>(samplesPerBlockPerChannel) * numChannels(channelFormat)) {}
 
 void Preprocessor::processBlock(float* audio) {
     _lowpass.process(audio, _samplesPerBlockPerChannel);
@@ -21,11 +22,11 @@ void Preprocessor::processBlock(float* audio) {
     }
 }
 
-std::vector<float> Preprocessor::processBlock(const float* audio) {
-    std::vector<float> copy(_samplesPerBlockPerChannel * _numChannels);
-    std::copy(audio, audio + _samplesPerBlockPerChannel * _numChannels, copy.begin());
-    processBlock(copy.data());
-    return copy;
+const std::vector<float>& Preprocessor::processBlock(const float* audio) {
+    const auto n = _samplesPerBlockPerChannel * _numChannels;
+    std::copy(audio, audio + n, _scratch.begin());
+    processBlock(_scratch.data());
+    return _scratch;
 }
 
 }  // namespace saint

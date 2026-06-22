@@ -65,9 +65,8 @@ void saint::toCepstrum(const std::vector<float>& logSpectrum, RealFft& fft,
     assert(utils::isSymmetric(cepstrum));
 }
 
-std::vector<float> saint::fromCepstrum(RealFft& fft, const float* cepstrumPtr) {
-    Aligned<std::vector<float>> spectrumAligned;
-    auto& spectrum = spectrumAligned.value;
+void saint::fromCepstrum(RealFft& fft, const float* cepstrumPtr, std::vector<float>& out) {
+    auto& spectrum = out;
     spectrum.resize(fft.size);
     fft.forward(cepstrumPtr, spectrum.data());
     const auto scale = 1.f / fft.size;
@@ -83,7 +82,6 @@ std::vector<float> saint::fromCepstrum(RealFft& fft, const float* cepstrumPtr) {
         spectrum[i] = spectrum[fft.size - i];
     }
     assert(utils::isSymmetric(spectrum));
-    return spectrum;
 }
 
 namespace saint {

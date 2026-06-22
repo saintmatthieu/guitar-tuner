@@ -39,6 +39,10 @@ class OnsetDetector {
     const int _fftSize;
     RealFft _fft;
     std::vector<float> _audioBuffer;
+    // Reused scratch (windowed time block and its spectrum), so process() allocates
+    // nothing on the audio thread.
+    std::vector<float> _timeScratch;
+    std::vector<std::complex<float>> _freqScratch;
     // Magnitude spectrum of the previous frame; empty until the first frame is
     // analysed (so the first flux is 0, like np.diff with prepend).
     std::vector<float> _prevMagnitude;

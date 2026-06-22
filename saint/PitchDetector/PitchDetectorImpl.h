@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "AutocorrEstimateDisambiguator.h"
 #include "AutocorrPitchDetector.h"
@@ -55,5 +56,9 @@ class PitchDetectorImpl {
     const double _presenceThreshold;
     const float _harmonicityFloor;
     const double _presenceThresholdWithConstraint;
+
+    // Reused dB-power-spectrum buffer, so process() allocates nothing on the audio
+    // thread. Sized on the first block, then reused in place.
+    std::vector<float> _dbSpectrum;
 };
 }  // namespace saint

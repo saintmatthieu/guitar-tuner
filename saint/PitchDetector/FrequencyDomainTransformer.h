@@ -15,7 +15,9 @@ class FrequencyDomainTransformer {
                                int samplesPerBlockPerChannel, float minFreq,
                                PitchDetectorLoggerInterface& logger);
 
-    std::vector<std::complex<float>> process(const float*);
+    // Returns a reference to an internal buffer, valid until the next call. No
+    // per-call heap allocation (real-time-audio path).
+    const std::vector<std::complex<float>>& process(const float*);
 
     int delaySamples() const {
         return windowSizeSamples() / 2;
@@ -44,5 +46,9 @@ class FrequencyDomainTransformer {
     RealFft _fwdFft;
     std::vector<float> _audioBuffer;
     bool _bufferErrorLoggedAlready = false;
+    // Reused scratch (windowed time block and its spectrum), so process()
+    // allocates nothing on the audio thread.
+    std::vector<float> _timeScratch;
+    std::vector<std::complex<float>> _freqScratch;
 };
 }  // namespace saint

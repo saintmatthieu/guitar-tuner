@@ -9,7 +9,7 @@
 
 namespace saint {
 namespace {
-void getXCorr(RealFft& fft, std::vector<float>& time, std::vector<std::complex<float>> freq,
+void getXCorr(RealFft& fft, std::vector<float>& time, std::vector<std::complex<float>>& freq,
               const std::vector<float>& lpWindow) {
     auto timeData = time.data();
 
@@ -70,7 +70,9 @@ AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
       _fwdFft(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / minFreq))),
-      _windowXcorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)) {
+      _windowXcorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)),
+      _xcorr(static_cast<size_t>(_fftSize), 0.f),
+      _freqScratch(static_cast<size_t>(_fftSize) / 2) {
     if (autocorrAveragingFrameCount > 1) {
         _xcorrHistory.assign(autocorrAveragingFrameCount, std::vector<float>(_fftSize, 0.f));
         _averagedXcorr.resize(_fftSize, 0.f);
@@ -113,16 +115,18 @@ const std::vector<float>& AutocorrPitchDetector::averageOverFrames(
 
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
                                      float* presenceScore, std::optional<float> constraint) {
-    std::vector<float> xcorr(_fftSize);
     _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "windowXcorr");
 
-    // Compute cross-correlation
-    getXCorr(_fwdFft, xcorr, freq, _lpWindow);
-    _logger.Log(xcorr.data(), xcorr.size(), "xcorr");
+    // Compute cross-correlation. getXCorr overwrites its spectrum argument in place,
+    // so work on a reused copy and leave the caller's `freq` untouched (the impl still
+    // needs it for the power spectrum).
+    std::copy(freq.begin(), freq.end(), _freqScratch.begin());
+    getXCorr(_fwdFft, _xcorr, _freqScratch, _lpWindow);
+    _logger.Log(_xcorr.data(), _xcorr.size(), "xcorr");
 
     // Average over the last few frames to suppress noise-driven octave errors
-    // (idea #1). `acf` aliases `xcorr` when averaging is disabled.
-    const std::vector<float>& acf = averageOverFrames(xcorr);
+    // (idea #1). `acf` aliases `_xcorr` when averaging is disabled.
+    const std::vector<float>& acf = averageOverFrames(_xcorr);
     _logger.Log(acf.data(), acf.size(), "averagedXcorr");
 
     // Determine search range based on constraint
