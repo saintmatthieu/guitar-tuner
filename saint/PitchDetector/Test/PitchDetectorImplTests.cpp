@@ -215,7 +215,10 @@ TEST(PitchDetectorImpl, benchmarking) {
                 argOnsetK.value_or(onsetFluxMedianMultiplier),
                 argOnsetAbsFloor.value_or(onsetFluxAbsFloor),
                 argMedianFilterDuration.value_or(0.15f),
-                argHoldDuration.value_or(1.0f),
+                // Hold off by default in the benchmark so the golden refs reflect the
+                // detector's intrinsic behaviour, not the hold's note-persistence (see
+                // BenchmarkAlgorithmContext::holdDuration). Override with holdDuration=<s>.
+                argHoldDuration.value_or(0.0f),
                 argHoldOnsetGuard.value_or(0.5f)};
             const auto pitchDetector = createDetector(context);
 
