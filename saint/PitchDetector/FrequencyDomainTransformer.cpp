@@ -18,8 +18,7 @@ int getFftOrder(int windowSize) {
 }
 
 int getFftSizeSamples(int windowSize) {
-    constexpr auto zeroPadding = 1;
-    return 1 << (getFftOrder(windowSize) + zeroPadding);
+    return 1 << getFftOrder(windowSize);
 }
 
 int getWindowSizeSamples(int sampleRate, utils::WindowType windowType, float minFreq) {
