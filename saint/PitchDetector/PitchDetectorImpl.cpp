@@ -91,7 +91,9 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
       _applyOctaviationGate(gate.apply),
       _presenceThreshold(gate.presenceThreshold),
       _harmonicityFloor(gate.harmonicityFloor),
-      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint) {}
+      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint),
+      _lockedConsistencyCents(gate.lockedConsistencyCents),
+      _lockedSecondaryPeakFloor(gate.lockedSecondaryPeakFloor) {}
 
 float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
                                  std::vector<float>* debugOutputSignal) {
@@ -121,11 +123,17 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _frequencyDomainTransformer.process(processedAudio.data());
 
     auto presenceScore = 0.f;
-    const float xcorrEstimate =
-        _autocorrPitchDetector.process(freq, &presenceScore, _estimateConstraint);
+    auto harmonicConsistencyCents = 0.f;
+    auto secondaryPeakScore = 0.f;
+    const float xcorrEstimate = _autocorrPitchDetector.process(
+        freq, &presenceScore, _estimateConstraint, &harmonicConsistencyCents, &secondaryPeakScore);
     if (debugOutput) {
         (*debugOutput)["presenceScore"] = presenceScore;
         (*debugOutput)["xcorrEstimate"] = xcorrEstimate;
+        static const std::string kConsistency = "harmonicConsistencyCents";
+        (*debugOutput)[kConsistency] = harmonicConsistencyCents;
+        static const std::string kSecondary = "secondaryPeakScore";
+        (*debugOutput)[kSecondary] = secondaryPeakScore;
     }
 
     if (xcorrEstimate == 0.f) {
@@ -141,7 +149,8 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     if (debugOutput) {
         // Reuse a static key: this label exceeds libstdc++'s 15-char small-string buffer, so a
         // fresh temporary would heap-allocate on every block (the production median filter always
-        // passes a debug map). With an existing key in a reused map, operator[] then allocates nothing.
+        // passes a debug map). With an existing key in a reused map, operator[] then allocates
+        // nothing.
         static const std::string kProbNotOctaviated = "probNotOctaviated";
         (*debugOutput)[kProbNotOctaviated] = static_cast<float>(probNotOctaviated);
     }
@@ -161,16 +170,30 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         (*debugOutput)["harmonicity"] = harmonicity;
     }
 
-    // Gate: reject when the presence-based octaviation probability is too low, or the
-    // estimate lacks harmonic support. Once locked, the search/disambiguation are already
-    // clamped to a major third of the constraint, so this cut is a pure presence gate and
-    // is set more permissively (it governs how long a decaying note keeps being tracked).
-    // harmonicityFloor=0 disables the harmonic criterion.
-    const auto threshold = _estimateConstraint.has_value() ? _presenceThresholdWithConstraint
-                                                           : _presenceThreshold;
-    if (_applyOctaviationGate &&
-        (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
-        return 0.f;
+    // Gate. The harmonicity floor always applies (rejects estimates lacking harmonic support; #4).
+    // The presence/release criterion differs by phase:
+    //  - Unconstrained (acquisition): cut on probNotOctaviated to reject octave errors.
+    //  - Locked (tracking): the search/disambiguation are already clamped to a major third of the
+    //    constraint, so octave errors are impossible and this is purely a "is the note still here?"
+    //    release. By default that is a permissive presence cut (presenceThresholdWithConstraint);
+    //    when lockedConsistencyCents > 0 it instead keys on harmonic-lag consistency, which keeps
+    //    quiet-but-clean frames and drops wandered/contaminated ones (see OctaviationGateConfig).
+    if (_applyOctaviationGate) {
+        if (harmonicity < _harmonicityFloor) {
+            return 0.f;
+        }
+        const bool locked = _estimateConstraint.has_value();
+        if (locked && _lockedConsistencyCents > 0.f) {
+            if (std::abs(harmonicConsistencyCents) > _lockedConsistencyCents ||
+                secondaryPeakScore < _lockedSecondaryPeakFloor) {
+                return 0.f;
+            }
+        } else {
+            const auto threshold = locked ? _presenceThresholdWithConstraint : _presenceThreshold;
+            if (probNotOctaviated < threshold) {
+                return 0.f;
+            }
+        }
     }
 
     return disambiguatedEstimate;

@@ -19,9 +19,13 @@ namespace PitchDetectorFactory {
  * occurred in live.
  * @param cpuSummaryCallback Forwarded to the `IssueReportingPitchDetector`, which invokes it on
  * destruction with a one-line CPU-load summary (see its destructor). Optional.
+ * @param applyConstraintBandPass When true, the autocorrelation is band-passed around the locked
+ * fundamental in the decaying tail (see autocorrConstraintBandHalfWidthSemitones). Off by default
+ * (the shipping behaviour); the TestApp enables it so it can be auditioned against live input.
  */
 std::unique_ptr<IssueReportingPitchDetector> createInstance(
     int sampleRate, ChannelFormat, int samplesPerBlockPerChannel, Tuning tuning = Tuning::Standard,
-    std::function<void(std::string logLine)> cpuSummaryCallback = {});
+    std::function<void(std::string logLine)> cpuSummaryCallback = {},
+    bool applyConstraintBandPass = false);
 }  // namespace PitchDetectorFactory
 }  // namespace saint

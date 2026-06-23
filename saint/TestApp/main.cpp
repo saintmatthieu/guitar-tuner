@@ -182,8 +182,12 @@ std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
     }
 #endif
     (void)choice;
-    return saint::PitchDetectorFactory::createInstance(
-        sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard, cpuSummary);
+    // Enable the constraint band-pass here (off by default everywhere else) so it can be
+    // auditioned against live input before deciding whether to ship it.
+    constexpr bool kApplyConstraintBandPass = true;
+    return saint::PitchDetectorFactory::createInstance(sampleRate, saint::ChannelFormat::Mono,
+                                                       blockSize, saint::Tuning::Standard,
+                                                       cpuSummary, kApplyConstraintBandPass);
 }
 
 int runLive(const std::string& device, const std::optional<std::filesystem::path>& outPath,

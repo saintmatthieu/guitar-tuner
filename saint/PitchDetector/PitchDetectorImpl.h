@@ -56,6 +56,11 @@ class PitchDetectorImpl {
     const double _presenceThreshold;
     const float _harmonicityFloor;
     const double _presenceThresholdWithConstraint;
+    // Locked-phase harmonic-lag-consistency release (see OctaviationGateConfig). When
+    // _lockedConsistencyCents > 0, the locked phase releases on 2L-lag consistency / secondary-peak
+    // height instead of the presence cut.
+    const float _lockedConsistencyCents;
+    const float _lockedSecondaryPeakFloor;
 
     // Reused dB-power-spectrum buffer, so process() allocates nothing on the audio
     // thread. Sized on the first block, then reused in place.

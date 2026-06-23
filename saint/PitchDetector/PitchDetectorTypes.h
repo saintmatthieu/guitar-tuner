@@ -17,6 +17,29 @@ static constexpr auto autocorrRolloffHz = 200;
 // Upsampling by a factor of 4, we reduce the maximal quantization to 1.5 cents.
 constexpr auto autocorrUpsamplingFactor = 4;
 
+// When locked onto a pitch (constraint active), the autocorrelation is band-passed to a window
+// around the constrained fundamental before peak-picking. In a decaying note's low-SNR tail,
+// sub-fundamental energy (room rumble, mains hum, a neighbouring partial) grows relative to the
+// fundamental and pulls the broadband ACF peak toward longer lag, flattening the estimate by ~10+
+// cents; restricting the ACF to a band around the fundamental removes that contamination. The band
+// tracks the (smoothed) constraint every block, so a smoothly bending note stays inside it. It is a
+// zero-phase spectral mask recomputed per block - not a recursive filter with adapted coefficients
+// - so it cannot become unstable however the centre frequency moves. Half-width in semitones: wide
+// enough to hold the fundamental under tracking lag, narrow enough to exclude a contaminant a
+// minor-third below. 0 disables the band-pass (legacy broadband behaviour).
+constexpr float autocorrConstraintBandHalfWidthSemitones = 2.f;
+
+// The band-pass is engaged only when it is actually needed: when the energy below the fundamental
+// band (sub-fundamental rumble/hum/neighbouring partials, measured from
+// autocorrSubFundamentalFloorHz up to the band) exceeds this fraction of the in-band energy. In a
+// healthy, strong note this ratio is tiny (a few %), so the broadband ACF - which is slightly more
+// accurate, as band-passing clips the fundamental's lower spectral skirt - is left untouched; in
+// the decaying tail the sub-fundamental energy grows past the threshold and the band-pass kicks in
+// to stop the flat drift. The test is on the raw spectrum, independent of the ACF output, so
+// engaging/disengaging cannot oscillate.
+constexpr float autocorrConstraintBandContaminationRatio = 0.15f;
+constexpr int autocorrSubFundamentalFloorHz = 40;
+
 // Number of consecutive autocorrelation frames to average before peak picking.
 // The ACF is shift-invariant, so a sustained note's signal peak adds coherently
 // across frames while random noise averages down (variance ~1/K), which curbs
@@ -46,6 +69,21 @@ constexpr float octaviationHarmonicityFloor = 0.30f;
 // full sweep.
 constexpr double octaviationPresenceThresholdWithConstraint = 0.5;
 
+// Locked-phase harmonic-lag-consistency release — an alternative to the presence cut
+// (octaviationPresenceThresholdWithConstraint) for deciding when a tracked note has been lost.
+// The autocorrelation of a periodic signal peaks at every integer multiple of the fundamental
+// lag L; the 2L peak in particular sits at exactly 2L. A genuine pitch change (peg turn) moves
+// the whole structure coherently, so the 2L peak stays at 2x the *current* fundamental lag and
+// the consistency is unaffected; noise or sub-fundamental contamination pulls the fundamental
+// peak without moving the 2L peak, so the deviation flags a wandered estimate. This keys on
+// periodicity, not amplitude/presence, so (unlike the presence cut) it keeps quiet-but-clean
+// frames and drops noisy ones. When lockedConsistencyCents > 0 it replaces the locked-phase
+// presence cut: release when the 2L deviation exceeds it, or the 2L peak's normalised height
+// falls below lockedSecondaryPeakFloor (harmonic structure gone). 0 = disabled (presence cut).
+// See eval/gate-tuning-log.md.
+constexpr float lockedConsistencyCentsDefault = 0.f;  // 0 = disabled (use presence cut)
+constexpr float lockedSecondaryPeakFloorDefault = 0.2f;
+
 // Octaviation-gate configuration for PitchDetectorImpl. Defaults are the tuned production
 // operating point (the constants above). `apply` is a calibration toggle: set it false to
 // bypass the probNotOctaviated gate so every frame emits its estimate (used to collect the
@@ -56,6 +94,10 @@ struct OctaviationGateConfig {
     double presenceThreshold = octaviationPresenceThreshold;
     float harmonicityFloor = octaviationHarmonicityFloor;
     double presenceThresholdWithConstraint = octaviationPresenceThresholdWithConstraint;
+    // Locked-phase harmonic-lag-consistency release (see above). Off by default (0) so the shipping
+    // gate stays the presence cut; set > 0 to switch the locked phase to the consistency release.
+    float lockedConsistencyCents = lockedConsistencyCentsDefault;
+    float lockedSecondaryPeakFloor = lockedSecondaryPeakFloorDefault;
 };
 
 // Onset detector (OnsetDetector.h) decision: a level-adaptive threshold on the

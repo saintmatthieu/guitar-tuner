@@ -151,6 +151,10 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argHarmonicityFloor = getArgument<float>("harmonicityFloor");
     const auto argThresholdWithEstimateConstraint =
         getArgument<float>("thresholdWithEstimateConstraint");
+    // Locked-phase harmonic-lag-consistency release (see OctaviationGateConfig). >0 switches the
+    // locked phase from the presence cut to the consistency release.
+    const auto argLockedConsistencyCents = getArgument<float>("lockedConsistencyCents");
+    const auto argLockedSecondaryPeakFloor = getArgument<float>("lockedSecondaryPeakFloor");
     const auto argOnsetK = getArgument<float>("onsetK");
     const auto argOnsetAbsFloor = getArgument<float>("onsetAbsFloor");
     const auto argMedianFilterDuration = getArgument<float>("medianFilterDuration");
@@ -158,6 +162,10 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argHoldOnsetGuard = getArgument<float>("holdOnsetGuard");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
     const auto updateReferences = getArgument<bool>("updateBenchmarkReferences").value_or(false);
+    // Dump every block's estimate over the whole corpus to allBlocks<suffix>.csv. Lets a gate
+    // sweep be analysed offline: run twice at two thresholds, then set-difference the emitted
+    // blocks by (id, block) to isolate the estimates the lower gate admits (see eval/).
+    const auto argDumpAllBlocks = getArgument<bool>("dumpAllBlocks").value_or(false);
 
     const auto algorithmId = argAlgorithm.value_or(kDefaultAlgorithmId);
     const auto& algorithms = getBenchmarkAlgorithms();
@@ -223,6 +231,10 @@ TEST(PitchDetectorImpl, benchmarking) {
                 context.gate.harmonicityFloor = *argHarmonicityFloor;
             if (argThresholdWithEstimateConstraint)
                 context.gate.presenceThresholdWithConstraint = *argThresholdWithEstimateConstraint;
+            if (argLockedConsistencyCents)
+                context.gate.lockedConsistencyCents = *argLockedConsistencyCents;
+            if (argLockedSecondaryPeakFloor)
+                context.gate.lockedSecondaryPeakFloor = *argLockedSecondaryPeakFloor;
             if (argOnsetK)
                 context.onset.k = *argOnsetK;
             if (argOnsetAbsFloor)
@@ -407,6 +419,22 @@ TEST(PitchDetectorImpl, benchmarking) {
     }
 
     std::cout << "\n";
+
+    if (argDumpAllBlocks) {
+        // One row per (test case, block): the truth weight (>0 while the note sounds), the final
+        // emitted estimate (Hz; 0 = gated/no-pitch), its signed cents error vs ground truth, and
+        // the gate inputs. Matching two runs by (id,block) and differencing the emitted-and-truth
+        // rows isolates exactly the estimates a lower gate lets through.
+        std::ofstream dump(testUtils::getOutDir() / ("allBlocks" + fileSuffix + ".csv"));
+        dump << "id,block,weight,finalHz,errorCents,presenceScore,harmonicity\n";
+        for (const auto& result : results) {
+            for (size_t b = 0; b < result.estimates.size(); ++b) {
+                const auto& e = result.estimates[b];
+                dump << result.id << "," << b << "," << e.t << "," << e.f << "," << e.e << ","
+                     << e.s << "," << e.h << "\n";
+            }
+        }
+    }
 
     if (csvFile) {
         for (const auto& result : results) {

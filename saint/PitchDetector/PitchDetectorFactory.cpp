@@ -15,7 +15,8 @@ namespace saint {
 
 namespace {
 std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelFormat channelFormat,
-                                                    int samplesPerBlockPerChannel, Tuning tuning) {
+                                                    int samplesPerBlockPerChannel, Tuning tuning,
+                                                    bool applyConstraintBandPass) {
     auto logger = std::make_unique<DummyPitchDetectorLogger>();
 
     const auto minFreq = getMinFreq(tuning);
@@ -24,7 +25,8 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
                                            minFreq, *logger);
 
     AutocorrPitchDetector autocorrPitchDetector(sampleRate, transformer.fftSize(),
-                                                transformer.window(), minFreq, *logger);
+                                                transformer.window(), minFreq, *logger,
+                                                applyConstraintBandPass);
 
     AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.fftSize(), tuning, *logger);
 
@@ -48,14 +50,15 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
 
 std::unique_ptr<IssueReportingPitchDetector> PitchDetectorFactory::createInstance(
     int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning,
-    std::function<void(std::string logLine)> cpuSummaryCallback) {
+    std::function<void(std::string logLine)> cpuSummaryCallback, bool applyConstraintBandPass) {
     const recording::PitchDetectorConfig config{sampleRate, channelFormat,
                                                 samplesPerBlockPerChannel, tuning};
     return std::make_unique<IssueReportingPitchDetector>(
         config,
-        [config] {
+        [config, applyConstraintBandPass] {
             return createImplementation(config.sampleRate, config.channelFormat,
-                                        config.samplesPerBlockPerChannel, config.tuning);
+                                        config.samplesPerBlockPerChannel, config.tuning,
+                                        applyConstraintBandPass);
         },
         std::move(cpuSummaryCallback));
 }
