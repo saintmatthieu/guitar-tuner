@@ -47,11 +47,10 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
 
     const auto raw = _impl->process(input, debugOutput, debugOutputSignal);
     if (const auto isOnset = debugOutput->at("isOnset") == 1.f) {
-        // New attack: drop the lock and any held pitch from the previous note, and restart
-        // the post-onset counter that guards the hold.
+        // New attack: drop the median-filter lock so it re-converges on the new note.
+        // Keep _heldPitch and _framesHeld as-is: the hold continues seamlessly through
+        // the onset gap using the same budget as the steady-state hold (no stacking).
         _allGoodOnce = false;
-        _heldPitch = 0.f;
-        _framesHeld = 0;
         _framesSinceOnset = 0;
     } else {
         ++_framesSinceOnset;
@@ -74,6 +73,14 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     }
 
     if (!_allGoodOnce) {
+        // Hold the previous note's pitch while the new estimate converges, using the
+        // same budget as the steady-state hold (no onset-guard needed here — we are
+        // holding a settled pitch, not a still-resolving attack).
+        if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames) {
+            ++_framesHeld;
+            (*debugOutput)["hold"] = 1.f;
+            return _heldPitch;
+        }
         return 0.f;
     }
 
