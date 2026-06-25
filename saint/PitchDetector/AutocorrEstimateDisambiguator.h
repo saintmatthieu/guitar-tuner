@@ -14,8 +14,13 @@ class PitchDetectorLoggerInterface;
 namespace saint {
 class AutocorrEstimateDisambiguator {
    public:
+    // `minFreqSemitoneOffset` sets the lower bound of the octave-disambiguation search,
+    // mirroring getMinFreq (default -3, i.e. three semitones below the tuning's lowest note).
+    // Keep it equal to the offset used to build the rest of the pipeline so the search range
+    // is consistent end-to-end.
     AutocorrEstimateDisambiguator(int sampleRate, int fftSize, Tuning tuning,
-                                  PitchDetectorLoggerInterface& logger);
+                                  PitchDetectorLoggerInterface& logger,
+                                  int minFreqSemitoneOffset = defaultMinFreqSemitoneOffset);
 
     // If harmonicityOut is non-null, it receives a [0,1] harmonicity score for the
     // returned estimate: the fraction of whitened-spectrum peak energy that lies on

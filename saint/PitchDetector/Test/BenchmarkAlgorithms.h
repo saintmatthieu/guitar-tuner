@@ -28,6 +28,10 @@ struct BenchmarkAlgorithmContext {
     // In-house preprocessor decimation factor (1 = none). The frequency-domain stages
     // then run at sampleRate/decimationFactor; see Preprocessor and createImpl.
     int decimationFactor = defaultDecimationFactor;
+    // Lower bound of the pitch-search range, in semitones from the tuning's lowest open-string
+    // note (negative = below; see getMinFreq). Default is the production operating point; the
+    // CLI sweeps it via minFreqSemitoneOffset.
+    int minFreqSemitoneOffset = defaultMinFreqSemitoneOffset;
     // In-house-specific options; other algorithms are free to ignore them.
     std::optional<int> indexOfProcessToLog;
     bool withMedianFilter = true;

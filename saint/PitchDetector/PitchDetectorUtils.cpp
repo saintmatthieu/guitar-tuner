@@ -20,87 +20,92 @@ float pitchToFrequency(const saint::Pitch& pitch) {
 }
 }  // namespace
 
-float saint::getMinFreq(Tuning tuning) {
-    switch (tuning) {
-        // E2 lowest → E2 - 3 = Db2
-        case Tuning::Standard:
-        case Tuning::OpenA:
-        case Tuning::OpenA2:
-        case Tuning::OpenA3:
-        case Tuning::OpenAm:
-        case Tuning::OpenAm2:
-        case Tuning::OpenE:
-        case Tuning::OpenEm:
-        case Tuning::OpenEsus2:
-        case Tuning::OpenEsus4:
-        case Tuning::OpenE5:
-        case Tuning::OpenEm11:
-        case Tuning::PerfectFourthTuning:
-            return pitchToFrequency({saint::PitchClass::Db, 2});
-        // Eb2 lowest → Eb2 - 3 = C2
-        case Tuning::HalfStepDown:
-        case Tuning::OpenEb:
-            return pitchToFrequency({saint::PitchClass::C, 2});
-        // D2 lowest → D2 - 3 = B1
-        case Tuning::DTuning:
-        case Tuning::DropD:
-        case Tuning::DoubleDropD:
-        case Tuning::OpenD:
-        case Tuning::OpenDm:
-        case Tuning::OpenDsus2:
-        case Tuning::OpenDsus4Celtic:
-        case Tuning::OpenD5:
-        case Tuning::OpenG:
-        case Tuning::OpenGm:
-        case Tuning::OpenGsus2:
-        case Tuning::OpenGsus4:
-        case Tuning::OpenGsus42:
-            return pitchToFrequency({saint::PitchClass::B, 1});
-        // Db2 lowest → Db2 - 3 = Bb1
-        case Tuning::CSharpTuning:
-        case Tuning::DropDb:
-        case Tuning::DoubleDropDb:
-        case Tuning::OpenCSharp:
-            return pitchToFrequency({saint::PitchClass::Bb, 1});
-        // C2 lowest → C2 - 3 = A1
-        case Tuning::CTuning:
-        case Tuning::DropC:
-        case Tuning::DoubleDropC:
-        case Tuning::OpenC:
-        case Tuning::OpenCsus2:
-        case Tuning::OpenC6:
-        case Tuning::OpenF2:
-        case Tuning::NewStandardTuning:
-            return pitchToFrequency({saint::PitchClass::A, 1});
-        // B1 lowest → B1 - 3 = Ab1
-        case Tuning::BTuning:
-        case Tuning::DropB:
-        case Tuning::DoubleDropB:
-            return pitchToFrequency({saint::PitchClass::Ab, 1});
-        // Bb1 lowest → Bb1 - 3 = G1
-        case Tuning::BbTuning:
-        case Tuning::DropBb:
-        case Tuning::DoubleDropBb:
-            return pitchToFrequency({saint::PitchClass::G, 1});
-        // A1 lowest → A1 - 3 = Gb1 (also the lowest of all tunings, hence Unknown)
-        case Tuning::ATuning:
-        case Tuning::DropA:
-        case Tuning::DropA2:
-        case Tuning::DoubleDropA:
-        case Tuning::Unknown:
-            return pitchToFrequency({saint::PitchClass::Gb, 1});
-        // G2 lowest → G2 - 3 = E2
-        case Tuning::OpenG2:
-            return pitchToFrequency({saint::PitchClass::E, 2});
-        // F2 lowest → F2 - 3 = D2
-        case Tuning::OpenF:
-        case Tuning::OpenF3:
-        case Tuning::OpenFm:
-            return pitchToFrequency({saint::PitchClass::D, 2});
-        default:
-            assert(false);
-            return getMinFreq(Tuning::Standard);
-    }
+float saint::getMinFreq(Tuning tuning, int semitoneOffset) {
+    // The switch yields the tuning's lowest open-string note; the search range is then this
+    // note shifted by `semitoneOffset` semitones (negative = below, default -3).
+    const auto lowestNote = [tuning]() -> saint::Pitch {
+        switch (tuning) {
+            // E2 lowest
+            case Tuning::Standard:
+            case Tuning::OpenA:
+            case Tuning::OpenA2:
+            case Tuning::OpenA3:
+            case Tuning::OpenAm:
+            case Tuning::OpenAm2:
+            case Tuning::OpenE:
+            case Tuning::OpenEm:
+            case Tuning::OpenEsus2:
+            case Tuning::OpenEsus4:
+            case Tuning::OpenE5:
+            case Tuning::OpenEm11:
+            case Tuning::PerfectFourthTuning:
+                return {saint::PitchClass::E, 2};
+            // Eb2 lowest
+            case Tuning::HalfStepDown:
+            case Tuning::OpenEb:
+                return {saint::PitchClass::Eb, 2};
+            // D2 lowest
+            case Tuning::DTuning:
+            case Tuning::DropD:
+            case Tuning::DoubleDropD:
+            case Tuning::OpenD:
+            case Tuning::OpenDm:
+            case Tuning::OpenDsus2:
+            case Tuning::OpenDsus4Celtic:
+            case Tuning::OpenD5:
+            case Tuning::OpenG:
+            case Tuning::OpenGm:
+            case Tuning::OpenGsus2:
+            case Tuning::OpenGsus4:
+            case Tuning::OpenGsus42:
+                return {saint::PitchClass::D, 2};
+            // Db2 lowest
+            case Tuning::CSharpTuning:
+            case Tuning::DropDb:
+            case Tuning::DoubleDropDb:
+            case Tuning::OpenCSharp:
+                return {saint::PitchClass::Db, 2};
+            // C2 lowest
+            case Tuning::CTuning:
+            case Tuning::DropC:
+            case Tuning::DoubleDropC:
+            case Tuning::OpenC:
+            case Tuning::OpenCsus2:
+            case Tuning::OpenC6:
+            case Tuning::OpenF2:
+            case Tuning::NewStandardTuning:
+                return {saint::PitchClass::C, 2};
+            // B1 lowest
+            case Tuning::BTuning:
+            case Tuning::DropB:
+            case Tuning::DoubleDropB:
+                return {saint::PitchClass::B, 1};
+            // Bb1 lowest
+            case Tuning::BbTuning:
+            case Tuning::DropBb:
+            case Tuning::DoubleDropBb:
+                return {saint::PitchClass::Bb, 1};
+            // A1 lowest (also the lowest of all tunings, hence Unknown)
+            case Tuning::ATuning:
+            case Tuning::DropA:
+            case Tuning::DropA2:
+            case Tuning::DoubleDropA:
+            case Tuning::Unknown:
+                return {saint::PitchClass::A, 1};
+            // G2 lowest
+            case Tuning::OpenG2:
+                return {saint::PitchClass::G, 2};
+            // F2 lowest
+            case Tuning::OpenF:
+            case Tuning::OpenF3:
+            case Tuning::OpenFm:
+                return {saint::PitchClass::F, 2};
+            default:
+                assert(false);
+                return {saint::PitchClass::E, 2};  // Standard's lowest
+        }
+    }();
+    return pitchToFrequency(lowestNote) * std::pow(2.f, semitoneOffset / 12.f);
 }
 
 float saint::getMaxFreq(Tuning tuning) {

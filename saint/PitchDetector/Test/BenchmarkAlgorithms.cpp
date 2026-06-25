@@ -45,7 +45,7 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
         logger = std::make_unique<DummyPitchDetectorLogger>();
     }
 
-    const auto minFreq = getMinFreq(ctx.tuning);
+    const auto minFreq = getMinFreq(ctx.tuning, ctx.minFreqSemitoneOffset);
 
     // The preprocessor low-passes at the full rate and then decimates by D; everything
     // downstream of it runs at the decimated rate fsD with a ~D-times smaller FFT (the
@@ -65,7 +65,7 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     AutocorrPitchDetector autocorrPitchDetector(decimatedSampleRate, transformer.fftSize(),
                                                 transformer.window(), minFreq, *logger);
     AutocorrEstimateDisambiguator disambiguator(decimatedSampleRate, transformer.fftSize(),
-                                                ctx.tuning, *logger);
+                                                ctx.tuning, *logger, ctx.minFreqSemitoneOffset);
     OnsetDetector onsetDetector(ctx.sampleRate, ctx.channelFormat, ctx.blockSize, minFreq,
                                 ctx.onset);
 

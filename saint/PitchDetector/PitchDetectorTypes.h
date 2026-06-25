@@ -94,6 +94,12 @@ constexpr float defaultHoldDuration = 1.0f;
 // decimation; D=2 halves the FFT for ~1/3 less process() CPU at no measurable accuracy cost.
 constexpr int defaultDecimationFactor = 2;
 
+// The pitch-search range extends below the tuning's lowest open-string note by this many
+// semitones (a negative offset, applied to the note's frequency; see getMinFreq). The margin
+// leaves room to tune a slightly flat string up into range. getMaxFreq mirrors it above the
+// highest note (+3, not configurable). The benchmark sweeps this via minFreqSemitoneOffset.
+constexpr int defaultMinFreqSemitoneOffset = -3;
+
 // Median-filter configuration for PitchDetectorMedianFilter. Default is the production operating
 // point (the constant above).
 struct MedianFilterConfig {

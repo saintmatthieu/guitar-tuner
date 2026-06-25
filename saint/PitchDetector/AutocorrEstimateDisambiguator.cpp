@@ -353,13 +353,14 @@ float AutocorrEstimateDisambiguator::disambiguateEstimate(float priorEstimate,
 }
 
 AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
-    int sampleRate, int fftSize, Tuning tuning, PitchDetectorLoggerInterface& logger)
+    int sampleRate, int fftSize, Tuning tuning, PitchDetectorLoggerInterface& logger,
+    int minFreqSemitoneOffset)
     : _sampleRate(sampleRate),
       _logger(logger),
       _fftSize(fftSize),
       _binFreq(static_cast<float>(sampleRate) / _fftSize),
       _cepstrumFft(_fftSize),
-      _minFreq(getMinFreq(tuning)),
+      _minFreq(getMinFreq(tuning, minFreqSemitoneOffset)),
       _maxFreq(getMaxFreq(tuning)) {
     _idealSpectrum.resize(_fftSize);
     _cepstrumAligned.value.resize(_fftSize);
