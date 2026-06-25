@@ -5,6 +5,7 @@
 #include "DummyPitchDetectorLogger.h"
 #include "FrequencyDomainTransformer.h"
 #include "OnsetDetector.h"
+#include "PitchDetectionHolder.h"
 #include "PitchDetectionSmoother.h"
 #include "PitchDetectorImpl.h"
 #include "PitchDetectorImplTestWrapper.h"
@@ -78,8 +79,10 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
         ctx.sampleRate, ctx.blockSize, std::move(internalAlgorithm), ctx.medianFilter);
+    auto holder = std::make_unique<PitchDetectionHolder>(std::move(medianFilter), ctx.sampleRate,
+                                                         ctx.blockSize, ctx.hold);
     const auto blocksPerSecond = ctx.sampleRate / ctx.blockSize;
-    return std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
+    return std::make_unique<PitchDetectionSmoother>(std::move(holder), blocksPerSecond);
 }
 
 #ifdef SAINT_WITH_PESTO

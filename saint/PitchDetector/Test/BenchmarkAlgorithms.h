@@ -12,9 +12,9 @@
 
 namespace saint {
 
-// The benchmark disables the median filter's hold by default so the golden references measure
-// the detector's intrinsic accuracy/FNR rather than the hold's note-persistence behaviour
-// (production enables it via defaultHoldDuration in PitchDetectorTypes.h). Override:
+// The benchmark disables the hold (PitchDetectionHolder) by default so the golden references
+// measure the detector's intrinsic accuracy/FNR rather than the hold's note-persistence
+// behaviour (production enables it via defaultHoldDuration in PitchDetectorTypes.h). Override:
 // holdDuration=<s>.
 constexpr float benchmarkHoldDuration = 0.0f;
 
@@ -34,11 +34,12 @@ struct BenchmarkAlgorithmContext {
     // In-house gate-tuning knobs (see PitchDetectorTypes.h). Each config defaults to the tuned
     // production operating point so a plain benchmark runs exactly what ships; the CLI overrides
     // individual fields to sweep operating points (see PitchDetectorImplTests.cpp). The one
-    // deliberate deviation from production is that the benchmark disables the median-filter hold
-    // (gate.apply / medianFilter.holdDuration are set there): see benchmarkHoldDuration.
+    // deliberate deviation from production is that the benchmark disables the hold
+    // (hold.holdDuration is set there): see benchmarkHoldDuration.
     OctaviationGateConfig gate;
     OnsetDetectorConfig onset;
     MedianFilterConfig medianFilter;
+    HoldConfig hold;
 };
 
 using BenchmarkAlgorithmFactory =

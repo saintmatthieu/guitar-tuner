@@ -81,21 +81,28 @@ struct OnsetDetectorConfig {
 
 constexpr auto majorThirdRatio = 1.26f;
 
-// PitchDetectorMedianFilter operating point (production defaults). defaultMedianFilterDuration
-// is the median-filter window (s) and drives output latency. The hold keeps emitting the last
-// locked pitch through a brief presence dip so the indicator does not blink off. See
-// PitchDetectorMedianFilter.h for the full rationale.
+// PitchDetectorMedianFilter operating point (production default). defaultMedianFilterDuration is
+// the median-filter window (s) and drives output latency.
 constexpr float defaultMedianFilterDuration = 0.15f;
+
+// PitchDetectionHolder operating point (production default). The hold keeps emitting the last
+// locked pitch through a brief presence dip so the indicator does not blink off. See
+// PitchDetectionHolder.h for the full rationale.
 constexpr float defaultHoldDuration = 1.0f;
 
 // Preprocessor decimation factor: the frequency-domain stages run at fs/D. D=1 is no
 // decimation; D=2 halves the FFT for ~1/3 less process() CPU at no measurable accuracy cost.
 constexpr int defaultDecimationFactor = 2;
 
-// Median-filter configuration for PitchDetectorMedianFilter. Defaults are the production
-// operating point (the constants above).
+// Median-filter configuration for PitchDetectorMedianFilter. Default is the production operating
+// point (the constant above).
 struct MedianFilterConfig {
     float filterDuration = defaultMedianFilterDuration;
+};
+
+// Hold configuration for PitchDetectionHolder. Default is the production operating point (the
+// constant above).
+struct HoldConfig {
     float holdDuration = defaultHoldDuration;
 };
 

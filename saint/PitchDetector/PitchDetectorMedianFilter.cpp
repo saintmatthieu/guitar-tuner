@@ -1,8 +1,7 @@
 #include "PitchDetectorMedianFilter.h"
 
 #include <algorithm>
-#include <cmath>    // ceil
-#include <numeric>  // accumulate
+#include <cmath>  // ceil
 
 namespace saint {
 
@@ -15,11 +14,6 @@ int getFilterSize(int sampleRate, int blockSize, float filterDuration) {
     }
     return std::max(size, 3);  // minimum 3 for median to be meaningful
 }
-
-int durationToBlocks(int sampleRate, int blockSize, float duration) {
-    const auto blockDuration = static_cast<float>(blockSize) / static_cast<float>(sampleRate);
-    return std::max(0, static_cast<int>(std::round(duration / blockDuration)));
-}
 }  // namespace
 
 PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSize,
@@ -28,8 +22,7 @@ PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSi
     : _blockSize(blockSize),
       _impl(std::move(impl)),
       _buffer(getFilterSize(sampleRate, blockSize, config.filterDuration)),
-      _delayedScores((_buffer.size() - 1) / 2, 0.f),
-      _maxHoldFrames(durationToBlocks(sampleRate, blockSize, config.holdDuration)) {}
+      _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
 
 int PitchDetectorMedianFilter::delaySamples() const {
     return _delayedScores.size() * _blockSize + _impl->delaySamples();
@@ -45,14 +38,11 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     debugOutput->clear();
 
     const auto raw = _impl->process(input, debugOutput, debugOutputSignal);
-    if (const auto isOnset = debugOutput->at("isOnset") == 1.f) {
-        // New attack: drop the median-filter lock so it re-converges on the new note.
-        // Keep _heldPitch and _framesHeld as-is: the hold continues seamlessly through
-        // the onset gap using the same budget as the steady-state hold (no stacking).
+    if (debugOutput->at("isOnset") == 1.f) {
+        // New attack: drop the median-filter lock so it re-converges on the new note. The
+        // downstream PitchDetectionHolder bridges the resulting output gap, so a fresh note's
+        // attack does not blink the indicator off.
         _allGoodOnce = false;
-        _framesSinceOnset = 0;
-    } else {
-        ++_framesSinceOnset;
     }
 
     const auto rawPresenceScore = debugOutput->at("presenceScore");
@@ -72,10 +62,6 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     }
 
     if (!_allGoodOnce) {
-        if (const auto heldPitch = getHeldPitch()) {
-            (*debugOutput)["hold"] = 1.f;
-            return heldPitch;
-        }
         return 0.f;
     }
 
@@ -84,27 +70,11 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     const auto medianFiltered = sortedBuffer[sortedBuffer.size() / 2];
 
     if (medianFiltered > 0.f) {
-        // Tracking: update the constraint to follow the current pitch, remember it as the
-        // value to hold, and re-arm the hold window.
+        // Tracking: update the constraint to follow the current pitch.
         _impl->setEstimateConstraint(medianFiltered);
-        _heldPitch = medianFiltered;
-        _framesHeld = 0;
         return medianFiltered;
     }
 
-    if (const auto heldPitch = getHeldPitch()) {
-        (*debugOutput)["hold"] = 1.f;
-        return heldPitch;
-    }
-
-    return 0.f;
-}
-
-float PitchDetectorMedianFilter::getHeldPitch() {
-    if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames) {
-        ++_framesHeld;
-        return _heldPitch;
-    }
     return 0.f;
 }
 

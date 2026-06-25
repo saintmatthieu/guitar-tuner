@@ -28,8 +28,8 @@ bool wasOnset(const saint::DebugOutput& debug) {
 }
 
 // Algorithm state for the pitch cursor: grey when there is no pitch, yellow ("Held") when the
-// median filter is holding the last pitch through a presence dip ("hold" set), green
-// ("Estimated") otherwise. Mirrors the mapping in the live TestApp (main.cpp).
+// detector is holding the last pitch through a presence dip ("hold" set), green ("Estimated")
+// otherwise. Mirrors the mapping in the live TestApp (main.cpp).
 saint::TunerDisplay::State pitchState(const saint::DebugOutput& debug, float frequency) {
     if (frequency == 0.f) {
         return saint::TunerDisplay::State::NoPitch;

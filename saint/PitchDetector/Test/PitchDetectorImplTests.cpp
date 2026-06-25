@@ -215,7 +215,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             context.gate.apply = !argDisableOctaviationGate;
             // Hold off by default so the golden refs reflect the detector's intrinsic behaviour,
             // not the hold's note-persistence. Override with holdDuration=<s>.
-            context.medianFilter.holdDuration = benchmarkHoldDuration;
+            context.hold.holdDuration = benchmarkHoldDuration;
             // CLI overrides to sweep the operating point without rebuilds (see
             // BenchmarkAlgorithmContext).
             if (argPresenceThreshold)
@@ -231,7 +231,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             if (argMedianFilterDuration)
                 context.medianFilter.filterDuration = *argMedianFilterDuration;
             if (argHoldDuration)
-                context.medianFilter.holdDuration = *argHoldDuration;
+                context.hold.holdDuration = *argHoldDuration;
             const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;
