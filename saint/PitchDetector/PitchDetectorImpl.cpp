@@ -122,11 +122,16 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _frequencyDomainTransformer.process(processedAudio);
 
     auto presenceScore = 0.f;
-    const float xcorrEstimate =
-        _autocorrPitchDetector.process(freq, &presenceScore, _estimateConstraint);
+    float doubleBandXcorrEstimate = 0.f;
+    auto doubleBandPresenceScore = 0.f;
+    const float xcorrEstimate = _autocorrPitchDetector.process(
+        freq, &presenceScore, _estimateConstraint, &doubleBandXcorrEstimate,
+        &doubleBandPresenceScore);
     if (debugOutput) {
         (*debugOutput)["presenceScore"] = presenceScore;
         (*debugOutput)["xcorrEstimate"] = xcorrEstimate;
+        (*debugOutput)["doubleBandXcorrEstimate"] = doubleBandXcorrEstimate;
+        (*debugOutput)["doubleBandPresenceScore"] = doubleBandPresenceScore;
     }
 
     if (xcorrEstimate == 0.f) {
@@ -172,6 +177,31 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _estimateConstraint.has_value() ? _presenceThresholdWithConstraint : _presenceThreshold;
     if (_applyOctaviationGate &&
         (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
+        // In-range estimate rejected. If the extended ("double-band") ACF search found a
+        // stronger peak below it — a string tuned up from slack, whose fundamental sits below
+        // the in-range floor — fall back to that estimate. Validate it with the same
+        // presence + harmonicity gate, but with harmonicity floored at the low-band minimum so
+        // its own fundamental is not octave-doubled away as the in-range disambiguator would.
+        if (enableLowBandSearch && doubleBandXcorrEstimate > 0.f &&
+            doubleBandXcorrEstimate < xcorrEstimate) {
+            const double doubleBandProbNotOctaviated =
+                probabilityNotOctaviated(doubleBandPresenceScore);
+            // Confirm the double-band peak is a genuine low fundamental, not the sub-harmonic of
+            // an in-range note: re-run the octave disambiguation with minF0 at the low-band
+            // floor. A real low fundamental survives ~unchanged; a sub-multiple is corrected
+            // upward (~2x) by the comb/divisibility analysis -> reject. (A plain harmonicity
+            // score can't make this call: a sub-octave's comb is a superset of the true comb.)
+            const float disambiguated =
+                _disambiguator.disambiguateLowBand(doubleBandXcorrEstimate, _dbSpectrum);
+            const bool confirmedLowFundamental =
+                disambiguated > 0.f && disambiguated < 1.25f * doubleBandXcorrEstimate;
+            if (debugOutput) {
+                (*debugOutput)["doubleBandDisambiguated"] = disambiguated;
+            }
+            if (doubleBandProbNotOctaviated >= threshold && confirmedLowFundamental) {
+                return doubleBandXcorrEstimate;
+            }
+        }
         return 0.f;
     }
 

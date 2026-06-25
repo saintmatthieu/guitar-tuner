@@ -46,6 +46,20 @@ constexpr float octaviationHarmonicityFloor = 0.30f;
 // full sweep.
 constexpr double octaviationPresenceThresholdWithConstraint = 0.5;
 
+// Low-band ("too-low") fallback. The autocorrelation detector additionally scans an extended,
+// lower band — down to lowBandMinFreqRatio * minFreq (one octave below the lowest in-range
+// note) — and returns its peak as a "double-band" estimate. When the in-range estimate is
+// rejected and that double-band peak is genuinely lower (a string tuned up from slack, whose
+// fundamental sits below the in-range floor), the detector falls back to it. The analysis
+// window is sized for minFreq (~6 periods); one octave below that still leaves ~3 periods
+// inside it and the window-autocorrelation normaliser keeps ~67% overlap, so the ACF peak stays
+// reliable. Going lower would outrun the window. The double-band estimate bypasses the in-range
+// disambiguator (whose minF0 floor would octave-double it back into range) and is validated by
+// the same presence + harmonicity gate, with harmonicity floored at the low-band minimum. Set
+// enableLowBandSearch=false to recover the legacy in-range-only behaviour.
+constexpr bool enableLowBandSearch = true;
+constexpr float lowBandMinFreqRatio = 0.5f;
+
 // Octaviation-gate configuration for PitchDetectorImpl. Defaults are the tuned production
 // operating point (the constants above). `apply` is a calibration toggle: set it false to
 // bypass the probNotOctaviated gate so every frame emits its estimate (used to collect the

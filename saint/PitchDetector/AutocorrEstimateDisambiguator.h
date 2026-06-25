@@ -29,6 +29,16 @@ class AutocorrEstimateDisambiguator {
     float process(float xcorrEstimate, const std::vector<float>& dbSpectrum,
                   std::optional<float> constraint = std::nullopt, float* harmonicityOut = nullptr);
 
+    // Octave-disambiguates a below-minFreq "double-band" estimate (Hz) with minF0 lowered to the
+    // low-band floor (lowBandMinFreqRatio * minFreq), returning the resulting frequency (Hz). A
+    // genuine low fundamental is returned ~unchanged; the sub-harmonic of an in-range note is
+    // corrected upward (~2x) by the comb analysis. The caller treats "returned ~= input" as a
+    // confirmed low note and an upward correction as a reject. Whitens dbSpectrum like process().
+    // This reuses the divisibility check that catches sub-multiples, which a plain harmonicity
+    // score cannot — a sub-octave's harmonic comb is a superset of the true comb, so it would
+    // score at least as well as (often better than) the true fundamental.
+    float disambiguateLowBand(float estimate, const std::vector<float>& dbSpectrum);
+
    private:
     // Peaks found in the whitened spectrum (parallel index/value arrays).
     struct PeakData {

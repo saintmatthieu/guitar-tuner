@@ -401,6 +401,16 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
     return disambiguatedEstimate;
 }
 
+float AutocorrEstimateDisambiguator::disambiguateLowBand(float estimate,
+                                                         const std::vector<float>& dbSpectrum) {
+    std::copy(dbSpectrum.begin(), dbSpectrum.end(), _idealSpectrum.begin());
+    toIdealSpectrum(_idealSpectrum);
+    const auto lowBandMinF0Index = (_minFreq * lowBandMinFreqRatio) / _binFreq;
+    return disambiguateFundamentalIndex(estimate / _binFreq, _idealSpectrum, lowBandMinF0Index,
+                                        std::nullopt) *
+           _binFreq;
+}
+
 void AutocorrEstimateDisambiguator::toIdealSpectrum(std::vector<float>& logSpectrum) {
     auto& spec = logSpectrum;
 
