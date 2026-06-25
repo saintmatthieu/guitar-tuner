@@ -49,12 +49,13 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
         sampleRate, samplesPerBlockPerChannel, std::move(impl));
 
-    auto holder = std::make_unique<PitchDetectionHolder>(std::move(medianFilter), sampleRate,
-                                                         samplesPerBlockPerChannel);
-
     const auto blocksPerSecond = sampleRate / samplesPerBlockPerChannel;
 
-    return std::make_unique<PitchDetectionSmoother>(std::move(holder), blocksPerSecond);
+    auto holder =
+        std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
+
+    return std::make_unique<PitchDetectionHolder>(std::move(holder), sampleRate,
+                                                  samplesPerBlockPerChannel);
 }
 }  // namespace
 
