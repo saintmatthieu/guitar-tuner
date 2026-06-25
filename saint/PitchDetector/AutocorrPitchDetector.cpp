@@ -70,11 +70,6 @@ AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
       _fwdFft(_fftSize),
       _lpWindow(getLpWindow(sampleRate, _fftSize)),
       _lastSearchIndex(std::min(_fftSize / 2, static_cast<int>(sampleRate / minFreq))),
-      _lowBandLastSearchIndex(
-          enableLowBandSearch
-              ? std::min(_fftSize / 2,
-                         static_cast<int>(sampleRate / (minFreq * lowBandMinFreqRatio)))
-              : _lastSearchIndex),
       _windowXcorr(getWindowXCorr(_fwdFft, fftWindow, _lpWindow)),
       _xcorr(static_cast<size_t>(_fftSize), 0.f),
       _freqScratch(static_cast<size_t>(_fftSize) / 2) {
@@ -118,17 +113,8 @@ const std::vector<float>& AutocorrPitchDetector::averageOverFrames(
     return _averagedXcorr;
 }
 
-float AutocorrPitchDetector::refineEstimate(const std::vector<float>& acf, int maxIndex) const {
-    if (maxIndex == 0) {
-        return 0.f;
-    }
-    const auto fracIndex = utils::quadFit(&acf[maxIndex - 1]);
-    return static_cast<float>(_sampleRate) / (maxIndex + fracIndex);
-}
-
 float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& freq,
-                                     float* presenceScore, std::optional<float> constraint,
-                                     float* doubleBandEstimate, float* doubleBandPresenceScore) {
+                                     float* presenceScore, std::optional<float> constraint) {
     _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "windowXcorr");
 
     // Compute cross-correlation. getXCorr overwrites its spectrum argument in place,
@@ -143,14 +129,10 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
     const std::vector<float>& acf = averageOverFrames(_xcorr);
     _logger.Log(acf.data(), acf.size(), "averagedXcorr");
 
-    // Determine the search range. The in-range search reproduces the historical behaviour
-    // exactly. The double-band search additionally scans down to the low-band floor so a pitch
-    // below the lowest in-range note (a string tuned up from slack) surfaces as a separate
-    // estimate. While an in-range note is locked the double-band search collapses onto the
-    // in-range window, so a tracked note never falls back to the low band.
+    // Determine search range based on constraint
     int firstSearchIndex = 0;
-    int inRangeLastIndex = _lastSearchIndex;
-    int doubleBandLastIndex = _lowBandLastSearchIndex;
+    int lastSearchIndex = _lastSearchIndex;
+
     if (constraint.has_value() && constraint.value() > 0.f) {
         const auto constraintFreq = constraint.value();
         const auto minFreq = constraintFreq / majorThirdRatio;
@@ -158,47 +140,32 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         // Convert frequencies to lag indices (frequency = sampleRate / lag)
         // Higher frequency means smaller lag
         firstSearchIndex = std::max(0, static_cast<int>(_sampleRate / maxFreq));
-        inRangeLastIndex =
-            std::min(_lastSearchIndex, static_cast<int>(_sampleRate / minFreq) + 1);
-        doubleBandLastIndex = inRangeLastIndex;
+        lastSearchIndex = std::min(_lastSearchIndex, static_cast<int>(_sampleRate / minFreq) + 1);
     }
 
-    // Single scan establishing both the in-range peak (over [firstSearchIndex, inRangeLastIndex))
-    // and the wider double-band peak (over [firstSearchIndex, doubleBandLastIndex)). The
-    // `wentNegative` guard skips the lag-0 hump exactly as before. When the global peak lies in
-    // range the two coincide; when a stronger peak sits below the in-range floor the double-band
-    // peak is at a longer lag (lower frequency).
-    auto inRangeMaxIndex = 0;
-    auto inRangeMax = 0.f;
-    auto doubleBandMaxIndex = 0;
-    auto doubleBandMax = 0.f;
+    auto maxIndex = 0;
     auto wentNegative = false;
-    for (auto i = 0; i < doubleBandLastIndex; ++i) {
+    auto maximum = 0.f;
+    for (auto i = 0; i < lastSearchIndex; ++i) {
         wentNegative |= acf[i] < 0;
-        if (!wentNegative || i < firstSearchIndex) {
-            continue;
-        }
-        if (i < inRangeLastIndex && acf[i] > inRangeMax) {
-            inRangeMax = acf[i];
-            inRangeMaxIndex = i;
-        }
-        if (acf[i] > doubleBandMax) {
-            doubleBandMax = acf[i];
-            doubleBandMaxIndex = i;
+        if (wentNegative && i >= firstSearchIndex && acf[i] > maximum) {
+            maximum = acf[i];
+            maxIndex = i;
         }
     }
 
-    inRangeMax /= _windowXcorr[inRangeMaxIndex];
+    maximum /= _windowXcorr[maxIndex];
     if (presenceScore) {
-        *presenceScore = inRangeMax;
-    }
-    if (doubleBandPresenceScore) {
-        *doubleBandPresenceScore = doubleBandMax / _windowXcorr[doubleBandMaxIndex];
-    }
-    if (doubleBandEstimate) {
-        *doubleBandEstimate = refineEstimate(acf, doubleBandMaxIndex);
+        *presenceScore = maximum;
     }
 
-    return refineEstimate(acf, inRangeMaxIndex);
+    if (maxIndex == 0) {
+        return 0.f;
+    }
+
+    const auto fracIndex = utils::quadFit(&acf[maxIndex - 1]);
+    const auto refinedIndex = maxIndex + fracIndex;
+
+    return maxIndex == 0 ? 0.f : static_cast<float>(_sampleRate) / refinedIndex;
 }
 }  // namespace saint
