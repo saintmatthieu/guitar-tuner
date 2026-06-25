@@ -72,13 +72,9 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     }
 
     if (!_allGoodOnce) {
-        // Hold the previous note's pitch while the new estimate converges, using the
-        // same budget as the steady-state hold (no onset-guard needed here — we are
-        // holding a settled pitch, not a still-resolving attack).
-        if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames) {
-            ++_framesHeld;
+        if (const auto heldPitch = getHeldPitch()) {
             (*debugOutput)["hold"] = 1.f;
-            return _heldPitch;
+            return heldPitch;
         }
         return 0.f;
     }
@@ -96,19 +92,19 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
         return medianFiltered;
     }
 
-    // Locked but no estimate this block: the presence score dipped under the gate. Hold the
-    // last pitch for up to _maxHoldFrames so the indicator doesn't blink off on a transient
-    // dip, but only once we are well past the onset (_framesSinceOnset >= _minFramesBeforeHold)
-    // so we never hold a still-settling attack. The constraint is left in place, so tracking
-    // resumes from the same anchor the moment the note re-emerges (medianFiltered > 0 above).
-    // Past the cap the held note is considered gone and we emit 0; the lock is kept (it is
-    // dropped only on an onset), so a later re-emergence still resumes and re-arms the hold.
-    if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames) {
-        ++_framesHeld;
+    if (const auto heldPitch = getHeldPitch()) {
         (*debugOutput)["hold"] = 1.f;
-        return _heldPitch;
+        return heldPitch;
     }
 
+    return 0.f;
+}
+
+float PitchDetectorMedianFilter::getHeldPitch() {
+    if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames) {
+        ++_framesHeld;
+        return _heldPitch;
+    }
     return 0.f;
 }
 

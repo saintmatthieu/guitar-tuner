@@ -18,6 +18,8 @@ class PitchDetectorMedianFilter : public PitchDetector {
     int delaySamples() const override;
 
    private:
+    float getHeldPitch();
+
     const int _blockSize = 0;
     const std::unique_ptr<PitchDetectorImpl> _impl;
     DebugOutput _debugOutput;
