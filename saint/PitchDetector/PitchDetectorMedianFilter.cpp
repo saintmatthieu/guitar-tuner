@@ -29,8 +29,7 @@ PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSi
       _impl(std::move(impl)),
       _buffer(getFilterSize(sampleRate, blockSize, config.filterDuration)),
       _delayedScores((_buffer.size() - 1) / 2, 0.f),
-      _maxHoldFrames(durationToBlocks(sampleRate, blockSize, config.holdDuration)),
-      _minFramesBeforeHold(durationToBlocks(sampleRate, blockSize, config.holdOnsetGuard)) {}
+      _maxHoldFrames(durationToBlocks(sampleRate, blockSize, config.holdDuration)) {}
 
 int PitchDetectorMedianFilter::delaySamples() const {
     return _delayedScores.size() * _blockSize + _impl->delaySamples();
@@ -104,8 +103,7 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     // resumes from the same anchor the moment the note re-emerges (medianFiltered > 0 above).
     // Past the cap the held note is considered gone and we emit 0; the lock is kept (it is
     // dropped only on an onset), so a later re-emergence still resumes and re-arms the hold.
-    if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames &&
-        _framesSinceOnset >= _minFramesBeforeHold) {
+    if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames) {
         ++_framesHeld;
         (*debugOutput)["hold"] = 1.f;
         return _heldPitch;

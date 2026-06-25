@@ -37,7 +37,6 @@ class PitchDetectorMedianFilter : public PitchDetector {
     // the anchor is still being established and holding a half-resolved estimate would
     // inflate the error tail.
     const int _maxHoldFrames;
-    const int _minFramesBeforeHold;
     float _heldPitch = 0.f;
     int _framesHeld = 0;
     int _framesSinceOnset = 0;

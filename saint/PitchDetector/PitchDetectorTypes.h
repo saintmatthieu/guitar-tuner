@@ -83,12 +83,10 @@ constexpr auto majorThirdRatio = 1.26f;
 
 // PitchDetectorMedianFilter operating point (production defaults). defaultMedianFilterDuration
 // is the median-filter window (s) and drives output latency. The hold keeps emitting the last
-// locked pitch through a brief presence dip so the indicator does not blink off; it engages
-// only defaultHoldOnsetGuard seconds after an onset, so it acts on a note's settled tail rather
-// than its still-resolving attack. See PitchDetectorMedianFilter.h for the full rationale.
+// locked pitch through a brief presence dip so the indicator does not blink off. See
+// PitchDetectorMedianFilter.h for the full rationale.
 constexpr float defaultMedianFilterDuration = 0.15f;
 constexpr float defaultHoldDuration = 1.0f;
-constexpr float defaultHoldOnsetGuard = 0.5f;
 
 // Preprocessor decimation factor: the frequency-domain stages run at fs/D. D=1 is no
 // decimation; D=2 halves the FFT for ~1/3 less process() CPU at no measurable accuracy cost.
@@ -99,7 +97,6 @@ constexpr int defaultDecimationFactor = 2;
 struct MedianFilterConfig {
     float filterDuration = defaultMedianFilterDuration;
     float holdDuration = defaultHoldDuration;
-    float holdOnsetGuard = defaultHoldOnsetGuard;
 };
 
 struct Pitch {

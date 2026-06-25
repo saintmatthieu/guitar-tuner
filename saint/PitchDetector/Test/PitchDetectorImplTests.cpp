@@ -155,7 +155,6 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argOnsetAbsFloor = getArgument<float>("onsetAbsFloor");
     const auto argMedianFilterDuration = getArgument<float>("medianFilterDuration");
     const auto argHoldDuration = getArgument<float>("holdDuration");
-    const auto argHoldOnsetGuard = getArgument<float>("holdOnsetGuard");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
     const auto argDecimationFactor = getArgument<int>("decimationFactor");
     const auto updateReferences = getArgument<bool>("updateBenchmarkReferences").value_or(false);
@@ -233,8 +232,6 @@ TEST(PitchDetectorImpl, benchmarking) {
                 context.medianFilter.filterDuration = *argMedianFilterDuration;
             if (argHoldDuration)
                 context.medianFilter.holdDuration = *argHoldDuration;
-            if (argHoldOnsetGuard)
-                context.medianFilter.holdOnsetGuard = *argHoldOnsetGuard;
             const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;
