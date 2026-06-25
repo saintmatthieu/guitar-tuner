@@ -19,7 +19,7 @@ TEST(Preprocessor, process) {
         sample = dist(rng);
     }
 
-    Preprocessor preprocessor(sampleRate, format, numFrames);
+    Preprocessor preprocessor(sampleRate, format, numFrames, defaultDecimationFactor);
     preprocessor.processBlock(audio.data());
 
     testUtils::toWavFile(testUtils::getOutDir() / "preprocessor_test_output.wav",

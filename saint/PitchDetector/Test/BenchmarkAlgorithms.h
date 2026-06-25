@@ -25,6 +25,9 @@ struct BenchmarkAlgorithmContext {
     ChannelFormat channelFormat = ChannelFormat::Mono;
     int blockSize = 0;
     Tuning tuning = Tuning::Standard;
+    // In-house preprocessor decimation factor (1 = none). The frequency-domain stages
+    // then run at sampleRate/decimationFactor; see Preprocessor and createImpl.
+    int decimationFactor = defaultDecimationFactor;
     // In-house-specific options; other algorithms are free to ignore them.
     std::optional<int> indexOfProcessToLog;
     bool withMedianFilter = true;

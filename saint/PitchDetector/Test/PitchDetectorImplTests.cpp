@@ -157,6 +157,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argHoldDuration = getArgument<float>("holdDuration");
     const auto argHoldOnsetGuard = getArgument<float>("holdOnsetGuard");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
+    const auto argDecimationFactor = getArgument<int>("decimationFactor");
     const auto updateReferences = getArgument<bool>("updateBenchmarkReferences").value_or(false);
 
     const auto algorithmId = argAlgorithm.value_or(kDefaultAlgorithmId);
@@ -208,6 +209,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             context.channelFormat = noisy.channelFormat;
             context.blockSize = blockSize;
             context.tuning = kTestTuning;
+            context.decimationFactor = argDecimationFactor.value_or(defaultDecimationFactor);
             context.indexOfProcessToLog = argIndexOfProcessToLog;
             context.withMedianFilter =
                 !argTestWithMedianFilter.has_value() || *argTestWithMedianFilter;

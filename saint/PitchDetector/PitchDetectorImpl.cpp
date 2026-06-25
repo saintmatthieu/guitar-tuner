@@ -81,7 +81,7 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
                                      AutocorrEstimateDisambiguator disambiguator,
                                      OnsetDetector onsetDetector,
                                      std::unique_ptr<PitchDetectorLoggerInterface> logger,
-                                     OctaviationGateConfig gate)
+                                     int decimationFactor, OctaviationGateConfig gate)
     : _preprocessor(std::move(preprocessor)),
       _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
@@ -91,7 +91,8 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
       _applyOctaviationGate(gate.apply),
       _presenceThreshold(gate.presenceThreshold),
       _harmonicityFloor(gate.harmonicityFloor),
-      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint) {}
+      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint),
+      _decimationFactor(decimationFactor) {}
 
 float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
                                  std::vector<float>* debugOutputSignal) {
@@ -118,7 +119,7 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     }
 
     const std::vector<std::complex<float>>& freq =
-        _frequencyDomainTransformer.process(processedAudio.data());
+        _frequencyDomainTransformer.process(processedAudio);
 
     auto presenceScore = 0.f;
     const float xcorrEstimate =
@@ -141,7 +142,8 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     if (debugOutput) {
         // Reuse a static key: this label exceeds libstdc++'s 15-char small-string buffer, so a
         // fresh temporary would heap-allocate on every block (the production median filter always
-        // passes a debug map). With an existing key in a reused map, operator[] then allocates nothing.
+        // passes a debug map). With an existing key in a reused map, operator[] then allocates
+        // nothing.
         static const std::string kProbNotOctaviated = "probNotOctaviated";
         (*debugOutput)[kProbNotOctaviated] = static_cast<float>(probNotOctaviated);
     }
@@ -166,8 +168,8 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     // clamped to a major third of the constraint, so this cut is a pure presence gate and
     // is set more permissively (it governs how long a decaying note keeps being tracked).
     // harmonicityFloor=0 disables the harmonic criterion.
-    const auto threshold = _estimateConstraint.has_value() ? _presenceThresholdWithConstraint
-                                                           : _presenceThreshold;
+    const auto threshold =
+        _estimateConstraint.has_value() ? _presenceThresholdWithConstraint : _presenceThreshold;
     if (_applyOctaviationGate &&
         (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
         return 0.f;

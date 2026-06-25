@@ -16,12 +16,12 @@ class PitchDetectorImpl {
    public:
     PitchDetectorImpl(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
                       AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
-                      std::unique_ptr<PitchDetectorLoggerInterface> logger,
+                      std::unique_ptr<PitchDetectorLoggerInterface> logger, int decimationFactor,
                       OctaviationGateConfig gate = {});
 
     float process(const float*, DebugOutput*, std::vector<float>* debugOutputSignal = nullptr);
     int delaySamples() const {
-        return windowSizeSamples() / 2;
+        return _decimationFactor * windowSizeSamples() / 2;
     }
 
     void setEstimateConstraint(float constraint) {
@@ -56,6 +56,7 @@ class PitchDetectorImpl {
     const double _presenceThreshold;
     const float _harmonicityFloor;
     const double _presenceThresholdWithConstraint;
+    const int _decimationFactor;
 
     // Reused dB-power-spectrum buffer, so process() allocates nothing on the audio
     // thread. Sized on the first block, then reused in place.

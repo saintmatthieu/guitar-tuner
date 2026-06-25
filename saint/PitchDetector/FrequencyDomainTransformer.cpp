@@ -39,14 +39,14 @@ FrequencyDomainTransformer::FrequencyDomainTransformer(int sampleRate, ChannelFo
                                                        PitchDetectorLoggerInterface& logger)
     : _sampleRate(sampleRate),
       _channelFormat(channelFormat),
-      _blockSize(samplesPerBlockPerChannel),
+      _nominalBlockSize(samplesPerBlockPerChannel),
       _logger(logger),
       _windowType(utils::WindowType::MinimumThreeTerm),
       _window(utils::getAnalysisWindow(getWindowSizeSamples(sampleRate, _windowType, minFreq),
                                        _windowType)),
       _fftSize(getFftSizeSamples(static_cast<int>(_window.size()))),
       _fwdFft(_fftSize),
-      _audioBuffer(std::max(static_cast<int>(_window.size()) - samplesPerBlockPerChannel, 0), 0.f),
+      _audioBuffer(std::max(static_cast<int>(_window.size()) - _nominalBlockSize, 0), 0.f),
       _timeScratch(static_cast<size_t>(_fftSize), 0.f),
       _freqScratch(static_cast<size_t>(_fftSize) / 2) {
     //
@@ -54,13 +54,17 @@ FrequencyDomainTransformer::FrequencyDomainTransformer(int sampleRate, ChannelFo
     _logger.SamplesRead(-_audioBuffer.size());
 }
 
-const std::vector<std::complex<float>>& FrequencyDomainTransformer::process(const float* audio) {
-    // Append new audio samples to buffer
+const std::vector<std::complex<float>>& FrequencyDomainTransformer::process(
+    const std::vector<float>& audio) {
+    // Append new audio samples to buffer. The count comes from the block itself, so a
+    // decimation factor that does not divide the block size (variable count) is fine.
+    const auto numNewFrames =
+        static_cast<int>(audio.size()) / (_channelFormat == ChannelFormat::Mono ? 1 : 2);
     if (_channelFormat == ChannelFormat::Mono) {
-        _audioBuffer.insert(_audioBuffer.end(), audio, audio + _blockSize);
+        _audioBuffer.insert(_audioBuffer.end(), audio.begin(), audio.end());
     } else {
         assert(_channelFormat == ChannelFormat::Stereo);
-        for (auto i = 0; i < _blockSize; ++i) {
+        for (auto i = 0; i < numNewFrames; ++i) {
             const auto mix = 0.5f * (audio[i * 2] + audio[i * 2 + 1]);
             _audioBuffer.push_back(mix);
         }
@@ -83,12 +87,14 @@ const std::vector<std::complex<float>>& FrequencyDomainTransformer::process(cons
     const auto bufferStart = _audioBuffer.end() - _window.size();
     std::copy(bufferStart, _audioBuffer.end(), time.begin());
 
-    // Remove old samples, keeping only what's needed for the next window
-    const auto samplesToKeep = _window.size() - _blockSize;
+    // Remove old samples, keeping a fixed nominal overlap. Because the real new-sample
+    // count is >= _nominalBlockSize, the buffer always holds >= _window.size() samples
+    // on the next call, so it neither underflows nor grows unbounded.
+    const auto samplesToKeep = static_cast<int>(_window.size()) - _nominalBlockSize;
     _audioBuffer.erase(_audioBuffer.begin(), _audioBuffer.end() - samplesToKeep);
     std::fill(time.begin() + _window.size(), time.begin() + _fftSize, 0.f);
 
-    _logger.SamplesRead(_blockSize);
+    _logger.SamplesRead(numNewFrames);
     _logger.Log(_sampleRate, "sampleRate");
     _logger.Log(_fftSize, "fftSize");
     _logger.Log(time.data(), time.size(), "inputAudio");

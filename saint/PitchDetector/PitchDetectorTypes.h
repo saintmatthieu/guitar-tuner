@@ -90,6 +90,10 @@ constexpr float defaultMedianFilterDuration = 0.15f;
 constexpr float defaultHoldDuration = 1.0f;
 constexpr float defaultHoldOnsetGuard = 0.5f;
 
+// Preprocessor decimation factor: the frequency-domain stages run at fs/D. D=1 is no
+// decimation; D=2 halves the FFT for ~1/3 less process() CPU at no measurable accuracy cost.
+constexpr int defaultDecimationFactor = 2;
+
 // Median-filter configuration for PitchDetectorMedianFilter. Defaults are the production
 // operating point (the constants above).
 struct MedianFilterConfig {

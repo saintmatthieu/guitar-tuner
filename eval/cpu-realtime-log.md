@@ -15,3 +15,4 @@ and not reproducible, so it is recorded here for comparison rather than gated.
 | 2026-06-22 | master | cb75273 | Half FFT size | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 1.01 |
 | 2026-06-22 | master | fe5bb15 | Remove zero-padding completely | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.92 |
 | 2026-06-25 | master | b3955af | README about PESTO experiment | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.80 |
+| 2026-06-25 | master | b3955af | README about PESTO experiment | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.51 |

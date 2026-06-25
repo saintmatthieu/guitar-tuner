@@ -45,21 +45,32 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     }
 
     const auto minFreq = getMinFreq(ctx.tuning);
-    auto preprocessor =
-        std::make_unique<Preprocessor>(ctx.sampleRate, ctx.channelFormat, ctx.blockSize);
 
-    FrequencyDomainTransformer transformer(ctx.sampleRate, ctx.channelFormat, ctx.blockSize,
-                                           minFreq, *logger);
-    AutocorrPitchDetector autocorrPitchDetector(ctx.sampleRate, transformer.fftSize(),
+    // The preprocessor low-passes at the full rate and then decimates by D; everything
+    // downstream of it runs at the decimated rate fsD with a ~D-times smaller FFT (the
+    // CPU win). The onset detector keeps the full-rate broadband audio. fsD and the
+    // decimated block size are exact for the corpus's 44.1/48 kHz at D in {1,2,3,4}
+    // (the per-block count still rounds for 44.1 kHz at D=2/4, which the transformer
+    // tolerates).
+    const auto D = ctx.decimationFactor;
+    const auto decimatedSampleRate = ctx.sampleRate / D;
+    const auto decimatedBlockSize = ctx.blockSize / D;
+
+    auto preprocessor =
+        std::make_unique<Preprocessor>(ctx.sampleRate, ctx.channelFormat, ctx.blockSize, D);
+
+    FrequencyDomainTransformer transformer(decimatedSampleRate, ctx.channelFormat,
+                                           decimatedBlockSize, minFreq, *logger);
+    AutocorrPitchDetector autocorrPitchDetector(decimatedSampleRate, transformer.fftSize(),
                                                 transformer.window(), minFreq, *logger);
-    AutocorrEstimateDisambiguator disambiguator(ctx.sampleRate, transformer.fftSize(), ctx.tuning,
-                                                *logger);
+    AutocorrEstimateDisambiguator disambiguator(decimatedSampleRate, transformer.fftSize(),
+                                                ctx.tuning, *logger);
     OnsetDetector onsetDetector(ctx.sampleRate, ctx.channelFormat, ctx.blockSize, minFreq,
                                 ctx.onset);
 
     auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-        std::move(disambiguator), std::move(onsetDetector), std::move(logger), ctx.gate);
+        std::move(disambiguator), std::move(onsetDetector), std::move(logger), D, ctx.gate);
 
     if (!ctx.withMedianFilter) {
         return std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));

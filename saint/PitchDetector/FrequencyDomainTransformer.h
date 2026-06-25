@@ -15,9 +15,12 @@ class FrequencyDomainTransformer {
                                int samplesPerBlockPerChannel, float minFreq,
                                PitchDetectorLoggerInterface& logger);
 
+    // Consumes one (possibly decimated) interleaved block of new samples; its frame
+    // count is read from `audio.size()` so it may vary slightly from call to call when
+    // the preprocessor decimates by a factor that does not divide the block size.
     // Returns a reference to an internal buffer, valid until the next call. No
     // per-call heap allocation (real-time-audio path).
-    const std::vector<std::complex<float>>& process(const float*);
+    const std::vector<std::complex<float>>& process(const std::vector<float>& audio);
 
     int delaySamples() const {
         return windowSizeSamples() / 2;
@@ -38,7 +41,10 @@ class FrequencyDomainTransformer {
    private:
     const int _sampleRate;
     const ChannelFormat _channelFormat;
-    const int _blockSize;
+    // Nominal number of new frames per block (post-decimation). The actual count is
+    // read from each process() call; this is the floor used to size the prefill and the
+    // retained overlap so the buffer never underflows when the real count rounds up.
+    const int _nominalBlockSize;
     PitchDetectorLoggerInterface& _logger;
     const utils::WindowType _windowType;
     const std::vector<float> _window;

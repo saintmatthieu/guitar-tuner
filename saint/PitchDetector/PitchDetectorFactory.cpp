@@ -20,22 +20,30 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
 
     const auto minFreq = getMinFreq(tuning);
 
-    FrequencyDomainTransformer transformer(sampleRate, channelFormat, samplesPerBlockPerChannel,
+    // The preprocessor low-passes at the full rate and then decimates by D; everything
+    // downstream of it runs at fs/D with a ~D-times smaller FFT. The onset detector keeps
+    // the full-rate broadband audio. Mirrors BenchmarkAlgorithms.cpp::createImpl.
+    const auto decimatedSampleRate = sampleRate / defaultDecimationFactor;
+    const auto decimatedBlockSize = samplesPerBlockPerChannel / defaultDecimationFactor;
+
+    FrequencyDomainTransformer transformer(decimatedSampleRate, channelFormat, decimatedBlockSize,
                                            minFreq, *logger);
 
-    AutocorrPitchDetector autocorrPitchDetector(sampleRate, transformer.fftSize(),
+    AutocorrPitchDetector autocorrPitchDetector(decimatedSampleRate, transformer.fftSize(),
                                                 transformer.window(), minFreq, *logger);
 
-    AutocorrEstimateDisambiguator disambiguator(sampleRate, transformer.fftSize(), tuning, *logger);
+    AutocorrEstimateDisambiguator disambiguator(decimatedSampleRate, transformer.fftSize(), tuning,
+                                                *logger);
 
     OnsetDetector onsetDetector(sampleRate, channelFormat, samplesPerBlockPerChannel, minFreq);
 
-    auto preprocessor =
-        std::make_unique<Preprocessor>(sampleRate, channelFormat, samplesPerBlockPerChannel);
+    auto preprocessor = std::make_unique<Preprocessor>(
+        sampleRate, channelFormat, samplesPerBlockPerChannel, defaultDecimationFactor);
 
     auto impl = std::make_unique<PitchDetectorImpl>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-        std::move(disambiguator), std::move(onsetDetector), std::move(logger));
+        std::move(disambiguator), std::move(onsetDetector), std::move(logger),
+        defaultDecimationFactor);
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
         sampleRate, samplesPerBlockPerChannel, std::move(impl));
