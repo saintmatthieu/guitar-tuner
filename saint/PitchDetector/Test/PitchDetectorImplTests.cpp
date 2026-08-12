@@ -236,6 +236,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             if (argMinFreqSemitoneOffset)
                 context.minFreqSemitoneOffset = *argMinFreqSemitoneOffset;
             const auto pitchDetector = createDetector(context);
+            const std::pair<float, float> pitchSearchRange = pitchDetector->pitchSearchRange();
 
             auto negativeCount = 0;
             auto falseNegativeWeight = 0.;
@@ -262,10 +263,8 @@ TEST(PitchDetectorImpl, benchmarking) {
 #ifdef NDEBUG
                 const auto cpuT0 = threadCpuSeconds();
 #endif
-                const auto finalEstimate = pitchDetector
-                                               ->process(noisyData + i * numChannels, &debugOutput,
-                                                         debugOutputSignal.get())
-                                               .pitch;
+                const PitchDetectionResult finalEstimate = pitchDetector->process(
+                    noisyData + i * numChannels, &debugOutput, debugOutputSignal.get());
 #ifdef NDEBUG
                 caseProcessCpuSeconds += threadCpuSeconds() - cpuT0;
                 caseAudioSeconds += static_cast<double>(blockSize) / noisy.sampleRate;
@@ -287,18 +286,20 @@ TEST(PitchDetectorImpl, benchmarking) {
                     weight = (currentTime - sample.truth.endTime) /
                              (sample.truth.startTime - sample.truth.endTime);
                     positiveWeight += weight;
-                    if (finalEstimate == 0.f)
+                    if (finalEstimate.bucket != PitchBucket::inRange)
                         falseNegativeWeight += weight;
                 } else {
                     ++negativeCount;
-                    if (finalEstimate != 0.f)
+                    if (finalEstimate.bucket == PitchBucket::inRange)
                         ++falsePositiveCount;
                 }
                 const auto errorCents =
-                    finalEstimate > 0.f ? 1200.f * std::log2(finalEstimate / sample.truth.frequency)
-                                        : 0.f;
-                testFileEstimates.emplace_back(weight, debugOutput["presenceScore"], finalEstimate,
-                                               errorCents, debugOutput["harmonicity"]);
+                    finalEstimate.bucket == PitchBucket::inRange
+                        ? 1200.f * std::log2(finalEstimate.pitch / sample.truth.frequency)
+                        : 0.f;
+                testFileEstimates.emplace_back(weight, debugOutput["presenceScore"],
+                                               finalEstimate.pitch, errorCents,
+                                               debugOutput["harmonicity"]);
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
             }
 
