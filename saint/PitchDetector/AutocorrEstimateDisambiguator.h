@@ -26,14 +26,8 @@ class AutocorrEstimateDisambiguator {
     // returned estimate: the fraction of whitened-spectrum peak energy that lies on
     // the higher-harmonic (k>=2) comb of the estimate. Low for pure tones, broadband
     // noise and inharmonic/octave-misplaced locks; high for genuine harmonic notes.
-    // If subharmonicScoreOut is non-null, it receives a [0,1] sub-harmonic score: the
-    // fraction of harmonic-comb energy sitting on the *odd* lines of the f0/2 comb
-    // (1.5*f0, 2.5*f0, ...). ~0 for a genuine note; high when the true fundamental is
-    // f0/2 (an octave-down of the estimate). It is only non-zero when f0/2 is below the
-    // search range (minFreq) — the case the octave disambiguation cannot otherwise reach.
     float process(float xcorrEstimate, const std::vector<float>& dbSpectrum,
-                  std::optional<float> constraint = std::nullopt, float* harmonicityOut = nullptr,
-                  float* subharmonicScoreOut = nullptr);
+                  std::optional<float> constraint = std::nullopt, float* harmonicityOut = nullptr);
 
    private:
     // Peaks found in the whitened spectrum (parallel index/value arrays).
@@ -60,10 +54,6 @@ class AutocorrEstimateDisambiguator {
     float evaluateCandidate(float candidate, float absoluteErrorThreshold, const PeakData& peaks,
                             const std::vector<float>& weights);
     float computeHarmonicity(const std::vector<float>& spec, float f0Index, float minF0Index);
-    // Fraction of harmonic-comb energy on the odd lines of the f0/2 comb (half-integer
-    // multiples of f0). Detects an octave-up error when f0/2 lies below minF0Index; returns
-    // 0 otherwise. See octaviationSubharmonicCeiling.
-    float computeSubharmonicScore(const std::vector<float>& spec, float f0Index, float minF0Index);
 
     const int _sampleRate;
     PitchDetectorLoggerInterface& _logger;

@@ -33,22 +33,6 @@ constexpr auto autocorrAveragingFrameCount = 4;
 constexpr double octaviationPresenceThreshold = 0.55;
 constexpr float octaviationHarmonicityFloor = 0.30f;
 
-// Spectral sub-harmonic ceiling: the octave-up error the presence/harmonicity cuts cannot
-// catch is a note whose true fundamental is below the search range (so the picker locks the
-// in-range half-period and the disambiguator, floored at minFreq, cannot correct it). Its
-// signature is purely spectral: energy on the *odd* lines of the sub-octave comb (1.5*f0,
-// 2.5*f0, ... = odd harmonics of f0/2) that a genuine note at f0 simply does not have. The
-// disambiguator measures the fraction of harmonic-comb energy on those half-integer lines
-// (0 for a true note, high for an octave error); an estimate whose sub-octave falls below
-// minFreq is rejected when that fraction exceeds this ceiling. 1.0 disables the cut.
-//
-// 0.30 sits above the corpus's clean-note ceiling (~0.21 on the odd transient frame of an
-// in-range E2/A2) so the in-range corpus is left untouched, while catching the out-of-range
-// octave errors this targets (a low note locked an octave high scores ~0.2-0.5). Lower it to
-// catch more marginal cases at the cost of nicking clean low-note frames; tune against real
-// sub-range recordings.
-constexpr float octaviationSubharmonicCeiling = 0.30f;
-
 // The probNotOctaviated cut applied once an estimate constraint is locked (phase 2 /
 // tracking). In the locked phase the autocorrelation search and the octave
 // disambiguation are already restricted to within a major third of the constraint, so
@@ -72,7 +56,6 @@ struct OctaviationGateConfig {
     double presenceThreshold = octaviationPresenceThreshold;
     float harmonicityFloor = octaviationHarmonicityFloor;
     double presenceThresholdWithConstraint = octaviationPresenceThresholdWithConstraint;
-    float subharmonicCeiling = octaviationSubharmonicCeiling;
 };
 
 // Onset detector (OnsetDetector.h) decision: a level-adaptive threshold on the

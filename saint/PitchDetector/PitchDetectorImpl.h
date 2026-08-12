@@ -56,11 +56,6 @@ class PitchDetectorImpl {
     const double _presenceThreshold;
     const float _harmonicityFloor;
     const double _presenceThresholdWithConstraint;
-    // Rejects a low estimate whose sub-octave (f/2) is below the search range when too much of
-    // its harmonic-comb energy sits on half-integer lines (the odd harmonics of f/2) — the
-    // spectral signature of an octave-up error the presence/harmonicity cuts miss. See
-    // octaviationSubharmonicCeiling. 1.0 disables it.
-    const float _subharmonicCeiling;
     const int _decimationFactor;
 
     // Reused dB-power-spectrum buffer, so process() allocates nothing on the audio
