@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
         if (playing) {
             const float* block = pitchDetector->peekBlock();
             saint::DebugOutput debug;
-            const float frequency = pitchDetector->process(nullptr, &debug);
+            const float frequency = pitchDetector->process(nullptr, &debug).pitch;
             display.update(frequency, pitchState(debug, frequency), wasOnset(debug));
             if (!player->write(block, framesPerBlock)) {
                 // Playback died mid-stream; fall back to timed pacing.
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
 #endif
         const auto blockStart = std::chrono::steady_clock::now();
         saint::DebugOutput debug;
-        const float frequency = pitchDetector->process(nullptr, &debug);
+        const float frequency = pitchDetector->process(nullptr, &debug).pitch;
         display.update(frequency, pitchState(debug, frequency), wasOnset(debug));
         if (!fast) {
             std::this_thread::sleep_until(blockStart + blockDuration);

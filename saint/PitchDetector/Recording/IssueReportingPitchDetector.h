@@ -31,9 +31,10 @@ class IssueReportingPitchDetector : public PitchDetector {
      */
     ~IssueReportingPitchDetector();
 
-    float process(const float* input, DebugOutput* = nullptr,
-                  std::vector<float>* debugOutputSignal = nullptr) override;
+    PitchDetectionResult process(const float* input, DebugOutput* = nullptr,
+                                 std::vector<float>* debugOutputSignal = nullptr) override;
     int delaySamples() const override;
+    std::pair<float, float> pitchSearchRange() const override;
 
     /**
      * @brief Starts recording the audio stream to diagnose an issue offline.

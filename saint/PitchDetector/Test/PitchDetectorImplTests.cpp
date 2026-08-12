@@ -262,8 +262,10 @@ TEST(PitchDetectorImpl, benchmarking) {
 #ifdef NDEBUG
                 const auto cpuT0 = threadCpuSeconds();
 #endif
-                const auto finalEstimate = pitchDetector->process(
-                    noisyData + i * numChannels, &debugOutput, debugOutputSignal.get());
+                const auto finalEstimate = pitchDetector
+                                               ->process(noisyData + i * numChannels, &debugOutput,
+                                                         debugOutputSignal.get())
+                                               .pitch;
 #ifdef NDEBUG
                 caseProcessCpuSeconds += threadCpuSeconds() - cpuT0;
                 caseAudioSeconds += static_cast<double>(blockSize) / noisy.sampleRate;

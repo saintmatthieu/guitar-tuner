@@ -7,8 +7,6 @@
 #include "PitchDetector.h"
 #include "PitchDetectorTypes.h"
 
-#include <onnxruntime_cxx_api.h>
-
 namespace saint {
 
 // Benchmark-only wrapper around a PESTO streaming ONNX model
@@ -23,8 +21,8 @@ class PestoPitchDetector : public PitchDetector {
     PestoPitchDetector(const std::filesystem::path& modelPath, int sampleRate,
                        ChannelFormat channelFormat, int blockSize, float confidenceThreshold);
 
-    float process(const float* input, DebugOutput* debugOutput = nullptr,
-                  std::vector<float>* debugOutputSignal = nullptr) override;
+    PitchDetectionResult process(const float* input, DebugOutput* debugOutput = nullptr,
+                                 std::vector<float>* debugOutputSignal = nullptr) override;
     int delaySamples() const override;
 
    private:

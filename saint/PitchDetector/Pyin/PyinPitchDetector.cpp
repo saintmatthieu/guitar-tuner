@@ -28,8 +28,8 @@ PyinPitchDetector::PyinPitchDetector(int sampleRate, ChannelFormat channelFormat
 
 PyinPitchDetector::~PyinPitchDetector() = default;
 
-float PyinPitchDetector::process(const float* input, DebugOutput* debugOutput,
-                                 std::vector<float>* /*debugOutputSignal*/) {
+PitchDetectionResult PyinPitchDetector::process(const float* input, DebugOutput* debugOutput,
+                                                std::vector<float>* /*debugOutputSignal*/) {
     // 1) Slide the rolling analysis window left by one block and append this
     //    block's (down-mixed) mono samples at the tail.
     std::move(_window.begin() + _blockSize, _window.end(), _window.begin());
@@ -107,7 +107,7 @@ float PyinPitchDetector::process(const float* input, DebugOutput* debugOutput,
     if (debugOutput) {
         (*debugOutput)["presenceScore"] = presence;
     }
-    return frequency;
+    return {frequency, frequency == 0.f ? PitchBucket::noPitch : PitchBucket::inRange};
 }
 
 int PyinPitchDetector::delaySamples() const {
@@ -115,5 +115,4 @@ int PyinPitchDetector::delaySamples() const {
     // one; that frame's analysis window is centred frameSize/2 before its end.
     return _frameSize / 2 + (_fixedLag - 1) * _blockSize;
 }
-
 }  // namespace saint

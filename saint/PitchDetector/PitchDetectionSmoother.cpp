@@ -11,19 +11,24 @@ PitchDetectionSmoother::PitchDetectionSmoother(std::unique_ptr<PitchDetector> in
                                                int blocksPerSecond)
     : _innerDetector(std::move(innerDetector)), _coef(std::pow(C, 100.0 / blocksPerSecond)) {}
 
-float PitchDetectionSmoother::process(const float* input, DebugOutput* debugOutput,
-                                      std::vector<float>* debugOutputSignal) {
+PitchDetectionResult PitchDetectionSmoother::process(const float* input, DebugOutput* debugOutput,
+                                                     std::vector<float>* debugOutputSignal) {
     const auto newValue = _innerDetector->process(input, debugOutput, debugOutputSignal);
-    if (newValue > 0 && _lastValue == 0) {
-        _lastValue = newValue;
-    } else if (newValue == 0) {
+    if (newValue.pitch > 0 && _lastValue == 0) {
+        _lastValue = newValue.pitch;
+    } else if (newValue.pitch == 0) {
         _lastValue = 0;
     }
-    return _lastValue = (1 - _coef) * newValue + _coef * _lastValue;
+    _lastValue = (1 - _coef) * newValue.pitch + _coef * _lastValue;
+    return {_lastValue, newValue.bucket};
 }
 
 int PitchDetectionSmoother::delaySamples() const {
     return _innerDetector->delaySamples();
+}
+
+std::pair<float, float> PitchDetectionSmoother::pitchSearchRange() const {
+    return _innerDetector->pitchSearchRange();
 }
 
 }  // namespace saint

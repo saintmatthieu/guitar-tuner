@@ -94,8 +94,8 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
       _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint),
       _decimationFactor(decimationFactor) {}
 
-float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
-                                 std::vector<float>* debugOutputSignal) {
+PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
+                                                std::vector<float>* debugOutputSignal) {
     _logger->StartNewEstimate();
     utils::Finally finally{[this] { _logger->EndNewEstimate(nullptr, 0); }};
 
@@ -130,7 +130,7 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     }
 
     if (xcorrEstimate == 0.f) {
-        return 0.f;
+        return {0.f, PitchBucket::noPitch};
     }
 
     // Evaluate the probability of xcorrEstimate not being octaviated ("good") given
@@ -172,9 +172,9 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
         _estimateConstraint.has_value() ? _presenceThresholdWithConstraint : _presenceThreshold;
     if (_applyOctaviationGate &&
         (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
-        return 0.f;
+        return {0.f, PitchBucket::noPitch};
     }
 
-    return disambiguatedEstimate;
+    return {disambiguatedEstimate, PitchBucket::inRange};
 }
 }  // namespace saint

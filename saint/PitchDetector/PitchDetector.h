@@ -1,12 +1,39 @@
 #pragma once
 
+#include <limits>
+#include <utility>
 #include <vector>
 
 #include "PitchDetectorTypes.h"
 
 namespace saint {
+enum class PitchBucket {
+    noPitch,
+    belowRange,
+    inRange,
+    aboveRange,
+};
+
+/**
+ * @brief Return value of @ref PitchDetector::process. `bucket == noPitch` if and only if `pitch ==
+ * 0`.
+ */
+struct PitchDetectionResult {
+    float pitch = 0.f;
+    PitchBucket bucket = PitchBucket::noPitch;
+};
+
 class PitchDetector {
    public:
+    /**
+     * @details Encompasses the tuning range (see the `Tuning` argument of @ref
+     * PitchDetectorFactory::createInstance), plus implementation-specific margins. Helpful to
+     * figure out the precise meaning of the `PitchBucket` values.
+     */
+    virtual std::pair<float, float> pitchSearchRange() const {
+        return {0.f, std::numeric_limits<float>::max()};
+    }
+
     /**
      * @brief Processes a block of audio samples and return the detected pitch in
      * Hz.
@@ -17,10 +44,9 @@ class PitchDetector {
      * 1 indicating the confidence that a pitch is present in the audio.
      * @param debugOutputSignal FOR TESTING - if not null, internally pre-processed signal with be
      * appended.
-     * @return float 0 if no pitch detected, the value in Hz if pitch is detected.
      */
-    virtual float process(const float* input, DebugOutput* = nullptr,
-                          std::vector<float>* debugOutputSignal = nullptr) = 0;
+    virtual PitchDetectionResult process(const float* input, DebugOutput* = nullptr,
+                                         std::vector<float>* debugOutputSignal = nullptr) = 0;
     virtual int delaySamples() const = 0;
     virtual ~PitchDetector() = default;
 };

@@ -44,8 +44,8 @@ class PyinPitchDetector : public PitchDetector {
     PyinPitchDetector(const PyinPitchDetector&) = delete;
     PyinPitchDetector& operator=(const PyinPitchDetector&) = delete;
 
-    float process(const float* input, DebugOutput* debugOutput = nullptr,
-                  std::vector<float>* debugOutputSignal = nullptr) override;
+    PitchDetectionResult process(const float* input, DebugOutput* debugOutput = nullptr,
+                                 std::vector<float>* debugOutputSignal = nullptr) override;
     int delaySamples() const override;
 
    private:
