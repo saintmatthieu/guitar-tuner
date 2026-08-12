@@ -341,6 +341,48 @@ float AutocorrEstimateDisambiguator::computeHarmonicity(const std::vector<float>
     return totalEnergy > 0.f ? overtoneEnergy / totalEnergy : 0.f;
 }
 
+// Fraction of harmonic-comb energy lying on the *odd* lines of the f0/2 comb — the
+// half-integer multiples of f0 (1.5*f0, 2.5*f0, ...), i.e. the odd harmonics of f0/2.
+// A genuine note at f0 has no energy there; a note whose true fundamental is f0/2 (locked
+// an octave high because f0/2 is below the search range) shows them strongly. Returns 0
+// when f0/2 is in range (>= minF0Index) — there the octave disambiguation handles the
+// choice — or when f0 is invalid.
+float AutocorrEstimateDisambiguator::computeSubharmonicScore(const std::vector<float>& spec,
+                                                             float f0Index, float minF0Index) {
+    const float halfF0 = 0.5f * f0Index;
+    if (halfF0 <= 0.f || halfF0 >= minF0Index) {
+        return 0.f;  // sub-octave in range (or invalid): not an out-of-range octave error
+    }
+    // Walk the f0/2 comb directly rather than via getPeaks: the half-integer (odd-m) lines can
+    // be weak, and getPeaks' prominence pruning would drop them intermittently. At each comb
+    // line m*halfF0 take the strongest whitened-spectrum bin in a narrow window; the whitened
+    // spectrum is already "dB above the envelope and noise floor", so a non-positive value
+    // means no real energy there. Even m -> a harmonic of f0; odd m -> a half-integer multiple
+    // of f0 (an odd harmonic of f0/2), which only carries energy if the true fundamental is
+    // f0/2. m starts at 2 (= f0): the m=1 line at f0/2 sits below minFreq where low-frequency
+    // contamination is unreliable, so it is excluded — the robust evidence is 1.5*f0, 2.5*f0, …
+    const int maxBin = static_cast<int>(spec.size()) / 2;
+    const int win = std::max(1, static_cast<int>(halfF0 * 0.1f));
+    float intEnergy = 0.f;
+    float oddEnergy = 0.f;
+    for (int m = 2; m <= 20; ++m) {
+        const int center = static_cast<int>(std::lround(m * halfF0));
+        if (center >= maxBin) {
+            break;
+        }
+        float lineEnergy = 0.f;
+        for (int b = std::max(1, center - win); b <= center + win && b < maxBin; ++b) {
+            lineEnergy = std::max(lineEnergy, spec[b]);
+        }
+        if (lineEnergy <= 0.f) {
+            continue;
+        }
+        (m % 2 == 0 ? intEnergy : oddEnergy) += lineEnergy;
+    }
+    const float total = intEnergy + oddEnergy;
+    return total > 0.f ? oddEnergy / total : 0.f;
+}
+
 float AutocorrEstimateDisambiguator::disambiguateEstimate(float priorEstimate,
                                                           const std::vector<float>& idealSpectrum,
                                                           std::optional<float> constraint) {
@@ -385,8 +427,8 @@ AutocorrEstimateDisambiguator::AutocorrEstimateDisambiguator(
 
 float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
                                              const std::vector<float>& dbSpectrum,
-                                             std::optional<float> constraint,
-                                             float* harmonicityOut) {
+                                             std::optional<float> constraint, float* harmonicityOut,
+                                             float* subharmonicScoreOut) {
     std::copy(dbSpectrum.begin(), dbSpectrum.end(), _idealSpectrum.begin());
     toIdealSpectrum(_idealSpectrum);
 
@@ -396,6 +438,11 @@ float AutocorrEstimateDisambiguator::process(float xcorrEstimate,
     if (harmonicityOut) {
         *harmonicityOut = computeHarmonicity(_idealSpectrum, disambiguatedEstimate / _binFreq,
                                              _minFreq / _binFreq);
+    }
+
+    if (subharmonicScoreOut) {
+        *subharmonicScoreOut = computeSubharmonicScore(
+            _idealSpectrum, disambiguatedEstimate / _binFreq, _minFreq / _binFreq);
     }
 
     return disambiguatedEstimate;

@@ -92,6 +92,7 @@ PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
       _presenceThreshold(gate.presenceThreshold),
       _harmonicityFloor(gate.harmonicityFloor),
       _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint),
+      _subharmonicCeiling(gate.subharmonicCeiling),
       _decimationFactor(decimationFactor) {}
 
 float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
@@ -157,21 +158,29 @@ float PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
     _logger->Log(_dbSpectrum.data(), _dbSpectrum.size(), "dbSpectrum");
 
     float harmonicity = 0.f;
-    const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, _dbSpectrum, _estimateConstraint, &harmonicity);
+    float subharmonicScore = 0.f;
+    const auto disambiguatedEstimate = _disambiguator.process(
+        xcorrEstimate, _dbSpectrum, _estimateConstraint, &harmonicity, &subharmonicScore);
     if (debugOutput) {
         (*debugOutput)["harmonicity"] = harmonicity;
+        // Static key: "subharmonicScore" exceeds libstdc++'s 15-char SSO buffer, so reuse it
+        // to keep operator[] allocation-free on the audio thread (see kProbNotOctaviated).
+        static const std::string kSubharmonicScore = "subharmonicScore";
+        (*debugOutput)[kSubharmonicScore] = subharmonicScore;
     }
 
-    // Gate: reject when the presence-based octaviation probability is too low, or the
-    // estimate lacks harmonic support. Once locked, the search/disambiguation are already
-    // clamped to a major third of the constraint, so this cut is a pure presence gate and
-    // is set more permissively (it governs how long a decaying note keeps being tracked).
-    // harmonicityFloor=0 disables the harmonic criterion.
+    // Gate: reject when the presence-based octaviation probability is too low, the estimate
+    // lacks harmonic support, or it carries the spectral signature of an octave-up error on
+    // an out-of-range low note (energy on the odd lines of its sub-octave comb). Once locked,
+    // the search/disambiguation are already clamped to a major third of the constraint, so the
+    // presence cut is a pure presence gate set more permissively (it governs how long a
+    // decaying note keeps being tracked). harmonicityFloor=0 / subharmonicCeiling>=1 disable
+    // their respective criteria.
     const auto threshold =
         _estimateConstraint.has_value() ? _presenceThresholdWithConstraint : _presenceThreshold;
     if (_applyOctaviationGate &&
-        (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
+        (probNotOctaviated < threshold || harmonicity < _harmonicityFloor ||
+         subharmonicScore > _subharmonicCeiling)) {
         return 0.f;
     }
 

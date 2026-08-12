@@ -158,6 +158,10 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argAlgorithm = getArgument<std::string>("algorithm");
     const auto argDecimationFactor = getArgument<int>("decimationFactor");
     const auto argMinFreqSemitoneOffset = getArgument<int>("minFreqSemitoneOffset");
+    // Octave-error sub-harmonic gate ceiling (see octaviationSubharmonicCeiling): reject a low
+    // estimate (whose sub-octave is below the search range) when the fraction of its harmonic-comb
+    // energy sitting on half-integer lines exceeds this. Absent leaves the production default.
+    const auto argSubharmonicCeiling = getArgument<float>("subharmonicCeiling");
     const auto updateReferences = getArgument<bool>("updateBenchmarkReferences").value_or(false);
 
     const auto algorithmId = argAlgorithm.value_or(kDefaultAlgorithmId);
@@ -235,6 +239,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 context.hold.holdDuration = *argHoldDuration;
             if (argMinFreqSemitoneOffset)
                 context.minFreqSemitoneOffset = *argMinFreqSemitoneOffset;
+            if (argSubharmonicCeiling)
+                context.gate.subharmonicCeiling = *argSubharmonicCeiling;
             const auto pitchDetector = createDetector(context);
 
             auto negativeCount = 0;
@@ -254,6 +260,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             std::vector<bool> onsets;
             std::vector<float> xcorrEstimates;  // pre-gate period estimate (Hz)
             std::vector<float> probsNotOctaviated;
+            std::vector<float> subharmonicScores;
             auto caseProcessCpuSeconds = 0.;  // Release only; 0 otherwise
             auto caseAudioSeconds = 0.;
 
@@ -270,6 +277,7 @@ TEST(PitchDetectorImpl, benchmarking) {
 #endif
                 xcorrEstimates.push_back(debugOutput["xcorrEstimate"]);
                 probsNotOctaviated.push_back(debugOutput["probNotOctaviated"]);
+                subharmonicScores.push_back(debugOutput["subharmonicScore"]);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -332,13 +340,14 @@ TEST(PitchDetectorImpl, benchmarking) {
                 // winning ACF peak or merely raised the gate score on an existing one.
                 std::ofstream frameDump(testUtils::getOutDir() /
                                         ("frameDump" + fileSuffix + ".csv"));
-                frameDump << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
-                             "finalHz,truthHz,errorCents\n";
+                frameDump << "frame,isOnset,presenceScore,probNotOctaviated,subharmonicScore,"
+                             "xcorrEstimateHz,finalHz,truthHz,errorCents\n";
                 for (size_t f = 0; f < testFileEstimates.size(); ++f) {
                     const auto& e = testFileEstimates[f];
                     frameDump << f << "," << (onsets[f] ? 1 : 0) << "," << e.s << ","
-                              << probsNotOctaviated[f] << "," << xcorrEstimates[f] << "," << e.f
-                              << "," << sample.truth.frequency << "," << e.e << "\n";
+                              << probsNotOctaviated[f] << "," << subharmonicScores[f] << ","
+                              << xcorrEstimates[f] << "," << e.f << "," << sample.truth.frequency
+                              << "," << e.e << "\n";
                 }
 
                 std::ofstream frequencyEstimatesFile(testUtils::getOutDir() /
