@@ -57,10 +57,16 @@ corpus of real note recordings mixed with real noise at several SNRs, scoring pe
 ### The detector contract (`saint/PitchDetector/PitchDetector.h`)
 
 Every algorithm is a `saint::PitchDetector`:
-- `float process(const float* block, DebugOutput* = nullptr, std::vector<float>* = nullptr)` —
-  one block of `blockSize*numChannels` interleaved samples in; returns Hz, or `0` if no pitch.
-  Write a `[0,1]` confidence into `(*debugOutput)["presenceScore"]` — the ROC/AUC reads exactly
-  this key.
+- `PitchDetectionResult process(const float* block, DebugOutput* = nullptr,
+  std::vector<float>* = nullptr)` — one block of `blockSize*numChannels` interleaved samples
+  in; returns `{pitch, bucket}`: `pitch` in Hz (`0` if none) and a `PitchBucket`
+  (`noPitch`/`belowRange`/`inRange`/`aboveRange`) classifying the input against
+  `pitchSearchRange()` — `belowRange` with `pitch == 0` lets an app show "too low" without a
+  precise estimate. The benchmark reads only `.pitch`. Write a `[0,1]` confidence into
+  `(*debugOutput)["presenceScore"]` — the ROC/AUC reads exactly this key.
+- `std::pair<float, float> pitchSearchRange() const` — the tuning range plus
+  implementation-specific margins (all current detectors use `getMinFreq`/`getMaxFreq`,
+  ±3 semitones around the tuning).
 - `int delaySamples() const` — algorithmic latency; the harness uses it to align estimates with
   ground-truth note on/offset times (affects FPR/FNR, not the cents error).
 

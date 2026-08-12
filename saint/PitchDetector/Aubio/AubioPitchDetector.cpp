@@ -1,11 +1,11 @@
 #include "AubioPitchDetector.h"
 
+#include <aubio.h>
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <unordered_map>
-
-#include <aubio.h>
 
 namespace saint {
 namespace {
@@ -32,8 +32,8 @@ float AubioPitchDetector::defaultConfidenceThreshold(const std::string& method) 
     // (aubio has no confidence callback for them), so their ROC is degenerate and
     // the operating point is 0 - i.e. effectively ungated.
     static const std::unordered_map<std::string, float> thresholds{
-        {"yin", 0.957062f},  {"yinfft", 0.787948f}, {"yinfast", 0.957064f}, {"mcomb", 0.f},
-        {"fcomb", 0.f},      {"schmitt", 0.f},      {"specacf", 0.85f},
+        {"yin", 0.957062f}, {"yinfft", 0.787948f}, {"yinfast", 0.957064f}, {"mcomb", 0.f},
+        {"fcomb", 0.f},     {"schmitt", 0.f},      {"specacf", 0.85f},
     };
     const auto it = thresholds.find(method);
     return it != thresholds.end() ? it->second : 0.f;
@@ -62,8 +62,8 @@ AubioPitchDetector::~AubioPitchDetector() {
     del_aubio_pitch(_pitch);
 }
 
-float AubioPitchDetector::process(const float* input, DebugOutput* debugOutput,
-                                  std::vector<float>* debugOutputSignal) {
+PitchDetectionResult AubioPitchDetector::process(const float* input, DebugOutput* debugOutput,
+                                                 std::vector<float>* debugOutputSignal) {
     (void)debugOutputSignal;  // no preprocessed signal to expose
 
     if (_numChannels == 1) {
@@ -89,9 +89,9 @@ float AubioPitchDetector::process(const float* input, DebugOutput* debugOutput,
     }
 
     if (std::isnan(frequency) || frequency <= 0.f || confidence < _confidenceThreshold) {
-        return 0.f;
+        return {0.f, PitchBucket::noPitch};
     }
-    return frequency;
+    return {frequency, PitchBucket::inRange};
 }
 
 int AubioPitchDetector::delaySamples() const {
@@ -99,6 +99,10 @@ int AubioPitchDetector::delaySamples() const {
     // matches the centre of that window. Half the window is a first guess and a
     // knob to tune if FPR/FNR look misaligned against the ground truth.
     return _bufSize / 2;
+}
+
+std::pair<float, float> AubioPitchDetector::pitchSearchRange() const {
+    return {0.f, std::numeric_limits<float>::infinity()};  // aubio itself searches unconstrained
 }
 
 }  // namespace saint

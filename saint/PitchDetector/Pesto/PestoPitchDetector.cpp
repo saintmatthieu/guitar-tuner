@@ -42,8 +42,7 @@ PestoPitchDetector::PestoPitchDetector(const std::filesystem::path& modelPath, i
       _memoryInfo(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)),
       _monoBuffer(blockSize) {
     // The cache input is (batch, cacheSize); get cacheSize by introspection.
-    const auto cacheShape =
-        _session.GetInputTypeInfo(1).GetTensorTypeAndShapeInfo().GetShape();
+    const auto cacheShape = _session.GetInputTypeInfo(1).GetTensorTypeAndShapeInfo().GetShape();
     if (cacheShape.size() != 2 || cacheShape[1] <= 0) {
         throw std::runtime_error("Unexpected PESTO cache input shape in " + modelPath.string());
     }
@@ -51,8 +50,8 @@ PestoPitchDetector::PestoPitchDetector(const std::filesystem::path& modelPath, i
     (void)sampleRate;  // frozen into the model at export time; kept for clarity at call site
 }
 
-float PestoPitchDetector::process(const float* input, DebugOutput* debugOutput,
-                                  std::vector<float>* debugOutputSignal) {
+PitchDetectionResult PestoPitchDetector::process(const float* input, DebugOutput* debugOutput,
+                                                 std::vector<float>* debugOutputSignal) {
     (void)debugOutputSignal;  // no preprocessed signal to expose
 
     if (_numChannels == 1) {
@@ -79,8 +78,7 @@ float PestoPitchDetector::process(const float* input, DebugOutput* debugOutput,
 
     // prediction/confidence are (batch, timeSteps); with one chunk per call we
     // expect a single time step, but take the last one to be safe.
-    const auto numPredictions =
-        outputs[0].GetTensorTypeAndShapeInfo().GetElementCount();
+    const auto numPredictions = outputs[0].GetTensorTypeAndShapeInfo().GetElementCount();
     const float prediction =
         numPredictions > 0 ? outputs[0].GetTensorData<float>()[numPredictions - 1] : 0.f;
     const auto numConfidences = outputs[1].GetTensorTypeAndShapeInfo().GetElementCount();
@@ -97,10 +95,11 @@ float PestoPitchDetector::process(const float* input, DebugOutput* debugOutput,
     }
 
     if (std::isnan(prediction) || prediction <= 0.f || confidence < _confidenceThreshold) {
-        return 0.f;
+        return {0.f, PitchBucket::noPitch};
     }
     // prediction is in semitones (MIDI note number, A4 = 69 = 440 Hz).
-    return 440.f * std::pow(2.f, (prediction - 69.f) / 12.f);
+    const auto frequency = 440.f * std::pow(2.f, (prediction - 69.f) / 12.f);
+    return {frequency, PitchBucket::inRange};
 }
 
 int PestoPitchDetector::delaySamples() const {
@@ -109,5 +108,4 @@ int PestoPitchDetector::delaySamples() const {
     // and a knob to tune if FPR/FNR look misaligned.
     return _blockSize;
 }
-
 }  // namespace saint

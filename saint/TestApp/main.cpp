@@ -234,7 +234,7 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         }
 
         saint::DebugOutput debug;
-        const float frequency = pitchDetector->process(samples, &debug);
+        const float frequency = pitchDetector->process(samples, &debug).pitch;
         const auto onsetIt = debug.find("isOnset");
         const bool onsetDetected = onsetIt != debug.end() && onsetIt->second != 0.f;
 

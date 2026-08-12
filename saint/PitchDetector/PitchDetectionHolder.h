@@ -20,14 +20,14 @@ class PitchDetectionHolder : public PitchDetector {
     PitchDetectionHolder(std::unique_ptr<PitchDetector> innerDetector, int sampleRate,
                          int blockSize, HoldConfig = {});
 
-    float process(const float* input, DebugOutput* = nullptr,
-                  std::vector<float>* debugOutputSignal = nullptr) override;
+    PitchDetectionResult process(const float* input, DebugOutput* = nullptr,
+                                 std::vector<float>* debugOutputSignal = nullptr) override;
     int delaySamples() const override;
 
    private:
     const std::unique_ptr<PitchDetector> _innerDetector;
     const int _maxHoldFrames;
-    float _heldPitch = 0.f;
+    PitchDetectionResult _heldResult;
     int _framesHeld = 0;
 };
 }  // namespace saint

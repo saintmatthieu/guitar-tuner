@@ -19,11 +19,11 @@ RecordingPitchDetector::RecordingPitchDetector(std::unique_ptr<PitchDetector> in
     _buffer.resize(static_cast<size_t>(_maxNumBlocks) * _samplesPerBlock);
 }
 
-float RecordingPitchDetector::process(const float* input, DebugOutput* debugOutput,
-                                      std::vector<float>* debugOutputSignal) {
+PitchDetectionResult RecordingPitchDetector::process(const float* input, DebugOutput* debugOutput,
+                                                     std::vector<float>* debugOutputSignal) {
     assert(_inner);  // must not be called after the recording completed
     if (!_inner) {
-        return 0.f;
+        return {0.f, PitchBucket::noPitch};
     }
     std::copy(input, input + _samplesPerBlock,
               _buffer.begin() + static_cast<size_t>(_numBlocksStored) * _samplesPerBlock);
@@ -45,6 +45,10 @@ float RecordingPitchDetector::process(const float* input, DebugOutput* debugOutp
 
 int RecordingPitchDetector::delaySamples() const {
     return _inner ? _inner->delaySamples() : 0;
+}
+
+std::pair<float, float> RecordingPitchDetector::pitchSearchRange() const {
+    return _inner ? _inner->pitchSearchRange() : std::pair<float, float>{0.f, 0.f};
 }
 
 void RecordingPitchDetector::stop() {

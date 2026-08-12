@@ -3,6 +3,8 @@
 #include <algorithm>  // max
 #include <cmath>      // round
 
+#include "PitchDetector.h"
+
 namespace saint {
 namespace {
 int durationToBlocks(int sampleRate, int blockSize, float duration) {
@@ -16,23 +18,23 @@ PitchDetectionHolder::PitchDetectionHolder(std::unique_ptr<PitchDetector> innerD
     : _innerDetector(std::move(innerDetector)),
       _maxHoldFrames(durationToBlocks(sampleRate, blockSize, config.holdDuration)) {}
 
-float PitchDetectionHolder::process(const float* input, DebugOutput* debugOutput,
-                                    std::vector<float>* debugOutputSignal) {
-    const auto pitch = _innerDetector->process(input, debugOutput, debugOutputSignal);
-    if (pitch > 0.f) {
+PitchDetectionResult PitchDetectionHolder::process(const float* input, DebugOutput* debugOutput,
+                                                   std::vector<float>* debugOutputSignal) {
+    const auto result = _innerDetector->process(input, debugOutput, debugOutputSignal);
+    if (result.pitch > 0.f) {
         // Tracking: remember the pitch to hold and re-arm the hold window.
-        _heldPitch = pitch;
+        _heldResult = result;
         _framesHeld = 0;
-        return pitch;
+        return result;
     }
-    if (_heldPitch > 0.f && _framesHeld < _maxHoldFrames) {
+    if (_heldResult.pitch > 0.f && _framesHeld < _maxHoldFrames) {
         ++_framesHeld;
         if (debugOutput != nullptr) {
             (*debugOutput)["hold"] = 1.f;
         }
-        return _heldPitch;
+        return _heldResult;
     }
-    return 0.f;
+    return {0.f, PitchBucket::noPitch};
 }
 
 int PitchDetectionHolder::delaySamples() const {

@@ -32,9 +32,10 @@ class ReplayPitchDetector : public PitchDetector {
      * @return the inner detector's estimate, or 0 when past the end of the
      * recording (see `numBlocksLeft()`).
      */
-    float process(const float* input, DebugOutput* = nullptr,
-                  std::vector<float>* debugOutputSignal = nullptr) override;
+    PitchDetectionResult process(const float* input, DebugOutput* = nullptr,
+                                 std::vector<float>* debugOutputSignal = nullptr) override;
     int delaySamples() const override;
+    std::pair<float, float> pitchSearchRange() const override;
 
     const recording::PitchDetectorConfig& config() const;
     int numBlocks() const;

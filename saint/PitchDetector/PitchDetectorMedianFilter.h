@@ -14,8 +14,9 @@ class PitchDetectorMedianFilter : public PitchDetector {
 
     ~PitchDetectorMedianFilter() override = default;
 
-    float process(const float* input, DebugOutput*, std::vector<float>*) override;
+    PitchDetectionResult process(const float* input, DebugOutput*, std::vector<float>*) override;
     int delaySamples() const override;
+    std::pair<float, float> pitchSearchRange() const override;
 
    private:
     const int _blockSize = 0;

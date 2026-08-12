@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>  // ceil
 
+#include "PitchDetectorUtils.h"
+
 namespace saint {
 
 namespace {
@@ -28,8 +30,13 @@ int PitchDetectorMedianFilter::delaySamples() const {
     return _delayedScores.size() * _blockSize + _impl->delaySamples();
 }
 
-float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugOutput,
-                                         std::vector<float>* debugOutputSignal) {
+std::pair<float, float> PitchDetectorMedianFilter::pitchSearchRange() const {
+    return _impl->pitchSearchRange();
+}
+
+PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
+                                                        DebugOutput* debugOutput,
+                                                        std::vector<float>* debugOutputSignal) {
     _buffer.erase(_buffer.begin());
 
     if (debugOutput == nullptr) {
@@ -50,10 +57,10 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     (*debugOutput)["presenceScore"] = _delayedScores.front();
     _delayedScores.erase(_delayedScores.begin());
 
-    _buffer.push_back(raw);
+    _buffer.push_back(raw.pitch);
     if (!_allGoodOnce) {
         const auto allNonZero =
-            std::all_of(_buffer.begin(), _buffer.end(), [](float raw) { return raw > 0.f; });
+            std::all_of(_buffer.begin(), _buffer.end(), [](float pitch) { return pitch > 0.f; });
         if (allNonZero) {
             const auto minEstimate = *std::min_element(_buffer.begin(), _buffer.end());
             const auto maxEstimate = *std::max_element(_buffer.begin(), _buffer.end());
@@ -62,7 +69,7 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     }
 
     if (!_allGoodOnce) {
-        return 0.f;
+        return {0.f, PitchBucket::noPitch};
     }
 
     auto sortedBuffer = _buffer;
@@ -72,10 +79,10 @@ float PitchDetectorMedianFilter::process(const float* input, DebugOutput* debugO
     if (medianFiltered > 0.f) {
         // Tracking: update the constraint to follow the current pitch.
         _impl->setEstimateConstraint(medianFiltered);
-        return medianFiltered;
+        return {medianFiltered, PitchBucket::inRange};
     }
 
-    return 0.f;
+    return {0.f, PitchBucket::noPitch};
 }
 
 }  // namespace saint

@@ -47,9 +47,10 @@ class AubioPitchDetector : public PitchDetector {
     AubioPitchDetector(const AubioPitchDetector&) = delete;
     AubioPitchDetector& operator=(const AubioPitchDetector&) = delete;
 
-    float process(const float* input, DebugOutput* debugOutput = nullptr,
-                  std::vector<float>* debugOutputSignal = nullptr) override;
+    PitchDetectionResult process(const float* input, DebugOutput* debugOutput = nullptr,
+                                 std::vector<float>* debugOutputSignal = nullptr) override;
     int delaySamples() const override;
+    std::pair<float, float> pitchSearchRange() const override;
 
    private:
     const int _blockSize;

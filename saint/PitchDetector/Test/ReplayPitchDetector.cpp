@@ -24,10 +24,10 @@ ReplayPitchDetector::ReplayPitchDetector(recording::RecordingData data)
       _samplesPerBlock(_data.config.samplesPerBlockPerChannel *
                        numChannels(_data.config.channelFormat)) {}
 
-float ReplayPitchDetector::process(const float*, DebugOutput* debugOutput,
-                                   std::vector<float>* debugOutputSignal) {
+PitchDetectionResult ReplayPitchDetector::process(const float*, DebugOutput* debugOutput,
+                                                  std::vector<float>* debugOutputSignal) {
     if (_blockIndex >= numBlocks()) {
-        return 0.f;
+        return {0.f, PitchBucket::noPitch};
     }
     const auto* block =
         _data.interleaved.data() + static_cast<size_t>(_blockIndex) * _samplesPerBlock;
@@ -37,6 +37,10 @@ float ReplayPitchDetector::process(const float*, DebugOutput* debugOutput,
 
 int ReplayPitchDetector::delaySamples() const {
     return _inner->delaySamples();
+}
+
+std::pair<float, float> ReplayPitchDetector::pitchSearchRange() const {
+    return _inner->pitchSearchRange();
 }
 
 const recording::PitchDetectorConfig& ReplayPitchDetector::config() const {

@@ -33,10 +33,11 @@ IssueReportingPitchDetector::~IssueReportingPitchDetector() {
     _cpuSummaryCallback(line.str());
 }
 
-float IssueReportingPitchDetector::process(const float* input, DebugOutput* debugOutput,
-                                           std::vector<float>* debugOutputSignal) {
+PitchDetectionResult IssueReportingPitchDetector::process(const float* input,
+                                                           DebugOutput* debugOutput,
+                                                           std::vector<float>* debugOutputSignal) {
     const auto start = std::chrono::steady_clock::now();
-    const auto result = [&] {
+    const auto result = [&]() -> PitchDetectionResult {
         if (_recorder) {
             const auto result = _recorder->process(input, debugOutput, debugOutputSignal);
             if (_recordingComplete) {
@@ -66,6 +67,10 @@ float IssueReportingPitchDetector::process(const float* input, DebugOutput* debu
 
 int IssueReportingPitchDetector::delaySamples() const {
     return _recorder ? _recorder->delaySamples() : _detector->delaySamples();
+}
+
+std::pair<float, float> IssueReportingPitchDetector::pitchSearchRange() const {
+    return _recorder ? _recorder->pitchSearchRange() : _detector->pitchSearchRange();
 }
 
 void IssueReportingPitchDetector::startIssueRecording(int durationSeconds,

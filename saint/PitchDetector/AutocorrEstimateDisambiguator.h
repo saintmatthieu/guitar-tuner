@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>  // std::pair
 #include <vector>
 
 #include "Cepstrum.h"
@@ -28,6 +29,12 @@ class AutocorrEstimateDisambiguator {
     // noise and inharmonic/octave-misplaced locks; high for genuine harmonic notes.
     float process(float xcorrEstimate, const std::vector<float>& dbSpectrum,
                   std::optional<float> constraint = std::nullopt, float* harmonicityOut = nullptr);
+
+    // The frequency range estimates are disambiguated within: the tuning range plus
+    // margins (see getMinFreq/getMaxFreq).
+    std::pair<float, float> searchRange() const {
+        return {_minFreq, _maxFreq};
+    }
 
    private:
     // Peaks found in the whitened spectrum (parallel index/value arrays).
@@ -64,20 +71,20 @@ class AutocorrEstimateDisambiguator {
     const float _maxFreq;
 
     // Reused full-spectrum scratch, so process() allocates nothing on the audio thread.
-    std::vector<float> _idealSpectrum;       // whitened working spectrum
+    std::vector<float> _idealSpectrum;  // whitened working spectrum
     Aligned<std::vector<float>> _cepstrumAligned;
     std::vector<float> _lifteredCepstrum;
     std::vector<float> _spectrumEnvelope;
 
     // Reused peak-fitting scratch (clear()/assign keep capacity -> no per-call allocation).
-    PeakData _peaks;             // getPeaks output (disambiguation, then harmonicity)
+    PeakData _peaks;  // getPeaks output (disambiguation, then harmonicity)
     std::vector<int> _peakRemove;
     std::vector<float> _candidates;
     std::vector<float> _weights;
-    PeakData _peaksWork;         // evaluateCandidate's mutable working copy of _peaks
+    PeakData _peaksWork;  // evaluateCandidate's mutable working copy of _peaks
     std::vector<float> _weightsWork;
     std::vector<int> _k;
-    std::vector<int> _kSorted;   // sorted copy of _k for distinct-value counting
+    std::vector<int> _kSorted;  // sorted copy of _k for distinct-value counting
     std::vector<float> _absErrors;
 };
 }  // namespace saint

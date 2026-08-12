@@ -8,6 +8,7 @@
 #include "AutocorrPitchDetector.h"
 #include "FrequencyDomainTransformer.h"
 #include "OnsetDetector.h"
+#include "PitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
 #include "Preprocessor.h"
 
@@ -19,9 +20,14 @@ class PitchDetectorImpl {
                       std::unique_ptr<PitchDetectorLoggerInterface> logger, int decimationFactor,
                       OctaviationGateConfig gate = {});
 
-    float process(const float*, DebugOutput*, std::vector<float>* debugOutputSignal = nullptr);
+    PitchDetectionResult process(const float*, DebugOutput*,
+                                 std::vector<float>* debugOutputSignal = nullptr);
     int delaySamples() const {
         return _decimationFactor * windowSizeSamples() / 2;
+    }
+
+    std::pair<float, float> pitchSearchRange() const {
+        return _disambiguator.searchRange();
     }
 
     void setEstimateConstraint(float constraint) {

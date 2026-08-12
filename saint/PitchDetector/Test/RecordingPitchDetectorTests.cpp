@@ -21,8 +21,8 @@ namespace saint {
 namespace {
 class StubPitchDetector : public PitchDetector {
    public:
-    float process(const float*, DebugOutput*, std::vector<float>*) override {
-        return static_cast<float>(++_numCalls);
+    PitchDetectionResult process(const float*, DebugOutput*, std::vector<float>*) override {
+        return {static_cast<float>(++_numCalls), PitchBucket::inRange};
     }
     int delaySamples() const override {
         return 123;
@@ -58,7 +58,8 @@ void writePcm16Wav(const std::filesystem::path& path, int sampleRate, int channe
     };
     const auto u32 = [&](uint32_t v) {
         const char bytes[4] = {static_cast<char>(v & 0xff), static_cast<char>(v >> 8 & 0xff),
-                               static_cast<char>(v >> 16 & 0xff), static_cast<char>(v >> 24 & 0xff)};
+                               static_cast<char>(v >> 16 & 0xff),
+                               static_cast<char>(v >> 24 & 0xff)};
         stream.write(bytes, 4);
     };
     const auto dataSize = static_cast<uint32_t>(samples.size() * sizeof(int16_t));
@@ -154,8 +155,7 @@ TEST(PitchDetectorRecording, readWavFileConvertsForeignPcmWavAndWarns) {
     // The standard config takes the sample rate and channel count from the file.
     EXPECT_EQ(read->config.sampleRate, sampleRate);
     EXPECT_EQ(read->config.channelFormat, ChannelFormat::Mono);
-    EXPECT_EQ(read->config.samplesPerBlockPerChannel,
-              recording::defaultSamplesPerBlockPerChannel);
+    EXPECT_EQ(read->config.samplesPerBlockPerChannel, recording::defaultSamplesPerBlockPerChannel);
     EXPECT_EQ(read->config.tuning, Tuning::Standard);
     // Truncated to whole blocks.
     ASSERT_EQ(read->interleaved.size(),
@@ -185,8 +185,8 @@ TEST(RecordingPitchDetector, forwardsToInnerDetector) {
     RecordingPitchDetector detector(std::make_unique<StubPitchDetector>(), stubConfig,
                                     stubRecordingSeconds, listener, nullptr);
     const std::vector<float> block(stubConfig.samplesPerBlockPerChannel, 0.f);
-    EXPECT_EQ(detector.process(block.data()), 1.f);
-    EXPECT_EQ(detector.process(block.data()), 2.f);
+    EXPECT_EQ(detector.process(block.data()).pitch, 1.f);
+    EXPECT_EQ(detector.process(block.data()).pitch, 2.f);
     EXPECT_EQ(detector.delaySamples(), 123);
 }
 
@@ -223,7 +223,7 @@ TEST(RecordingPitchDetector, handsBackTheInnerDetectorAndTheDataWhenComplete) {
     EXPECT_EQ(numCompletions, 1);
     ASSERT_NE(handedBack, nullptr);
     // The handed-back detector continues where the recording left off.
-    EXPECT_EQ(handedBack->process(block.data()), stubCapacityBlocks + 1.f);
+    EXPECT_EQ(handedBack->process(block.data()).pitch, stubCapacityBlocks + 1.f);
 
     // The recorded data round-trips through the client-written WAV file.
     ASSERT_TRUE(recordedData.has_value());
@@ -264,15 +264,17 @@ TEST(RecordingPitchDetector, stopTerminatesEarlyWithTheBlocksRecordedSoFar) {
 
 TEST(IssueReportingPitchDetector, exchangesTheDetectorOnStartAndKeepsItOnCompletion) {
     auto numDetectorsCreated = 0;
-    IssueReportingPitchDetector detector(stubConfig, [&] {
-        ++numDetectorsCreated;
-        return std::make_unique<StubPitchDetector>();
-    }, {});
+    IssueReportingPitchDetector detector(stubConfig,
+                                         [&] {
+                                             ++numDetectorsCreated;
+                                             return std::make_unique<StubPitchDetector>();
+                                         },
+                                         {});
     EXPECT_EQ(numDetectorsCreated, 1);
 
     const std::vector<float> block(stubConfig.samplesPerBlockPerChannel, 0.f);
-    EXPECT_EQ(detector.process(block.data()), 1.f);
-    EXPECT_EQ(detector.process(block.data()), 2.f);
+    EXPECT_EQ(detector.process(block.data()).pitch, 1.f);
+    EXPECT_EQ(detector.process(block.data()).pitch, 2.f);
 
     StubListener listener;
     EXPECT_FALSE(detector.isRecording());
@@ -281,7 +283,7 @@ TEST(IssueReportingPitchDetector, exchangesTheDetectorOnStartAndKeepsItOnComplet
     // A fresh detector was created for the recording: the estimates restart from 1.
     EXPECT_EQ(numDetectorsCreated, 2);
     for (auto i = 0; i < stubCapacityBlocks; ++i) {
-        EXPECT_EQ(detector.process(block.data()), i + 1.f) << "block " << i;
+        EXPECT_EQ(detector.process(block.data()).pitch, i + 1.f) << "block " << i;
     }
     EXPECT_EQ(listener.numCompletions, 1);
     ASSERT_TRUE(listener.data.has_value());
@@ -290,16 +292,18 @@ TEST(IssueReportingPitchDetector, exchangesTheDetectorOnStartAndKeepsItOnComplet
     EXPECT_FALSE(detector.isRecording());
     // Completing the recording does not reset the state: the wrapper took ownership of the
     // recorder's detector and continues feeding it.
-    EXPECT_EQ(detector.process(block.data()), stubCapacityBlocks + 1.f);
+    EXPECT_EQ(detector.process(block.data()).pitch, stubCapacityBlocks + 1.f);
     EXPECT_EQ(numDetectorsCreated, 2);
 }
 
 TEST(IssueReportingPitchDetector, restartsOnTheFlyWhenStartIsCalledWhileRecording) {
     auto numDetectorsCreated = 0;
-    IssueReportingPitchDetector detector(stubConfig, [&] {
-        ++numDetectorsCreated;
-        return std::make_unique<StubPitchDetector>();
-    }, {});
+    IssueReportingPitchDetector detector(stubConfig,
+                                         [&] {
+                                             ++numDetectorsCreated;
+                                             return std::make_unique<StubPitchDetector>();
+                                         },
+                                         {});
     const std::vector<float> block(stubConfig.samplesPerBlockPerChannel, 0.f);
 
     StubListener firstListener;
@@ -313,13 +317,12 @@ TEST(IssueReportingPitchDetector, restartsOnTheFlyWhenStartIsCalledWhileRecordin
     detector.startIssueRecording(stubRecordingSeconds, secondListener);
     // The first recording was gracefully terminated, handing over the blocks recorded so far.
     ASSERT_TRUE(firstListener.data.has_value());
-    EXPECT_EQ(firstListener.data->interleaved.size(),
-              5u * stubConfig.samplesPerBlockPerChannel);
+    EXPECT_EQ(firstListener.data->interleaved.size(), 5u * stubConfig.samplesPerBlockPerChannel);
     EXPECT_TRUE(detector.isRecording());
     EXPECT_EQ(numDetectorsCreated, 3);
 
     for (auto i = 0; i < stubCapacityBlocks; ++i) {
-        EXPECT_EQ(detector.process(block.data()), i + 1.f) << "block " << i;
+        EXPECT_EQ(detector.process(block.data()).pitch, i + 1.f) << "block " << i;
     }
     ASSERT_TRUE(secondListener.data.has_value());
     EXPECT_EQ(secondListener.data->interleaved.size(),
@@ -349,7 +352,7 @@ TEST(IssueReportingPitchDetector, issueRecordingIsReplayableBitExactly) {
     std::vector<float> liveEstimates;
     for (auto i = 10; i < capacityBlocks + 10; ++i) {
         liveEstimates.push_back(
-            detector->process(samples.data() + static_cast<size_t>(i) * samplesPerBlock));
+            detector->process(samples.data() + static_cast<size_t>(i) * samplesPerBlock).pitch);
     }
     ASSERT_TRUE(listener.data.has_value());
     const auto path = testUtils::getOutDir() / "issueReportReplay.wav";
@@ -364,10 +367,10 @@ TEST(IssueReportingPitchDetector, issueRecordingIsReplayableBitExactly) {
     ASSERT_EQ(replayDetector->numBlocks(), capacityBlocks);
 
     for (auto i = 0; i < capacityBlocks; ++i) {
-        EXPECT_EQ(replayDetector->process(nullptr), liveEstimates[i]) << "block " << i;
+        EXPECT_EQ(replayDetector->process(nullptr).pitch, liveEstimates[i]) << "block " << i;
     }
     EXPECT_EQ(replayDetector->numBlocksLeft(), 0);
-    EXPECT_EQ(replayDetector->process(nullptr), 0.f);
+    EXPECT_EQ(replayDetector->process(nullptr).pitch, 0.f);
 }
 
 TEST(ReplayPitchDetector, fromFileReturnsNullOnInvalidInput) {
