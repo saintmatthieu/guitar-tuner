@@ -20,6 +20,7 @@ class PitchDetectionHolder : public PitchDetector {
     PitchDetectionHolder(std::unique_ptr<PitchDetector> innerDetector, int sampleRate,
                          int blockSize, HoldConfig = {});
 
+    std::pair<float, float> pitchSearchRange() const override;
     PitchDetectionResult process(const float* input, DebugOutput* = nullptr,
                                  std::vector<float>* debugOutputSignal = nullptr) override;
     int delaySamples() const override;
