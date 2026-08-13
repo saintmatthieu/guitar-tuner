@@ -34,7 +34,7 @@ PitchDetectionResult PitchDetectionHolder::process(const float* input, DebugOutp
         }
         return _heldResult;
     }
-    return {0.f, PitchBucket::noPitch};
+    return {};
 }
 
 int PitchDetectionHolder::delaySamples() const {

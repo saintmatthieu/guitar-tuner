@@ -130,7 +130,7 @@ PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput*
     }
 
     if (xcorrEstimate == 0.f) {
-        return {0.f, PitchBucket::noPitch};
+        return {};
     }
 
     // Evaluate the probability of xcorrEstimate not being octaviated ("good") given
@@ -172,7 +172,7 @@ PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput*
         _estimateConstraint.has_value() ? _presenceThresholdWithConstraint : _presenceThreshold;
     if (_applyOctaviationGate &&
         (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
-        return {0.f, PitchBucket::noPitch};
+        return {};
     }
 
     return {disambiguatedEstimate, PitchBucket::inRange};

@@ -89,7 +89,7 @@ PitchDetectionResult AubioPitchDetector::process(const float* input, DebugOutput
     }
 
     if (std::isnan(frequency) || frequency <= 0.f || confidence < _confidenceThreshold) {
-        return {0.f, PitchBucket::noPitch};
+        return {};
     }
     return {frequency, PitchBucket::inRange};
 }

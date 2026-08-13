@@ -69,7 +69,7 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
     }
 
     if (!_allGoodOnce) {
-        return {0.f, PitchBucket::noPitch};
+        return {};
     }
 
     auto sortedBuffer = _buffer;
@@ -82,7 +82,7 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
         return {medianFiltered, PitchBucket::inRange};
     }
 
-    return {0.f, PitchBucket::noPitch};
+    return {};
 }
 
 }  // namespace saint

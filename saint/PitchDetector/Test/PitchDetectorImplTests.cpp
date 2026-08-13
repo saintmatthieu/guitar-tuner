@@ -268,9 +268,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             std::vector<bool> onsets;
-            std::vector<PitchBucket> buckets;          // returned bucket, per block
-            std::vector<PitchBucket> expectedBuckets;  // expected bucket, per block
-            std::vector<float> xcorrEstimates;         // pre-gate period estimate (Hz)
+            std::vector<std::optional<PitchBucket>> buckets;          // returned bucket, per block
+            std::vector<std::optional<PitchBucket>> expectedBuckets;  // expected bucket, per block
+            std::vector<float> xcorrEstimates;  // pre-gate period estimate (Hz)
             std::vector<float> probsNotOctaviated;
             auto caseProcessCpuSeconds = 0.;  // Release only; 0 otherwise
             auto caseAudioSeconds = 0.;
@@ -303,23 +303,23 @@ TEST(PitchDetectorImpl, benchmarking) {
                     weight = (currentTime - sample.truth.endTime) /
                              (sample.truth.startTime - sample.truth.endTime);
                     positiveWeight += weight;
-                    if (finalEstimate.bucket != PitchBucket::inRange)
+                    if (!finalEstimate.bucket.has_value())
                         falseNegativeWeight += weight;
                 } else {
                     ++negativeCount;
-                    if (finalEstimate.bucket == PitchBucket::inRange)
+                    if (finalEstimate.bucket.has_value())
                         ++falsePositiveCount;
                 }
-                const auto expectedBucket = truth ? expectedNoteBucket : PitchBucket::noPitch;
-                const auto bucketWeight = truth ? weight : 1.f;
-                bucketTotalWeight += bucketWeight;
+                const auto expectedBucket =
+                    truth ? std::make_optional(expectedNoteBucket) : std::nullopt;
 
                 // Only add to bucket error when both actual and expected are pitched. The cases
                 // where the one is pitched and the other is not are already covered by FNR and FPR.
-                if (finalEstimate.bucket != PitchBucket::noPitch &&
-                    expectedBucket != PitchBucket::noPitch &&
-                    finalEstimate.bucket != expectedBucket)
-                    bucketErrorWeight += bucketWeight;
+                if (finalEstimate.bucket.has_value() && expectedBucket.has_value()) {
+                    bucketTotalWeight += weight;
+                    if (finalEstimate.bucket != expectedBucket)
+                        bucketErrorWeight += weight;
+                }
 
                 const auto errorCents =
                     finalEstimate.bucket == PitchBucket::inRange
@@ -376,8 +376,11 @@ TEST(PitchDetectorImpl, benchmarking) {
                     frameDump << f << "," << (onsets[f] ? 1 : 0) << "," << e.s << ","
                               << probsNotOctaviated[f] << "," << xcorrEstimates[f] << "," << e.f
                               << "," << sample.truth.frequency << "," << e.e << ","
-                              << static_cast<int>(buckets[f]) << ","
-                              << static_cast<int>(expectedBuckets[f]) << "\n";
+                              << static_cast<int>(buckets[f].value_or(static_cast<PitchBucket>(-1)))
+                              << ","
+                              << static_cast<int>(
+                                     expectedBuckets[f].value_or(static_cast<PitchBucket>(-1)))
+                              << "\n";
                 }
 
                 std::ofstream frequencyEstimatesFile(testUtils::getOutDir() /

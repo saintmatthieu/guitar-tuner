@@ -23,7 +23,7 @@ PitchDetectionResult RecordingPitchDetector::process(const float* input, DebugOu
                                                      std::vector<float>* debugOutputSignal) {
     assert(_inner);  // must not be called after the recording completed
     if (!_inner) {
-        return {0.f, PitchBucket::noPitch};
+        return {};
     }
     std::copy(input, input + _samplesPerBlock,
               _buffer.begin() + static_cast<size_t>(_numBlocksStored) * _samplesPerBlock);
