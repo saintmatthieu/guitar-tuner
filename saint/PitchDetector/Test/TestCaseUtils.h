@@ -1,10 +1,13 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "PitchDetectorTypes.h"
@@ -94,7 +97,30 @@ inline std::vector<testUtils::Sample> loadSamples() {
     return samples;
 }
 
-inline std::vector<Noise> loadNoiseData(int numFrames, const fs::path& silenceFilePath) {
+template <typename T>
+std::optional<T> getArgument(const std::string& prefix) {
+    const auto& argv = ::testing::internal::GetArgvs();
+    for (size_t i = 1; i < argv.size(); ++i) {
+        const std::string argStr(argv[i]);
+        if (argStr.find(prefix) == 0) {
+            if constexpr (std::is_same_v<T, fs::path>) {
+                return fs::path(argStr.substr(prefix.size() + 1 /* skip "=" */));
+            } else if constexpr (std::is_same_v<T, int>) {
+                return std::stoi(argStr.substr(prefix.size() + 1 /* skip "=" */));
+            } else if constexpr (std::is_same_v<T, float>) {
+                return std::stof(argStr.substr(prefix.size() + 1 /* skip "=" */));
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                return argStr.substr(prefix.size() + 1 /* skip "=" */);
+            } else if constexpr (std::is_same_v<T, bool>) {
+                const auto valueStr = argStr.substr(prefix.size() + 1 /* skip "=" */);
+                return (valueStr == "1" || valueStr == "true" || valueStr == "True");
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+inline std::vector<fs::path> listNoiseFiles() {
     std::vector<fs::path> noiseFiles;
     for (const auto& entry :
          fs::recursive_directory_iterator(testUtils::getEvalDir() / "testFiles" / "noise")) {
@@ -104,7 +130,11 @@ inline std::vector<Noise> loadNoiseData(int numFrames, const fs::path& silenceFi
     }
     // Sort noise files to ensure deterministic test case indices
     std::sort(noiseFiles.begin(), noiseFiles.end());
+    return noiseFiles;
+}
 
+inline std::vector<Noise> loadNoiseData(const std::vector<fs::path>& noiseFiles, int numFrames,
+                                        const fs::path& silenceFilePath) {
     std::vector<Noise> noiseData;
 
     const auto silenceAudio = testUtils::fromWavFile(silenceFilePath, numFrames);
@@ -178,7 +208,11 @@ inline std::optional<TestCase> createTestCaseFromId(const std::string& testCaseI
                     std::move(noisy), blockSize};
 }
 
-inline std::vector<TestCase> prepareTestCases(const std::optional<std::string>& argTestCaseId) {
+// `withNoiseData` also fills TestCase::noise.data (the scaled noise itself) — needed only by
+// callers that rebuild their own mixes (see OnsetDetectorCalibrationTests). It roughly doubles
+// the memory footprint.
+inline std::vector<TestCase> prepareTestCases(const std::optional<std::string>& argTestCaseId,
+                                              bool withNoiseData = false) {
     // Fast path: if a specific test case ID is provided, parse it and create only that test case
     if (argTestCaseId.has_value()) {
         std::cout << "Creating test case from ID: " << *argTestCaseId << std::endl;
@@ -192,65 +226,86 @@ inline std::vector<TestCase> prepareTestCases(const std::optional<std::string>& 
 
     // Full path: iterate through all samples and noise combinations
     const auto samples = loadSamples();
+    const auto noiseFiles = listNoiseFiles();
 
     const std::vector<float> silence(44100, 0.f);
     const auto silenceFilePath = testUtils::getOutDir() / "wav" / "silence.wav";
     auto silenceWriter = std::make_shared<testUtils::RealFileWriter>();
     silenceWriter->toWavFile(silenceFilePath, {silence, 44100, ChannelFormat::Mono}, nullptr);
 
-    std::vector<TestCase> testCases;
-
     std::cout << "Preparing test cases..." << std::endl;
     std::cout << "Number of samples: " << samples.size() << std::endl;
 
-    auto testCaseCount = 0;
-    for (const auto& sample : samples) {
-        const auto& testFile = sample.file;
+    // Samples are independent of one another, so they are mixed in parallel. Each sample's test
+    // cases go into their own slot, keeping the final test case order (and hence indices and
+    // benchmark outputs) identical to a sequential run.
+    std::vector<std::vector<TestCase>> testCasesPerSample(samples.size());
+    std::atomic<size_t> nextSampleIndex{0};
+    std::atomic<int> numSamplesPrepared{0};
+    std::mutex logMutex;
 
-        std::cout << "\r" << ++testCaseCount << "/" << samples.size() << std::flush;
+    const auto prepareSamples = [&] {
+        while (true) {
+            const auto sampleIndex = nextSampleIndex.fetch_add(1);
+            if (sampleIndex >= samples.size()) {
+                return;
+            }
+            const auto& sample = samples[sampleIndex];
+            const auto& testFile = sample.file;
 
-        std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
-        if (!clean.has_value()) {
-            std::cerr << "Could not read file: " << testFile << "\n";
-            continue;
+            std::optional<testUtils::Audio> clean = testUtils::fromWavFile(testFile);
+            if (!clean.has_value()) {
+                const std::lock_guard<std::mutex> lock{logMutex};
+                std::cerr << "Could not read file: " << testFile << "\n";
+                continue;
+            }
+
+            const auto blockSize = clean->sampleRate / 100;
+            testUtils::scaleToPeak(clean->interleaved, -10.f);
+
+            const auto noiseData = loadNoiseData(noiseFiles, clean->numFrames(), silenceFilePath);
+
+            auto& sampleTestCases = testCasesPerSample[sampleIndex];
+            sampleTestCases.reserve(noiseData.size());
+            for (const auto& noise : noiseData) {
+                const auto id = computeTestCaseId(testFile, noise.file, noise.rmsDb);
+                auto noisy = *clean;
+                testUtils::mixNoise(noisy, noise.data);
+                sampleTestCases.push_back(TestCase{
+                    id, sample,
+                    Noise{noise.file, noise.rmsDb,
+                          withNoiseData ? noise.data : std::vector<float>{}},
+                    std::move(noisy), blockSize});
+            }
+
+            const std::lock_guard<std::mutex> lock{logMutex};
+            std::cout << "\r" << ++numSamplesPrepared << "/" << samples.size() << std::flush;
         }
+    };
 
-        const auto blockSize = clean->sampleRate / 100;
-        testUtils::scaleToPeak(clean->interleaved, -10.f);
+    const auto numThreads =
+        std::max<size_t>(1, std::min<size_t>(std::thread::hardware_concurrency(), samples.size()));
+    std::vector<std::thread> threads;
+    threads.reserve(numThreads);
+    for (size_t i = 0; i < numThreads; ++i) {
+        threads.emplace_back(prepareSamples);
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
 
-        const auto noiseData = loadNoiseData(clean->numFrames(), silenceFilePath);
-
-        for (const auto& noise : noiseData) {
-            const auto id = computeTestCaseId(testFile, noise.file, noise.rmsDb);
-            auto noisy = *clean;
-            testUtils::mixNoise(noisy, noise.data);
-            testCases.push_back(TestCase{id, sample, noise, std::move(noisy), blockSize});
+    size_t numTestCases = 0;
+    for (const auto& sampleTestCases : testCasesPerSample) {
+        numTestCases += sampleTestCases.size();
+    }
+    std::vector<TestCase> testCases;
+    testCases.reserve(numTestCases);
+    for (auto& sampleTestCases : testCasesPerSample) {
+        for (auto& testCase : sampleTestCases) {
+            testCases.push_back(std::move(testCase));
         }
     }
     return testCases;
-}
-
-template <typename T>
-std::optional<T> getArgument(const std::string& prefix) {
-    const auto& argv = ::testing::internal::GetArgvs();
-    for (size_t i = 1; i < argv.size(); ++i) {
-        const std::string argStr(argv[i]);
-        if (argStr.find(prefix) == 0) {
-            if constexpr (std::is_same_v<T, fs::path>) {
-                return fs::path(argStr.substr(prefix.size() + 1 /* skip "=" */));
-            } else if constexpr (std::is_same_v<T, int>) {
-                return std::stoi(argStr.substr(prefix.size() + 1 /* skip "=" */));
-            } else if constexpr (std::is_same_v<T, float>) {
-                return std::stof(argStr.substr(prefix.size() + 1 /* skip "=" */));
-            } else if constexpr (std::is_same_v<T, std::string>) {
-                return argStr.substr(prefix.size() + 1 /* skip "=" */);
-            } else if constexpr (std::is_same_v<T, bool>) {
-                const auto valueStr = argStr.substr(prefix.size() + 1 /* skip "=" */);
-                return (valueStr == "1" || valueStr == "true" || valueStr == "True");
-            }
-        }
-    }
-    return std::nullopt;
 }
 
 }  // namespace saint

@@ -83,6 +83,11 @@ within ±1 % and a mismatch fails the gate. Re-seed with `updateBenchmarkReferen
 - Per-run artifacts go to `eval/out/` (git-ignored): `benchmarking[_<algo>].csv`,
   `frequencyEstimates*.py`, `presenceScores*`, `errors*.py`, `roc_curve*.py`. Plot them with the
   scripts in `eval/` (`showRoc.py`, `showFrequencyEstimates.py`, `showHistogram.py`, …).
+- Test-input preparation (mixing every note with every noise at every SNR) is parallelized
+  across samples in `prepareTestCases` (~2 s on a 24-thread machine). Results are placed in
+  per-sample slots, so the test case order — and every metric — is identical to a sequential
+  run. A disk cache of the mixes was tried and removed: regenerating in parallel is faster
+  than reading the ~4.8 GB blob back.
 
 ## Adding a third-party algorithm (the `SAINT_WITH_<LIB>` template)
 

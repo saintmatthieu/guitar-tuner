@@ -55,7 +55,9 @@ std::vector<float> parseCleanPeaks(const std::optional<std::string>& arg) {
 // lowering peakDb lowers the SNR exactly as a quiet/unplugged instrument would.
 std::vector<TestCase> buildOnsetCasesAtLevel(const std::optional<std::string>& argTestCaseId,
                                              float peakDb) {
-    auto testCases = prepareTestCases(argTestCaseId);
+    // withNoiseData: the loop below rebuilds the mixes from tc.noise.data, which
+    // prepareTestCases omits by default.
+    auto testCases = prepareTestCases(argTestCaseId, /*withNoiseData=*/true);
 
     std::vector<TestCase> out;
     out.reserve(testCases.size());
