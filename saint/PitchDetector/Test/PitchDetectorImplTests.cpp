@@ -23,11 +23,18 @@ namespace {
 struct TestResult {
     std::string id;
     std::vector<testUtils::ProcessEstimate> estimates;
+    // Cents-error stats; nullopt when the case's true frequency lies outside the
+    // detector's pitchSearchRange() (no precise estimate expected there), so the case
+    // never samples the pitch-error metrics.
     std::optional<testUtils::Cents> cents;
     double positiveWeight = 0.;
     int negativeCount = 0;
     int falsePositiveCount = 0;
     double falseNegativeWeight = 0.;
+    // Bucket-mismatch tally for the bucket error rate (see BenchmarkMetrics): blocks
+    // within the note carry the FNR decay weight, blocks outside it weight 1.
+    double bucketErrorWeight = 0.;
+    double bucketTotalWeight = 0.;
     double FPR = 0.;
     double FNR = 0.;
     std::string csvLine;
@@ -238,10 +245,18 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto pitchDetector = createDetector(context);
             const std::pair<float, float> pitchSearchRange = pitchDetector->pitchSearchRange();
 
+            const auto expectedNoteBucket =
+                sample.truth.frequency < pitchSearchRange.first    ? PitchBucket::belowRange
+                : sample.truth.frequency > pitchSearchRange.second ? PitchBucket::aboveRange
+                                                                   : PitchBucket::inRange;
+            const auto truthInRange = expectedNoteBucket == PitchBucket::inRange;
+
             auto negativeCount = 0;
             auto falseNegativeWeight = 0.;
             auto positiveWeight = 0.;
             auto falsePositiveCount = 0;
+            auto bucketErrorWeight = 0.;
+            auto bucketTotalWeight = 0.;
             const auto numChannels = noisy.channelFormat == ChannelFormat::Mono ? 1 : 2;
             const auto numFrames = noisy.interleaved.size() / numChannels;
             const auto* noisyData = noisy.interleaved.data();
@@ -253,7 +268,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             }
 
             std::vector<bool> onsets;
-            std::vector<float> xcorrEstimates;  // pre-gate period estimate (Hz)
+            std::vector<PitchBucket> buckets;          // returned bucket, per block
+            std::vector<PitchBucket> expectedBuckets;  // expected bucket, per block
+            std::vector<float> xcorrEstimates;         // pre-gate period estimate (Hz)
             std::vector<float> probsNotOctaviated;
             auto caseProcessCpuSeconds = 0.;  // Release only; 0 otherwise
             auto caseAudioSeconds = 0.;
@@ -293,6 +310,17 @@ TEST(PitchDetectorImpl, benchmarking) {
                     if (finalEstimate.bucket == PitchBucket::inRange)
                         ++falsePositiveCount;
                 }
+                const auto expectedBucket = truth ? expectedNoteBucket : PitchBucket::noPitch;
+                const auto bucketWeight = truth ? weight : 1.f;
+                bucketTotalWeight += bucketWeight;
+
+                // Only add to bucket error when both actual and expected are pitched. The cases
+                // where the one is pitched and the other is not are already covered by FNR and FPR.
+                if (finalEstimate.bucket != PitchBucket::noPitch &&
+                    expectedBucket != PitchBucket::noPitch &&
+                    finalEstimate.bucket != expectedBucket)
+                    bucketErrorWeight += bucketWeight;
+
                 const auto errorCents =
                     finalEstimate.bucket == PitchBucket::inRange
                         ? 1200.f * std::log2(finalEstimate.pitch / sample.truth.frequency)
@@ -301,6 +329,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                                                finalEstimate.pitch, errorCents,
                                                debugOutput["harmonicity"]);
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
+                buckets.push_back(finalEstimate.bucket);
+                expectedBuckets.push_back(expectedBucket);
             }
 
             const auto FPR = 1. * falsePositiveCount / negativeCount;
@@ -311,8 +341,12 @@ TEST(PitchDetectorImpl, benchmarking) {
                            frequencyEstimates.begin(),
                            [](const testUtils::ProcessEstimate& e) { return e.f; });
 
+            // Out-of-range truth: no precise estimate is expected, so the case must not
+            // sample the pitch-error stats (FNR/FPR and the bucket error rate still
+            // apply to it).
             const std::optional<testUtils::Cents> cents =
-                testUtils::getError(sample.truth.frequency, frequencyEstimates);
+                truthInRange ? testUtils::getError(sample.truth.frequency, frequencyEstimates)
+                             : std::nullopt;
 
             const fs::path cleanFile = testUtils::getFileShortName(sample.file);
             const auto filename = cleanFile.string() + "_with_" +
@@ -336,12 +370,14 @@ TEST(PitchDetectorImpl, benchmarking) {
                 std::ofstream frameDump(testUtils::getOutDir() /
                                         ("frameDump" + fileSuffix + ".csv"));
                 frameDump << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
-                             "finalHz,truthHz,errorCents\n";
+                             "finalHz,truthHz,errorCents,bucket,expectedBucket\n";
                 for (size_t f = 0; f < testFileEstimates.size(); ++f) {
                     const auto& e = testFileEstimates[f];
                     frameDump << f << "," << (onsets[f] ? 1 : 0) << "," << e.s << ","
                               << probsNotOctaviated[f] << "," << xcorrEstimates[f] << "," << e.f
-                              << "," << sample.truth.frequency << "," << e.e << "\n";
+                              << "," << sample.truth.frequency << "," << e.e << ","
+                              << static_cast<int>(buckets[f]) << ","
+                              << static_cast<int>(expectedBuckets[f]) << "\n";
                 }
 
                 std::ofstream frequencyEstimatesFile(testUtils::getOutDir() /
@@ -376,6 +412,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                                       negativeCount,
                                       falsePositiveCount,
                                       falseNegativeWeight,
+                                      bucketErrorWeight,
+                                      bucketTotalWeight,
                                       FPR,
                                       FNR,
                                       csvLine.str(),
@@ -449,6 +487,8 @@ TEST(PitchDetectorImpl, benchmarking) {
     auto totalNegativeCount = 0;
     auto totalFalsePositiveCount = 0;
     auto totalFalseNegativeWeight = 0.;
+    auto totalBucketErrorWeight = 0.;
+    auto totalBucketWeight = 0.;
 
     auto avgAvg = 0.;
     auto rmsAvg = 0.;
@@ -462,6 +502,8 @@ TEST(PitchDetectorImpl, benchmarking) {
         totalNegativeCount += result.negativeCount;
         totalFalsePositiveCount += result.falsePositiveCount;
         totalFalseNegativeWeight += result.falseNegativeWeight;
+        totalBucketErrorWeight += result.bucketErrorWeight;
+        totalBucketWeight += result.bucketTotalWeight;
         if (result.cents.has_value()) {
             ++count;
             avgAvg += result.cents->avg;
@@ -495,11 +537,14 @@ TEST(PitchDetectorImpl, benchmarking) {
 
     const auto globalFalsePositiveRate = 1. * totalFalsePositiveCount / totalNegativeCount;
     const auto globalFalseNegativeRate = totalFalseNegativeWeight / totalPositiveWeight;
+    const auto globalBucketErrorRate =
+        totalBucketWeight > 0. ? totalBucketErrorWeight / totalBucketWeight : 0.;
 
     tee << "[" << algorithmId << "] Error across all tests:\n\tAVG: " << avgAvg
         << "\n\tRMS: " << rmsAvg << "\n\tmedian RMS: " << medianRms
         << "\n\t99th-pct RMS: " << p99Rms << "\n\tFPR: " << globalFalsePositiveRate
-        << "\n\tFNR: " << globalFalseNegativeRate << "\n\tworst RMS error: " << worstRms
+        << "\n\tFNR: " << globalFalseNegativeRate
+        << "\n\tbucket error rate: " << globalBucketErrorRate << "\n\tworst RMS error: " << worstRms
         << " at index " << worstRmsIndex << " (" << results[worstRmsIndex].id << ")\n";
 
     std::vector<testUtils::ProcessEstimate> estimatesForRoc;
@@ -533,7 +578,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                                    p99Rms,
                                    globalFalsePositiveRate,
                                    globalFalseNegativeRate,
-                                   rocInfo.areaUnderCurve};
+                                   rocInfo.areaUnderCurve,
+                                   globalBucketErrorRate};
     const auto referenceDir = testUtils::getEvalDir() / "BenchmarkingOutput";
     for (const auto& gate : algorithm.gates) {
         const auto refPath = referenceDir / (gate.fileStem + fileSuffix + ".txt");

@@ -167,16 +167,24 @@ MetricGate fnrGate() {
 MetricGate aucGate() {
     return {"AUC", "AUC", [](const BenchmarkMetrics& m) { return m.auc; }, 0.01};
 }
+// Bucket error rate: how often the returned PitchBucket differs from the expected one
+// (see BenchmarkMetrics). This is the metric that credits a correct "too low" verdict
+// on notes below the search range, where no precise estimate is required.
+MetricGate bucketGate() {
+    return {"bucket error rate", "bucket_error_rate",
+            [](const BenchmarkMetrics& m) { return m.bucketErrorRate; }, 0.01};
+}
 }  // namespace
 
 const std::map<std::string, BenchmarkAlgorithm>& getBenchmarkAlgorithms() {
     static const std::map<std::string, BenchmarkAlgorithm> algorithms = [] {
         std::map<std::string, BenchmarkAlgorithm> map;
         // In-house: gated on median RMS cents error, 99th-percentile RMS cents error,
-        // weighted FNR and presence-score AUC. (Mean RMS is still reported but not
-        // gated: it conflates catastrophic-error frequency with their magnitude.)
-        map[kDefaultAlgorithmId] = {createImpl,
-                                    {medianRmsGate(), p99RmsGate(), fnrGate(), aucGate()}};
+        // weighted FNR, presence-score AUC and the bucket error rate. (Mean RMS is
+        // still reported but not gated: it conflates catastrophic-error frequency with
+        // their magnitude.)
+        map[kDefaultAlgorithmId] = {
+            createImpl, {medianRmsGate(), p99RmsGate(), fnrGate(), aucGate(), bucketGate()}};
 #ifdef SAINT_WITH_PESTO
         // PESTO: only RMS error and FNR are gated; its confidence calibration is a
         // separate concern, so its AUC is reported but not verified.
