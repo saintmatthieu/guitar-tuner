@@ -107,7 +107,10 @@ PitchDetectionResult PyinPitchDetector::process(const float* input, DebugOutput*
     if (debugOutput) {
         (*debugOutput)["presenceScore"] = presence;
     }
-    return {frequency, frequency == 0.f ? PitchBucket::noPitch : PitchBucket::inRange};
+    if (frequency == 0.f) {
+        return {};
+    }
+    return {frequency, PitchBucket::inRange};
 }
 
 int PyinPitchDetector::delaySamples() const {

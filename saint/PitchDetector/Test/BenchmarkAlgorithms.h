@@ -57,7 +57,7 @@ using BenchmarkAlgorithmFactory =
 // is not expected to get a precise estimate, so its error is meaningless. Such cases
 // still count towards FPR/FNR/AUC and, like every case, towards the bucket error rate,
 // which scores the returned PitchBucket against the expected one (the truth frequency's
-// bucket while the note sounds, noPitch outside).
+// bucket while the note sounds, nullopt outside).
 struct BenchmarkMetrics {
     double avgError = 0.;        // mean signed cents error
     double rmsError = 0.;        // mean of per-case RMS cents error

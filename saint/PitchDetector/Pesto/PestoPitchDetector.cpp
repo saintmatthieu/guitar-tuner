@@ -95,7 +95,7 @@ PitchDetectionResult PestoPitchDetector::process(const float* input, DebugOutput
     }
 
     if (std::isnan(prediction) || prediction <= 0.f || confidence < _confidenceThreshold) {
-        return {0.f, PitchBucket::noPitch};
+        return {};
     }
     // prediction is in semitones (MIDI note number, A4 = 69 = 440 Hz).
     const auto frequency = 440.f * std::pow(2.f, (prediction - 69.f) / 12.f);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -8,19 +9,18 @@
 
 namespace saint {
 enum class PitchBucket {
-    noPitch,
     belowRange,
     inRange,
     aboveRange,
 };
 
 /**
- * @brief Return value of @ref PitchDetector::process. `bucket == noPitch` if and only if `pitch ==
+ * @brief Return value of @ref PitchDetector::process. `bucket == nullopt` if and only if `pitch ==
  * 0`.
  */
 struct PitchDetectionResult {
     float pitch = 0.f;
-    PitchBucket bucket = PitchBucket::noPitch;
+    std::optional<PitchBucket> bucket;
 };
 
 class PitchDetector {

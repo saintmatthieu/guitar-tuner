@@ -59,8 +59,8 @@ corpus of real note recordings mixed with real noise at several SNRs, scoring pe
 Every algorithm is a `saint::PitchDetector`:
 - `PitchDetectionResult process(const float* block, DebugOutput* = nullptr,
   std::vector<float>* = nullptr)` — one block of `blockSize*numChannels` interleaved samples
-  in; returns `{pitch, bucket}`: `pitch` in Hz (`0` if none) and a `PitchBucket`
-  (`noPitch`/`belowRange`/`inRange`/`aboveRange`) classifying the input against
+  in; returns `{pitch, bucket}`: `pitch` in Hz (`0` if none) and an optional `PitchBucket`
+  (`belowRange`/`inRange`/`aboveRange`) classifying the input against
   `pitchSearchRange()` — `belowRange` with `pitch == 0` lets an app show "too low" without a
   precise estimate. The benchmark reads only `.pitch`. Write a `[0,1]` confidence into
   `(*debugOutput)["presenceScore"]` — the ROC/AUC reads exactly this key.
@@ -77,7 +77,7 @@ Every algorithm is a `saint::PitchDetector`:
 Per-block metrics: **AVG** (mean signed cents error), **RMS** (cents), **FPR**, weighted
 **FNR**, **AUC** (area under the presence-score ROC), and the **bucket error rate** — the
 weighted rate of blocks whose returned `PitchBucket` differs from the expected one (the truth
-frequency's bucket while the note sounds, `noPitch` outside; in-note blocks carry the FNR decay
+frequency's bucket while the note sounds, `nullopt` outside; in-note blocks carry the FNR decay
 weight, others weight 1). Cases whose true frequency lies outside the detector's
 `pitchSearchRange()` (e.g. A1 notes with a standard tuning) never sample the cents-error
 metrics — no precise estimate is expected there, only the right bucket — but still count

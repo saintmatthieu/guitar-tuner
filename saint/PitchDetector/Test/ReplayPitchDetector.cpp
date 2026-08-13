@@ -27,7 +27,7 @@ ReplayPitchDetector::ReplayPitchDetector(recording::RecordingData data)
 PitchDetectionResult ReplayPitchDetector::process(const float*, DebugOutput* debugOutput,
                                                   std::vector<float>* debugOutputSignal) {
     if (_blockIndex >= numBlocks()) {
-        return {0.f, PitchBucket::noPitch};
+        return {};
     }
     const auto* block =
         _data.interleaved.data() + static_cast<size_t>(_blockIndex) * _samplesPerBlock;
