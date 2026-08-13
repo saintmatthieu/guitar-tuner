@@ -22,7 +22,10 @@ std::vector<float> testUtils::scaleByPowerOf10(const std::vector<float>& values)
 
 std::optional<testUtils::Audio> testUtils::fromWavFile(fs::path path, int numSamples) {
     // read all the file in one go using libsndfile:
-    SF_INFO sfinfo;
+    // sfinfo must be zero-initialised before an SFM_READ open: libsndfile only
+    // treats sfinfo.format as an input for raw files, so stack garbage in that
+    // field can make it misread a headered WAV as headerless PCM.
+    SF_INFO sfinfo{};
     SNDFILE* sndfile = sf_open(path.string().c_str(), SFM_READ, &sfinfo);
     if (sndfile == nullptr) {
         return std::nullopt;
@@ -132,7 +135,15 @@ float testUtils::midiNoteToFrequency(int midiNote) {
 }
 
 float testUtils::getTrueFrequency(const std::filesystem::path& filePath) {
-    const auto filename = filePath.stem().string();
+    auto filename = filePath.stem().string();
+    // Strip an optional "_<index>" instance suffix so several recordings of the
+    // same note (e.g. "A1_1", "A1_2", ...) all resolve to the same pitch.
+    const auto underscore = filename.rfind('_');
+    if (underscore != std::string::npos && underscore + 1 < filename.size() &&
+        std::all_of(filename.begin() + underscore + 1, filename.end(),
+                    [](unsigned char c) { return std::isdigit(c) != 0; })) {
+        filename = filename.substr(0, underscore);
+    }
     // File name in the form of <note name><note octave>:
     const auto noteName = filename.substr(0, filename.size() - 1);
     const auto noteOctave = filename.back() - '0';
