@@ -18,6 +18,10 @@ PitchDetectionHolder::PitchDetectionHolder(std::unique_ptr<PitchDetector> innerD
     : _innerDetector(std::move(innerDetector)),
       _maxHoldFrames(durationToBlocks(sampleRate, blockSize, config.holdDuration)) {}
 
+std::pair<float, float> PitchDetectionHolder::pitchSearchRange() const {
+    return _innerDetector->pitchSearchRange();
+}
+
 PitchDetectionResult PitchDetectionHolder::process(const float* input, DebugOutput* debugOutput,
                                                    std::vector<float>* debugOutputSignal) {
     const auto result = _innerDetector->process(input, debugOutput, debugOutputSignal);
