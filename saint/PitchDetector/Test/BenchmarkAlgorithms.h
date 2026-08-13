@@ -51,6 +51,13 @@ using BenchmarkAlgorithmFactory =
 
 // Aggregate metrics the benchmark computes over a full-corpus run. These are the
 // inputs to an algorithm's pass/fail gates.
+//
+// The cents-error metrics only sample test cases whose true frequency lies within the
+// detector's pitchSearchRange(): an out-of-range note (e.g. A1 with a standard tuning)
+// is not expected to get a precise estimate, so its error is meaningless. Such cases
+// still count towards FPR/FNR/AUC and, like every case, towards the bucket error rate,
+// which scores the returned PitchBucket against the expected one (the truth frequency's
+// bucket while the note sounds, noPitch outside).
 struct BenchmarkMetrics {
     double avgError = 0.;        // mean signed cents error
     double rmsError = 0.;        // mean of per-case RMS cents error
@@ -59,6 +66,10 @@ struct BenchmarkMetrics {
     double falsePositiveRate = 0.;
     double falseNegativeRate = 0.;  // weighted
     double auc = 0.;                // area under the presence-score ROC curve
+    // Weighted rate of blocks whose PitchBucket differs from the expected one. Blocks
+    // within the note carry the same decaying weight as the FNR (missing the bucket
+    // while the note is loud counts more); blocks outside it carry weight 1.
+    double bucketErrorRate = 0.;
 };
 
 // One metric an algorithm is gated on. The reference value is deliberately not

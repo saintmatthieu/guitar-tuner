@@ -75,11 +75,18 @@ Every algorithm is a `saint::PitchDetector`:
 ### Metrics & gating
 
 Per-block metrics: **AVG** (mean signed cents error), **RMS** (cents), **FPR**, weighted
-**FNR**, **AUC** (area under the presence-score ROC). An algorithm declares which metrics gate
+**FNR**, **AUC** (area under the presence-score ROC), and the **bucket error rate** — the
+weighted rate of blocks whose returned `PitchBucket` differs from the expected one (the truth
+frequency's bucket while the note sounds, `noPitch` outside; in-note blocks carry the FNR decay
+weight, others weight 1). Cases whose true frequency lies outside the detector's
+`pitchSearchRange()` (e.g. A1 notes with a standard tuning) never sample the cents-error
+metrics — no precise estimate is expected there, only the right bucket — but still count
+towards FPR/FNR/AUC and the bucket error rate. An algorithm declares which metrics gate
 it (`MetricGate`s). Reference values live in golden files
-`eval/BenchmarkingOutput/<stem>[_<algo>].txt` (`RMS_error`, `FNR`, `AUC`; the default `impl`
-files have no suffix). On first run a golden is **seeded**; afterwards the metric is compared
-within ±1 % and a mismatch fails the gate. Re-seed with `updateBenchmarkReferences=true`.
+`eval/BenchmarkingOutput/<stem>[_<algo>].txt` (`RMS_error`, `FNR`, `AUC`, `bucket_error_rate`;
+the default `impl` files have no suffix). On first run a golden is **seeded**; afterwards the
+metric is compared within ±1 % and a mismatch fails the gate. Re-seed with
+`updateBenchmarkReferences=true`.
 
 ### Corpus & outputs
 
