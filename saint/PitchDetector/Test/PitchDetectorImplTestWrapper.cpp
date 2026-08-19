@@ -2,7 +2,8 @@
 
 namespace saint {
 
-PitchDetectorImplTestWrapper::PitchDetectorImplTestWrapper(std::unique_ptr<PitchDetectorImpl> impl)
+PitchDetectorImplTestWrapper::PitchDetectorImplTestWrapper(
+    std::unique_ptr<InRangePitchDetector> impl)
     : _impl(std::move(impl)) {}
 
 PitchDetectionResult PitchDetectorImplTestWrapper::process(const float* input,

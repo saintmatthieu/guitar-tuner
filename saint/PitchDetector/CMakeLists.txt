@@ -8,7 +8,7 @@ target_sources(PitchDetector
     AutocorrEstimateDisambiguator.cpp
     AutocorrPitchDetector.cpp
     PitchDetectorFactory.cpp
-    PitchDetectorImpl.cpp
+    InRangePitchDetector.cpp
     PitchDetectorUtils.cpp
     PitchDetectorMedianFilter.cpp
     Preprocessor.cpp

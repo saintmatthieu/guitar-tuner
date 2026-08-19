@@ -3,11 +3,11 @@
 #include "AutocorrEstimateDisambiguator.h"
 #include "DummyPitchDetectorLogger.h"
 #include "FrequencyDomainTransformer.h"
+#include "InRangePitchDetector.h"
 #include "LowBandAnalyzer.h"
 #include "OnsetDetector.h"
 #include "PitchDetectionHolder.h"
 #include "PitchDetectionSmoother.h"
-#include "PitchDetectorImpl.h"
 #include "PitchDetectorMedianFilter.h"
 #include "PitchDetectorUtils.h"
 #include "Preprocessor.h"
@@ -48,7 +48,7 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
     auto lowBandAnalyzer = std::make_unique<LowBandAnalyzer>(
         decimatedSampleRate, channelFormat, decimatedBlockSize, minFreq, *logger, lowBand);
 
-    auto impl = std::make_unique<PitchDetectorImpl>(
+    auto impl = std::make_unique<InRangePitchDetector>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
         std::move(disambiguator), std::move(onsetDetector), std::move(lowBandAnalyzer),
         std::move(logger), defaultDecimationFactor, OctaviationGateConfig{}, lowBand);

@@ -19,7 +19,7 @@ int getFilterSize(int sampleRate, int blockSize, float filterDuration) {
 }  // namespace
 
 PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSize,
-                                                     std::unique_ptr<PitchDetectorImpl> impl,
+                                                     std::unique_ptr<InRangePitchDetector> impl,
                                                      MedianFilterConfig config)
     : _blockSize(blockSize),
       _impl(std::move(impl)),

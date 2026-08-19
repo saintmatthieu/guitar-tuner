@@ -46,7 +46,7 @@ constexpr float octaviationHarmonicityFloor = 0.30f;
 // full sweep.
 constexpr double octaviationPresenceThresholdWithConstraint = 0.5;
 
-// Octaviation-gate configuration for PitchDetectorImpl. Defaults are the tuned production
+// Octaviation-gate configuration for InRangePitchDetector. Defaults are the tuned production
 // operating point (the constants above). `apply` is a calibration toggle: set it false to
 // bypass the probNotOctaviated gate so every frame emits its estimate (used to collect the
 // full presence/error distribution for re-fitting the gate; see

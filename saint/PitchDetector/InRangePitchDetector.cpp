@@ -1,4 +1,4 @@
-#include "PitchDetectorImpl.h"
+#include "InRangePitchDetector.h"
 
 #include <cmath>
 
@@ -75,7 +75,7 @@ double probabilityNotOctaviated(double s) {
 }  // namespace
 
 namespace saint {
-PitchDetectorImpl::PitchDetectorImpl(
+InRangePitchDetector::InRangePitchDetector(
     std::unique_ptr<Preprocessor> preprocessor, FrequencyDomainTransformer transformer,
     AutocorrPitchDetector autocorrPitchDetector, AutocorrEstimateDisambiguator disambiguator,
     OnsetDetector onsetDetector, std::unique_ptr<LowBandAnalyzer> lowBandAnalyzer,
@@ -95,8 +95,8 @@ PitchDetectorImpl::PitchDetectorImpl(
       _lowBand(lowBand),
       _decimationFactor(decimationFactor) {}
 
-void PitchDetectorImpl::logLowBand(const LowBandAnalyzer::Verdict& verdict,
-                                   float inRangeEstimate) const {
+void InRangePitchDetector::logLowBand(const LowBandAnalyzer::Verdict& verdict,
+                                      float inRangeEstimate) const {
     const auto& d = _lowBandDiagnostics;
     _logger->Log(inRangeEstimate, "lowBandInRangeHz");
     _logger->Log(verdict.frequency, "lowBandVerdictHz");
@@ -113,8 +113,8 @@ void PitchDetectorImpl::logLowBand(const LowBandAnalyzer::Verdict& verdict,
     _logger->Log(d.combExplained.data(), d.combExplained.size(), "lowBandCombExplained");
 }
 
-PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
-                                                std::vector<float>* debugOutputSignal) {
+PitchDetectionResult InRangePitchDetector::process(const float* audio, DebugOutput* debugOutput,
+                                                   std::vector<float>* debugOutputSignal) {
     // True on the single frame the logger records (see PitchDetectorLogger): the below-range
     // diagnostics are only assembled then.
     const auto logging = _logger->StartNewEstimate();
@@ -213,8 +213,8 @@ PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput*
     return {disambiguatedEstimate, PitchBucket::inRange};
 }
 
-bool PitchDetectorImpl::likelyLowBand(DebugOutput* debugOutput, float disambiguatedEstimate,
-                                      bool logging) {
+bool InRangePitchDetector::likelyLowBand(DebugOutput* debugOutput, float disambiguatedEstimate,
+                                         bool logging) {
     const auto lowBand =
         _lowBandAnalyzer->below(disambiguatedEstimate, logging ? &_lowBandDiagnostics : nullptr);
     if (debugOutput) {

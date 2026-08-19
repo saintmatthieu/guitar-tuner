@@ -14,13 +14,13 @@
 #include "Preprocessor.h"
 
 namespace saint {
-class PitchDetectorImpl {
+class InRangePitchDetector {
    public:
-    PitchDetectorImpl(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
-                      AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
-                      std::unique_ptr<LowBandAnalyzer> lowBandAnalyzer,
-                      std::unique_ptr<PitchDetectorLoggerInterface> logger, int decimationFactor,
-                      OctaviationGateConfig gate = {}, LowBandConfig lowBand = {});
+    InRangePitchDetector(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
+                         AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
+                         std::unique_ptr<LowBandAnalyzer> lowBandAnalyzer,
+                         std::unique_ptr<PitchDetectorLoggerInterface> logger, int decimationFactor,
+                         OctaviationGateConfig gate = {}, LowBandConfig lowBand = {});
 
     PitchDetectionResult process(const float*, DebugOutput*,
                                  std::vector<float>* debugOutputSignal = nullptr);

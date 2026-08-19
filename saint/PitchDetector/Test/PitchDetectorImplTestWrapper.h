@@ -2,19 +2,19 @@
 
 #include <memory>
 
+#include "InRangePitchDetector.h"
 #include "PitchDetector.h"
-#include "PitchDetectorImpl.h"
 
 namespace saint {
 
 /**
  * @brief A pitch detector without temporal filtering.
- * Wraps PitchDetectorImpl and exposes the PitchDetector interface.
+ * Wraps InRangePitchDetector and exposes the PitchDetector interface.
  * Use this when testWithMedianFilter=false.
  */
 class PitchDetectorImplTestWrapper : public PitchDetector {
    public:
-    explicit PitchDetectorImplTestWrapper(std::unique_ptr<PitchDetectorImpl> impl);
+    explicit PitchDetectorImplTestWrapper(std::unique_ptr<InRangePitchDetector> impl);
     ~PitchDetectorImplTestWrapper() override = default;
 
     PitchDetectionResult process(const float* input, DebugOutput*, std::vector<float>*) override;
@@ -22,7 +22,7 @@ class PitchDetectorImplTestWrapper : public PitchDetector {
     std::pair<float, float> pitchSearchRange() const override;
 
    private:
-    std::unique_ptr<PitchDetectorImpl> _impl;
+    std::unique_ptr<InRangePitchDetector> _impl;
 };
 
 }  // namespace saint
