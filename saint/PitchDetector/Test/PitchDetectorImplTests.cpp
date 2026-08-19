@@ -167,6 +167,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argLowBandMaxHarmonic = getArgument<int>("lowBandMaxHarmonic");
     const auto argLowBandMinFreqRatio = getArgument<float>("lowBandMinFreqRatio");
     const auto argLowBandMinFrames = getArgument<int>("lowBandMinFrames");
+    const auto argOutRangePresenceThreshold = getArgument<float>("outRangePresenceThreshold");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
     const auto argDecimationFactor = getArgument<int>("decimationFactor");
     const auto argMinFreqSemitoneOffset = getArgument<int>("minFreqSemitoneOffset");
@@ -255,6 +256,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 context.lowBand.analysisMinFreqRatio = *argLowBandMinFreqRatio;
             if (argLowBandMinFrames)
                 context.lowBand.minConsecutiveFrames = *argLowBandMinFrames;
+            if (argOutRangePresenceThreshold)
+                context.outRange.presenceThreshold = *argOutRangePresenceThreshold;
             const auto pitchDetector = createDetector(context);
             const std::pair<float, float> pitchSearchRange = pitchDetector->pitchSearchRange();
 

@@ -79,6 +79,14 @@ struct OnsetDetectorConfig {
     float absFloor = onsetFluxAbsFloor;   // floor on the baseline; guards true silence
 };
 
+// The presence score above which a frame the in-range detector reports nothing for counts as a
+// string sounding outside the range rather than as silence (see OutRangePitchDetector).
+constexpr float outRangePresenceThreshold = 0.8f;
+
+struct OutRangeConfig {
+    float presenceThreshold = outRangePresenceThreshold;
+};
+
 // Below-range ("too low") detection: see LowBandAnalyzer for the analysis, and
 // low-band-detection-results.md for the measurements.
 constexpr float lowBandHarmonicSupportFloor = 0.35f;

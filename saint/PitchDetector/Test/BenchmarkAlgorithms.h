@@ -45,6 +45,7 @@ struct BenchmarkAlgorithmContext {
     MedianFilterConfig medianFilter;
     HoldConfig hold;
     LowBandConfig lowBand;
+    OutRangeConfig outRange;
 };
 
 using BenchmarkAlgorithmFactory =

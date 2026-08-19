@@ -83,7 +83,8 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
 
     if (!ctx.withMedianFilter) {
         return std::make_unique<OutRangePitchDetector>(
-            std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm)));
+            std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm)),
+            ctx.outRange);
     }
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
@@ -93,7 +94,7 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     const auto blocksPerSecond = ctx.sampleRate / ctx.blockSize;
     auto inRangeDetector =
         std::make_unique<PitchDetectionSmoother>(std::move(holder), blocksPerSecond);
-    return std::make_unique<OutRangePitchDetector>(std::move(inRangeDetector));
+    return std::make_unique<OutRangePitchDetector>(std::move(inRangeDetector), ctx.outRange);
 }
 
 #ifdef SAINT_WITH_PESTO
