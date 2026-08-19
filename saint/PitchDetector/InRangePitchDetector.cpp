@@ -102,7 +102,6 @@ void InRangePitchDetector::logLowBand(const LowBandAnalyzer::Verdict& verdict,
     _logger->Log(verdict.frequency, "lowBandVerdictHz");
     _logger->Log(verdict.support, "lowBandVerdictSupport");
     _logger->Log(_lowBand.harmonicSupportFloor, "lowBandSupportFloor");
-    _logger->Log(_lowBandFrames, "lowBandFramesHeld");
     _logger->Log(_lowBand.minConsecutiveFrames, "lowBandFramesNeeded");
     _logger->Log(d.candidateHz.data(), d.candidateHz.size(), "lowBandCandidateHz");
     _logger->Log(d.candidateSupport.data(), d.candidateSupport.size(), "lowBandCandidateSupport");
@@ -131,7 +130,6 @@ PitchDetectionResult InRangePitchDetector::process(const float* audio, DebugOutp
         // into the previous one.
         _estimateConstraint.reset();
         _autocorrPitchDetector.reset();
-        _lowBandFrames = 0;
     }
 
     const auto& processedAudio = _preprocessor->processBlock(audio);
@@ -224,13 +222,6 @@ bool InRangePitchDetector::likelyLowBand(DebugOutput* debugOutput, float disambi
     if (logging) {
         logLowBand(lowBand, disambiguatedEstimate);
     }
-    // The evidence has to hold for a stretch before the verdict is issued. Withdrawing it
-    // again needs no such delay: extending a verdict past its evidence only ever prolongs
-    // the wrong ones (measured), and the median filter downstream already bridges gaps.
-    const auto holds = lowBand.frequency > 0.f && lowBand.support >= _lowBand.harmonicSupportFloor;
-    _lowBandFrames = holds ? _lowBandFrames + 1 : 0;
-
-    return _lowBandFrames >= _lowBand.minConsecutiveFrames;
+    return lowBand.frequency > 0.f && lowBand.support >= _lowBand.harmonicSupportFloor;
 }
-
 }  // namespace saint

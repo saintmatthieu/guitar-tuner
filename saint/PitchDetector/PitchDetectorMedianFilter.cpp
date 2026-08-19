@@ -34,6 +34,12 @@ std::pair<float, float> PitchDetectorMedianFilter::pitchSearchRange() const {
     return _inner->pitchSearchRange();
 }
 
+namespace {
+auto toInt(const std::optional<PitchBucket>& bucket) {
+    return bucket.has_value() ? static_cast<int>(bucket.value()) : -1;
+}
+}  // namespace
+
 PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
                                                         DebugOutput* debugOutput,
                                                         std::vector<float>* debugOutputSignal) {
@@ -52,40 +58,34 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
         _allGoodOnce = false;
     }
 
-    if (raw.bucket.has_value()) {
-        _lastBucket = raw.bucket;
-    }
-
     const auto rawPresenceScore = debugOutput->at("presenceScore");
     _delayedScores.push_back(rawPresenceScore);
     (*debugOutput)["presenceScore"] = _delayedScores.front();
     _delayedScores.erase(_delayedScores.begin());
 
-    _buffer.push_back(raw);
+    _buffer.push_back({raw.pitch, toInt(raw.bucket)});
     if (!_allGoodOnce) {
         const auto allSamePitchedBucket =
-            _lastBucket.has_value() &&
+            raw.bucket.has_value() &&
             std::all_of(_buffer.begin(), _buffer.end(),
-                        [this](const PitchDetectionResult& r) { return r.bucket == _lastBucket; });
+                        [&raw](const InnerResult& r) { return r.bucket == toInt(raw.bucket); });
 
-        if (allSamePitchedBucket && _lastBucket != PitchBucket::inRange) {
+        if (allSamePitchedBucket && raw.bucket != PitchBucket::inRange) {
             // All either too-low or too-high estimates - that's consistent.
             _allGoodOnce = true;
         } else {
             // In-range estimates. See if are within a major third.
 
             const auto minEstimate =
-                std::min_element(_buffer.begin(), _buffer.end(),
-                                 [](const PitchDetectionResult& a, const PitchDetectionResult& b) {
-                                     return a.pitch < b.pitch;
-                                 })
+                std::min_element(
+                    _buffer.begin(), _buffer.end(),
+                    [](const InnerResult& a, const InnerResult& b) { return a.pitch < b.pitch; })
                     ->pitch;
 
             const auto maxEstimate =
-                std::max_element(_buffer.begin(), _buffer.end(),
-                                 [](const PitchDetectionResult& a, const PitchDetectionResult& b) {
-                                     return a.pitch < b.pitch;
-                                 })
+                std::max_element(
+                    _buffer.begin(), _buffer.end(),
+                    [](const InnerResult& a, const InnerResult& b) { return a.pitch < b.pitch; })
                     ->pitch;
 
             _allGoodOnce = maxEstimate / minEstimate < majorThirdRatio;
@@ -96,35 +96,42 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
         return {};
     }
 
-    std::optional<PitchBucket> mostRepresentedBucket;
-    {
-        std::unordered_map<int, int> bucketCounts;
-        for (const auto& r : _buffer) {
-            const auto key = r.bucket.has_value() ? static_cast<int>(*r.bucket) : -1;
-            ++bucketCounts[key];
-        }
-        const auto index =
-            std::max_element(bucketCounts.begin(), bucketCounts.end(),
-                             [](const auto& a, const auto& b) { return a.second < b.second; })
-                ->first;
-        if (index >= 0) {
-            mostRepresentedBucket = static_cast<PitchBucket>(index);
-        }
-    }
-
-    if (mostRepresentedBucket != PitchBucket::inRange) {
-        return {0.f, mostRepresentedBucket};
-    }
-
-    std::vector<float> pitches;
+    std::unordered_map<int, int> bucketCounts;
     for (const auto& r : _buffer) {
-        if (r.bucket == PitchBucket::inRange) {
-            pitches.push_back(r.pitch);
-        }
+        ++bucketCounts[r.bucket];
+    }
+    if (std::max_element(bucketCounts.begin(), bucketCounts.end(),
+                         [](const auto& a, const auto& b) { return a.second < b.second; })
+            ->first == -1) {
+        // No pitch
+        return {};
     }
 
-    std::sort(pitches.begin(), pitches.end());
-    const auto medianFiltered = pitches[pitches.size() / 2];
+    auto sorted = _buffer;
+    sorted.erase(std::remove_if(sorted.begin(), sorted.end(),
+                                [](const InnerResult& r) { return r.bucket == -1; }),
+                 sorted.end());
+
+    // First sort by bucket
+    std::sort(sorted.begin(), sorted.end(),
+              [](const InnerResult& a, const InnerResult& b) { return a.bucket < b.bucket; });
+
+    const auto medianBucket = sorted[sorted.size() / 2].bucket;
+    if (medianBucket != static_cast<int>(PitchBucket::inRange)) {
+        return {0.f, static_cast<PitchBucket>(medianBucket)};
+    }
+
+    sorted.erase(std::remove_if(sorted.begin(), sorted.end(),
+                                [](const InnerResult& r) {
+                                    return r.bucket != static_cast<int>(PitchBucket::inRange);
+                                }),
+                 sorted.end());
+
+    // Now sort by pitch
+    std::sort(sorted.begin(), sorted.end(),
+              [](const InnerResult& a, const InnerResult& b) { return a.pitch < b.pitch; });
+
+    const auto medianFiltered = sorted[sorted.size() / 2].pitch;
     _inner->setEstimateConstraint(medianFiltered);
 
     return {medianFiltered, PitchBucket::inRange};

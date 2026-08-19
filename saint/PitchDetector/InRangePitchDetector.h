@@ -55,8 +55,6 @@ class InRangePitchDetector : public PitchDetector {
 
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
     std::optional<float> _estimateConstraint;
-    // Consecutive frames the below-range evidence has held (see LowBandConfig).
-    int _lowBandFrames = 0;
     // Filled only on the frame the logger records; reused, so it stops allocating after that.
     LowBandAnalyzer::Diagnostics _lowBandDiagnostics;
     // When false, the probNotOctaviated gate is bypassed so every frame emits its

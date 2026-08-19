@@ -45,13 +45,13 @@ struct ProcessEstimate {
           e(errorCents),
           s(score),
           f(frequencyEstimate),
-          b(std::move(bucket)),
+          b(bucket.has_value() ? static_cast<int>(*bucket) : -1),
           h(harmonicity) {}
     float t = 0.f;
     float e = 0.f;
     float s = 0.f;
     float f = 0.f;
-    std::optional<PitchBucket> b;
+    int b = 0;
     float h = 0.f;  // harmonicity score (see AutocorrEstimateDisambiguator)
 };
 

@@ -18,8 +18,9 @@ PitchDetectionResult OutRangePitchDetector::process(const float* input, DebugOut
     // Nothing in range, so the question is only whether something is sounding at all - a much
     // easier one than which pitch, and the presence score already answers it. Which side of the
     // range it fell on is not decided yet; below is the case that brought us here.
-    const auto presence = debugOutput->find("presenceScore");
-    if (presence == debugOutput->end() || presence->second < _presenceThreshold) {
+    const auto presenceIt = debugOutput->find("presenceScore");
+    const auto presence = presenceIt != debugOutput->end() ? presenceIt->second : 0.f;
+    if (presence < _presenceThreshold) {
         return {};
     }
     return {0.f, PitchBucket::belowRange};

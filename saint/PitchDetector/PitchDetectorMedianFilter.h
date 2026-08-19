@@ -20,14 +20,15 @@ class PitchDetectorMedianFilter : public PitchDetector {
     std::pair<float, float> pitchSearchRange() const override;
 
    private:
+    struct InnerResult {
+        float pitch = 0.f;
+        int bucket = -1;
+    };
     const int _blockSize = 0;
     const std::unique_ptr<OutRangePitchDetector> _inner;
     DebugOutput _debugOutput;
-    std::vector<PitchDetectionResult> _buffer;
+    std::vector<InnerResult> _buffer;
     std::vector<float> _delayedScores;
-    // Bucket of the last pitched raw result, to notice a switch between an in-range reading and
-    // a below-range one (see process).
-    std::optional<PitchBucket> _lastBucket;
     bool _allGoodOnce = false;
 };
 }  // namespace saint
