@@ -285,6 +285,8 @@ TEST(PitchDetectorImpl, benchmarking) {
             std::vector<float> lowBandEstimates;  // below-range hypothesis (Hz), its low-band
             std::vector<float> lowBandScores;     // periodicity contrast and its harmonic
             std::vector<float> lowBandSupports;   // support in the spectrum
+            std::vector<float> lowBandPresences;  // and how periodic the band itself is
+            std::vector<float> rawBuckets;        // the verdict before the median filter
             auto caseProcessCpuSeconds = 0.;      // Release only; 0 otherwise
             auto caseAudioSeconds = 0.;
 
@@ -306,6 +308,9 @@ TEST(PitchDetectorImpl, benchmarking) {
                 lowBandEstimates.push_back(debugOutput["lowBandHz"]);
                 lowBandScores.push_back(debugOutput["lowBandScore"]);
                 lowBandSupports.push_back(debugOutput["lowBandSupport"]);
+                lowBandPresences.push_back(debugOutput["lowBandPresence"]);
+                rawBuckets.push_back(debugOutput.count("rawBucket") ? debugOutput["rawBucket"]
+                                                                    : -1.f);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -390,17 +395,20 @@ TEST(PitchDetectorImpl, benchmarking) {
                 // winning ACF peak or merely raised the gate score on an existing one.
                 std::ofstream frameDump(testUtils::getOutDir() /
                                         ("frameDump" + fileSuffix + ".csv"));
-                frameDump << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
-                             "lowBandHz,lowBandScore,lowBandSupport,finalHz,truthHz,errorCents,"
-                             "bucket,"
-                             "expectedBucket\n";
+                frameDump
+                    << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
+                       "lowBandHz,lowBandScore,lowBandSupport,lowBandPresence,rawBucket,finalHz,"
+                       "truthHz,errorCents,"
+                       "bucket,"
+                       "expectedBucket\n";
                 for (size_t f = 0; f < testFileEstimates.size(); ++f) {
                     const auto& e = testFileEstimates[f];
                     frameDump << f << "," << (onsets[f] ? 1 : 0) << "," << e.s << ","
                               << probsNotOctaviated[f] << "," << xcorrEstimates[f] << ","
                               << lowBandEstimates[f] << "," << lowBandScores[f] << ","
-                              << lowBandSupports[f] << "," << e.f << "," << sample.truth.frequency
-                              << "," << e.e << ","
+                              << lowBandSupports[f] << "," << lowBandPresences[f] << ","
+                              << rawBuckets[f] << "," << e.f << "," << sample.truth.frequency << ","
+                              << e.e << ","
                               << static_cast<int>(buckets[f].value_or(static_cast<PitchBucket>(-1)))
                               << ","
                               << static_cast<int>(

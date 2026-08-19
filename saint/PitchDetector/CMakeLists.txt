@@ -6,6 +6,7 @@ target_sources(PitchDetector
   PUBLIC
     Cepstrum.cpp
     AutocorrEstimateDisambiguator.cpp
+    Autocorrelation.cpp
     AutocorrPitchDetector.cpp
     PitchDetectorFactory.cpp
     InRangePitchDetector.cpp

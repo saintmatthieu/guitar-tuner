@@ -25,13 +25,13 @@ std::pair<float, float> PitchDetectionHolder::pitchSearchRange() const {
 PitchDetectionResult PitchDetectionHolder::process(const float* input, DebugOutput* debugOutput,
                                                    std::vector<float>* debugOutputSignal) {
     const auto result = _innerDetector->process(input, debugOutput, debugOutputSignal);
-    if (result.pitch > 0.f) {
+    if (result.bucket.has_value()) {
         // Tracking: remember the pitch to hold and re-arm the hold window.
         _heldResult = result;
         _framesHeld = 0;
         return result;
     }
-    if (_heldResult.pitch > 0.f && _framesHeld < _maxHoldFrames) {
+    if (_heldResult.bucket.has_value() && _framesHeld < _maxHoldFrames) {
         ++_framesHeld;
         if (debugOutput != nullptr) {
             (*debugOutput)["hold"] = 1.f;

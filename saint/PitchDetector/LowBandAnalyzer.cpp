@@ -81,9 +81,16 @@ LowBandAnalyzer::LowBandAnalyzer(int sampleRate, ChannelFormat channelFormat,
       _rangeFloor(minFreq),
       _maxHarmonic(config.maxHarmonic),
       _floorBandEnd(std::min(_transformer.fftSize() / 2,
-                             static_cast<int>(analysisTopFreq(minFreq) / _binFreq))) {
+                             static_cast<int>(analysisTopFreq(minFreq) / _binFreq))),
+      _fft(_transformer.fftSize()),
+      _acfLpWindow(static_cast<size_t>(_transformer.fftSize()) / 2, 1.f),
+      _windowXcorr(getWindowXCorr(_fft, _transformer.window(), _acfLpWindow)),
+      _firstLag(static_cast<int>(_rate / minFreq)),
+      _lastLag(std::min(_transformer.fftSize() / 2, static_cast<int>(_rate / _minFrequency) + 1)) {
     _decimated.reserve(static_cast<size_t>(samplesPerBlockPerChannel) / _decimationFactor + 2);
     _spectrum.resize(static_cast<size_t>(_transformer.fftSize()));
+    _xcorr.resize(static_cast<size_t>(_transformer.fftSize()), 0.f);
+    _freqScratch.resize(static_cast<size_t>(_transformer.fftSize()) / 2);
     _floorScratch.reserve(static_cast<size_t>(_floorBandEnd));
 }
 
@@ -107,6 +114,11 @@ void LowBandAnalyzer::process(const std::vector<float>& block) {
     }
 
     const auto& freq = _transformer.process(_decimated);
+
+    std::copy(freq.begin(), freq.end(), _freqScratch.begin());
+    getXCorr(_fft, _xcorr, _freqScratch, _acfLpWindow);
+    _presence = findAutocorrPeak(_xcorr, _windowXcorr, _firstLag, _lastLag).presence;
+
     utils::getPowerSpectrum(freq, _spectrum);
     std::transform(_spectrum.begin(), _spectrum.end(), _spectrum.begin(),
                    [](float power) { return utils::FastDb(power); });
@@ -127,6 +139,9 @@ void LowBandAnalyzer::process(const std::vector<float>& block) {
     _logger.Log(_rate, "lowBandRate");
     _logger.Log(_transformer.fftSize(), "lowBandFftSize");
     _logger.Log(floor, "lowBandFloorDb");
+    _logger.Log(_presence, "lowBandPresence");
+    _logger.Log(_xcorr.data(), _xcorr.size(), "lowBandXcorr");
+    _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "lowBandWindowXcorr");
     _logger.Log(_spectrum.data(), _spectrum.size(), "lowBandSpectrum");
 }
 

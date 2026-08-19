@@ -30,6 +30,11 @@ PitchDetectionResult OutRangePitchDetector::process(const float* input, DebugOut
     if (debugOutput == nullptr) {
         debugOutput = &_debugOutput;
     }
+    const auto report = [debugOutput](PitchDetectionResult result) {
+        (*debugOutput)["rawBucket"] =
+            result.bucket.has_value() ? static_cast<float>(*result.bucket) : -1.f;
+        return result;
+    };
 
     // Use the unprocessed, broadband audio for the onset detection.
     const auto isOnset = _onsetDetector.process(input, debugOutput);
@@ -48,11 +53,18 @@ PitchDetectionResult OutRangePitchDetector::process(const float* input, DebugOut
 
     const auto inRange = _inRangeDetector->process(processedAudio, debugOutput);
     if (inRange.bucket.has_value() && !likelyLowBand(debugOutput, inRange.pitch, logging)) {
-        return inRange;
+        return report(inRange);
     }
 
-    // TODO get low-band presence score and tune its threshold.
-    return {};
+    // Nothing in range, so the question is only whether something is sounding below it - a much
+    // easier one than which pitch, and the low band's own autocorrelation answers it on a window
+    // long enough for those periods, which the in-range presence score is not.
+    const auto presence = _lowBandAnalyzer->presence();
+    (*debugOutput)["lowBandPresence"] = presence;
+    if (presence < _presenceThreshold) {
+        return report({});
+    }
+    return report({0.f, PitchBucket::belowRange});
 }
 
 bool OutRangePitchDetector::likelyLowBand(DebugOutput* debugOutput, float inRangeEstimate,

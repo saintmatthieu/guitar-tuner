@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "Autocorrelation.h"
 #include "ButterworthFilter.h"
 #include "DummyPitchDetectorLogger.h"
 #include "FrequencyDomainTransformer.h"
@@ -57,6 +58,16 @@ class LowBandAnalyzer {
         /// itself the fundamental, every partial found down here is one of its own.
         float support = 0.f;
     };
+
+    /**
+     * @brief How periodic the band below the range is, at its most periodic period: the same
+     * measure the in-range detector calls its presence score (@ref findAutocorrPeak), read over
+     * the below-range lags. Unlike the in-range one it is computed on a window long enough for
+     * those periods. Left by the last @ref process call.
+     */
+    float presence() const {
+        return _presence;
+    }
 
     /**
      * @brief Everything @ref below weighed, for the one frame the logger records. Assembling it
@@ -123,8 +134,19 @@ class LowBandAnalyzer {
     // Top of the band the noise floor is estimated over: as far up as the comb reaches.
     const int _floorBandEnd;
 
+    // Autocorrelation of the band, for the presence score. The band is already limited by the
+    // anti-alias filter, so the low-pass the autocorrelation takes is flat.
+    RealFft _fft;
+    const std::vector<float> _acfLpWindow;
+    const std::vector<float> _windowXcorr;
+    const int _firstLag;
+    const int _lastLag;
+    float _presence = 0.f;
+
     // Reused buffers, so process() allocates nothing on the audio thread.
     std::vector<float> _decimated;
+    std::vector<float> _xcorr;
+    std::vector<std::complex<float>> _freqScratch;
     std::vector<float> _spectrum;  // dB power spectrum, this frame's noise floor at 0
     std::vector<float> _floorScratch;
     int _decimationPhase = 0;
