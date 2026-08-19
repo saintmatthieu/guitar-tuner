@@ -49,22 +49,23 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
     auto lowBandAnalyzer = std::make_unique<LowBandAnalyzer>(
         decimatedSampleRate, channelFormat, decimatedBlockSize, minFreq, *logger, lowBand);
 
-    auto impl = std::make_unique<InRangePitchDetector>(
+    auto inRangeDetector = std::make_unique<InRangePitchDetector>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
         std::move(disambiguator), std::move(onsetDetector), std::move(lowBandAnalyzer),
         std::move(logger), defaultDecimationFactor, OctaviationGateConfig{}, lowBand);
 
+    auto outRangeDetector = std::make_unique<OutRangePitchDetector>(std::move(inRangeDetector));
+
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
-        sampleRate, samplesPerBlockPerChannel, std::move(impl));
+        sampleRate, samplesPerBlockPerChannel, std::move(outRangeDetector));
 
     const auto blocksPerSecond = sampleRate / samplesPerBlockPerChannel;
 
     auto holder =
         std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
 
-    auto inRangeDetector = std::make_unique<PitchDetectionHolder>(std::move(holder), sampleRate,
-                                                                  samplesPerBlockPerChannel);
-    return std::make_unique<OutRangePitchDetector>(std::move(inRangeDetector));
+    return std::make_unique<PitchDetectionHolder>(std::move(holder), sampleRate,
+                                                  samplesPerBlockPerChannel);
 }
 }  // namespace
 

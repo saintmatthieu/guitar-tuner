@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "PitchDetector.h"
+#include "InRangePitchDetector.h"
 #include "PitchDetectorTypes.h"
 
 namespace saint {
@@ -12,7 +12,7 @@ namespace saint {
  */
 class OutRangePitchDetector : public PitchDetector {
    public:
-    explicit OutRangePitchDetector(std::unique_ptr<PitchDetector> inRangeDetector,
+    explicit OutRangePitchDetector(std::unique_ptr<InRangePitchDetector> inRangeDetector,
                                    OutRangeConfig = {});
 
     PitchDetectionResult process(const float* input, DebugOutput* = nullptr,
@@ -20,8 +20,10 @@ class OutRangePitchDetector : public PitchDetector {
     int delaySamples() const override;
     std::pair<float, float> pitchSearchRange() const override;
 
+    void setEstimateConstraint(float constraint);
+
    private:
-    const std::unique_ptr<PitchDetector> _inRangeDetector;
+    const std::unique_ptr<InRangePitchDetector> _inRangeDetector;
     const float _presenceThreshold;
     DebugOutput _debugOutput;
 };

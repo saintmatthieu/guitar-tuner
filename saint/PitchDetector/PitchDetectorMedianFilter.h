@@ -4,14 +4,14 @@
 #include <optional>
 #include <vector>
 
-#include "InRangePitchDetector.h"
-#include "PitchDetector.h"
+#include "OutRangePitchDetector.h"
 
 namespace saint {
 class PitchDetectorMedianFilter : public PitchDetector {
    public:
     PitchDetectorMedianFilter(int sampleRate, int blockSize,
-                              std::unique_ptr<InRangePitchDetector> impl, MedianFilterConfig = {});
+                              std::unique_ptr<OutRangePitchDetector> inner,
+                              MedianFilterConfig = {});
 
     ~PitchDetectorMedianFilter() override = default;
 
@@ -21,9 +21,9 @@ class PitchDetectorMedianFilter : public PitchDetector {
 
    private:
     const int _blockSize = 0;
-    const std::unique_ptr<InRangePitchDetector> _impl;
+    const std::unique_ptr<OutRangePitchDetector> _inner;
     DebugOutput _debugOutput;
-    std::vector<float> _buffer;
+    std::vector<PitchDetectionResult> _buffer;
     std::vector<float> _delayedScores;
     // Bucket of the last pitched raw result, to notice a switch between an in-range reading and
     // a below-range one (see process).

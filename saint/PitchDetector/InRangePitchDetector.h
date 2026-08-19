@@ -14,7 +14,7 @@
 #include "Preprocessor.h"
 
 namespace saint {
-class InRangePitchDetector {
+class InRangePitchDetector : public PitchDetector {
    public:
     InRangePitchDetector(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
                          AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
@@ -34,9 +34,6 @@ class InRangePitchDetector {
 
     void setEstimateConstraint(float constraint) {
         _estimateConstraint = constraint;
-    }
-    void clearEstimateConstraint() {
-        _estimateConstraint.reset();
     }
 
     int windowSizeSamples() const {

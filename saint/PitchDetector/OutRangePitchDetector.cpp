@@ -1,7 +1,7 @@
 #include "OutRangePitchDetector.h"
 
 namespace saint {
-OutRangePitchDetector::OutRangePitchDetector(std::unique_ptr<PitchDetector> inRangeDetector,
+OutRangePitchDetector::OutRangePitchDetector(std::unique_ptr<InRangePitchDetector> inRangeDetector,
                                              OutRangeConfig config)
     : _inRangeDetector(std::move(inRangeDetector)), _presenceThreshold(config.presenceThreshold) {}
 
@@ -31,5 +31,9 @@ int OutRangePitchDetector::delaySamples() const {
 
 std::pair<float, float> OutRangePitchDetector::pitchSearchRange() const {
     return _inRangeDetector->pitchSearchRange();
+}
+
+void OutRangePitchDetector::setEstimateConstraint(float constraint) {
+    _inRangeDetector->setEstimateConstraint(constraint);
 }
 }  // namespace saint
