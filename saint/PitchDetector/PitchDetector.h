@@ -23,6 +23,15 @@ struct PitchDetectionResult {
     std::optional<PitchBucket> bucket;
 };
 
+/**
+ * @brief Classifies `frequency` against a @ref PitchDetector::pitchSearchRange.
+ */
+inline PitchBucket getBucket(float frequency, const std::pair<float, float>& searchRange) {
+    return frequency < searchRange.first    ? PitchBucket::belowRange
+           : frequency > searchRange.second ? PitchBucket::aboveRange
+                                            : PitchBucket::inRange;
+}
+
 class PitchDetector {
    public:
     /**

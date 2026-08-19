@@ -51,6 +51,21 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
         // attack does not blink the indicator off.
         _allGoodOnce = false;
     }
+    if (raw.bucket.has_value() && _lastBucket.has_value() && *raw.bucket != *_lastBucket) {
+        // The verdict moved to a different bucket - the detector has decided that what it was
+        // reporting as an in-range pitch is a harmonic of a string sounding below the range, or
+        // the other way round. The two readings are an octave or more apart, so keeping the
+        // window would only fail its own consistency check for as long as both live in it.
+        // Re-lock instead and let the new bucket's readings fill it; downstream the hold bridges
+        // the gap. (Rescaling the window by the two readings' ratio instead - they are, after
+        // all, two readings of one periodicity - was measured: it buys 0.002 of weighted FNR and
+        // costs twice the bucket error and 4 cents of 99th-percentile RMS.)
+        _allGoodOnce = false;
+        std::fill(_buffer.begin(), _buffer.end(), 0.f);
+    }
+    if (raw.bucket.has_value()) {
+        _lastBucket = raw.bucket;
+    }
 
     const auto rawPresenceScore = debugOutput->at("presenceScore");
     _delayedScores.push_back(rawPresenceScore);
@@ -77,9 +92,15 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
     const auto medianFiltered = sortedBuffer[sortedBuffer.size() / 2];
 
     if (medianFiltered > 0.f) {
-        // Tracking: update the constraint to follow the current pitch.
-        _impl->setEstimateConstraint(medianFiltered);
-        return {medianFiltered, PitchBucket::inRange};
+        const auto bucket = getBucket(medianFiltered, pitchSearchRange());
+        if (bucket == PitchBucket::inRange) {
+            // Tracking: update the constraint to follow the current pitch. A below-range
+            // pitch must not become the constraint: the in-range search would then be
+            // clamped to a major third around a frequency it cannot even reach, and the
+            // detector would go silent until the next onset cleared the lock.
+            _impl->setEstimateConstraint(medianFiltered);
+        }
+        return {medianFiltered, bucket};
     }
 
     return {};

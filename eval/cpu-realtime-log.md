@@ -17,3 +17,5 @@ and not reproducible, so it is recorded here for comparison rather than gated.
 | 2026-06-25 | master | b3955af | README about PESTO experiment | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.80 |
 | 2026-06-25 | master | b3955af | README about PESTO experiment | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.51 |
 | 2026-08-12 | low-note-detection-experiment | 94ef2f7 | Revert "second backup" | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.59 |
+| 2026-08-13 | master | 5d7eb49 | Add first out-of-range samples | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.57 |
+| 2026-08-13 | master | 5d7eb49 | Add first out-of-range samples | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 1.04 |

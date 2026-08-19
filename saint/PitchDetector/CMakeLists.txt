@@ -14,6 +14,7 @@ target_sources(PitchDetector
     Preprocessor.cpp
     DummyPitchDetectorLogger.cpp
     FrequencyDomainTransformer.cpp
+    LowBandAnalyzer.cpp
     OnsetDetector.cpp
     PitchDetectionHolder.cpp
     PitchDetectionSmoother.cpp

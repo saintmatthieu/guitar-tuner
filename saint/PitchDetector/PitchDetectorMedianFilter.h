@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "PitchDetector.h"
@@ -24,6 +25,9 @@ class PitchDetectorMedianFilter : public PitchDetector {
     DebugOutput _debugOutput;
     std::vector<float> _buffer;
     std::vector<float> _delayedScores;
+    // Bucket of the last pitched raw result, to notice a switch between an in-range reading and
+    // a below-range one (see process).
+    std::optional<PitchBucket> _lastBucket;
     bool _allGoodOnce = false;
 };
 }  // namespace saint

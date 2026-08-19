@@ -45,6 +45,21 @@ const char* stateLabel(TunerDisplay::State state) {
             return "No pitch";
     }
 }
+
+// ANSI colour of the out-of-range banner: magenta, so it reads as neither a good reading
+// (green) nor a stale one (yellow).
+constexpr auto kOutOfRangeColor = "\033[95m";
+
+// Appended to the state label so the line says which side of the range the pitch fell on.
+const char* bucketSuffix(const std::optional<PitchBucket>& bucket) {
+    if (bucket == PitchBucket::belowRange) {
+        return " - below range";
+    }
+    if (bucket == PitchBucket::aboveRange) {
+        return " - above range";
+    }
+    return "";
+}
 }  // namespace
 
 TunerDisplay::TunerDisplay() : _isTty(isatty(fileno(stdout)) != 0) {
@@ -112,8 +127,37 @@ std::string TunerDisplay::renderMeter(float cents, int width, const std::string&
     return oss.str();
 }
 
-void TunerDisplay::update(float frequencyHz, State state, bool onsetDetected,
+std::string TunerDisplay::renderOutOfRange(PitchBucket bucket, int width, bool useColor) {
+    const auto tooLow = bucket == PitchBucket::belowRange;
+    // ASCII, so its length in bytes is its width in columns.
+    const std::string text = tooLow ? " TOO LOW - tune up " : " TOO HIGH - tune down ";
+    const auto* arrow = tooLow ? "↑" : "↓";
+    const auto textWidth = static_cast<int>(text.size());
+    const auto left = std::max(0, (width - textWidth) / 2);
+    const auto right = std::max(0, width - textWidth - left);
+
+    std::ostringstream oss;
+    if (useColor) {
+        oss << kOutOfRangeColor;
+    }
+    // Emitted glyph by glyph rather than as a padded string: the arrows are multi-byte, so the
+    // count that matters is columns, not bytes.
+    for (auto i = 0; i < left; ++i) {
+        oss << arrow;
+    }
+    oss << text;
+    for (auto i = 0; i < right; ++i) {
+        oss << arrow;
+    }
+    if (useColor) {
+        oss << "\033[0m";
+    }
+    return oss.str();
+}
+
+void TunerDisplay::update(const PitchDetectionResult& result, State state, bool onsetDetected,
                           const std::string& status) {
+    const auto frequencyHz = result.pitch;
     if (onsetDetected) {
         _onsetHoldFrames = kOnsetHoldFrames;
     }
@@ -153,22 +197,32 @@ void TunerDisplay::update(float frequencyHz, State state, bool onsetDetected,
         std::cout << " " << std::setw(3) << "--" << "¢";
     } else {
         const auto note = frequencyToNote(frequencyHz);
+        // A pitch without a bucket is not supposed to happen (see PitchDetectionResult), and a
+        // detector that leaves it unset means the in-range meter, not a crash.
+        const auto bucket = result.bucket.value_or(PitchBucket::inRange);
 
-        // Note name with octave (e.g., "A4", "C#3"), in the default text colour.
+        // Note name with octave (e.g., "A4", "C#3"), in the default text colour. Kept for an
+        // out-of-range pitch too: naming it is honest, it is the pitch that is being played.
         std::ostringstream noteStr;
         noteStr << std::setw(2) << note.name << note.octave;
-
-        // Format cents with sign
-        std::ostringstream centsStr;
-        centsStr << std::showpos << std::fixed << std::setprecision(0) << std::setw(3)
-                 << note.cents;
 
         std::cout << std::setw(3) << noteStr.str();
         std::cout << " │ ";
         std::cout << std::fixed << std::setprecision(1) << std::setw(6) << frequencyHz << " Hz";
         std::cout << " │ ";
-        std::cout << renderMeter(note.cents, 41, needleColor);
-        std::cout << " " << centsStr.str() << "¢";
+        if (bucket == PitchBucket::inRange) {
+            // Cents with sign, against the note the meter's needle points at.
+            std::ostringstream centsStr;
+            centsStr << std::showpos << std::fixed << std::setprecision(0) << std::setw(3)
+                     << note.cents;
+            std::cout << renderMeter(note.cents, 41, needleColor);
+            std::cout << " " << centsStr.str() << "¢";
+        } else {
+            // No cents reading: it would be a deviation from a note that is not a tuning target
+            // here, which is the one thing not to invite while the string is still out of range.
+            std::cout << renderOutOfRange(bucket, 41, _isTty);
+            std::cout << " " << std::setw(3) << "--" << "¢";
+        }
     }
     std::cout << onsetStr;
     std::cout << status;
@@ -178,10 +232,11 @@ void TunerDisplay::update(float frequencyHz, State state, bool onsetDetected,
     if (_isTty) {
         // Drop to the next line, clear it, draw the indicator, then move back up so the next
         // update overwrites line 1 again. The cursor is hidden, so this doesn't flicker.
-        std::cout << "\n\033[K" << cursor << " " << stateLabel(state) << "\033[A\r";
+        std::cout << "\n\033[K" << cursor << " " << stateLabel(state) << bucketSuffix(result.bucket)
+                  << "\033[A\r";
     } else {
         std::cout << "\n"
-                  << "▼ " << stateLabel(state) << "\n";
+                  << "▼ " << stateLabel(state) << bucketSuffix(result.bucket) << "\n";
     }
     std::cout << std::flush;
 

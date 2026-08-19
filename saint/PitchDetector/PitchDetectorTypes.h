@@ -79,6 +79,31 @@ struct OnsetDetectorConfig {
     float absFloor = onsetFluxAbsFloor;   // floor on the baseline; guards true silence
 };
 
+// Below-range ("too low") detection: see LowBandAnalyzer for the analysis, and
+// low-band-detection-results.md for the measurements.
+constexpr float lowBandHarmonicSupportFloor = 0.35f;
+constexpr int lowBandMaxHarmonic = 3;
+// How many harmonics of the hypothesised below-range fundamental the comb test weighs.
+// Twelve reaches ~660 Hz for a fundamental around 55 Hz: high enough for the harmonics to be
+// well resolved, low enough to stay in the range where a plucked string still has them.
+constexpr int subHarmonicCombSize = 12;
+
+// Low-band configuration. Defaults are the production operating point (the constants above);
+// the benchmark sweeps the fields from the CLI.
+struct LowBandConfig {
+    float harmonicSupportFloor = lowBandHarmonicSupportFloor;
+    int maxHarmonic = lowBandMaxHarmonic;
+    // The analysis window is sized as if the range floor were this much lower, which sets both
+    // its length and the lowest fundamental it can speak about.
+    float analysisMinFreqRatio = 2.2f;
+    // Consecutive frames the evidence must hold before the verdict is issued, and - once it is
+    // - fail before it is withdrawn. A string really sounding below the range keeps the evidence
+    // coming; the marginal in-range cases flicker, and a lone flicker either way is what puts an
+    // octave-flat reading into an otherwise good note, or a hole into an otherwise steady
+    // below-range one (the median filter drops a pitch that jumps by an octave).
+    int minConsecutiveFrames = 20;
+};
+
 constexpr auto majorThirdRatio = 1.26f;
 
 // PitchDetectorMedianFilter operating point (production default). defaultMedianFilterDuration is

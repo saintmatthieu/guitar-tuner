@@ -1,10 +1,18 @@
 #include "PitchDetectorUtils.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <unordered_map>
 
 namespace {
+// Linearly interpolated spectrum value at a fractional bin.
+float interpolate(const std::vector<float>& spectrum, float index) {
+    const auto floor = static_cast<int>(index);
+    const auto frac = index - floor;
+    return spectrum[floor] * (1.f - frac) + spectrum[floor + 1] * frac;
+}
+
 float pitchToFrequency(const saint::Pitch& pitch) {
     using namespace saint;
     if (PitchClass::OneKiloHz == pitch.pitchClass) {
@@ -19,6 +27,25 @@ float pitchToFrequency(const saint::Pitch& pitch) {
     return 440.f * std::pow(2.f, semitonesFromA4 / 12.f);
 }
 }  // namespace
+
+float saint::spectralProminence(const std::vector<float>& spectrum, float index,
+                                float halfSpacing) {
+    const auto level = interpolate(spectrum, index);
+    const auto neighbours = 0.5f * (interpolate(spectrum, index - halfSpacing) +
+                                    interpolate(spectrum, index + halfSpacing));
+    return std::max(0.f, std::min(level, level - neighbours));
+}
+
+float saint::combSupport(float explainedSum, int explainedCount, float offCombSum,
+                         int offCombCount) {
+    if (explainedCount == 0 || offCombCount == 0) {
+        return 0.f;
+    }
+    const auto explainedMean = explainedSum / explainedCount;
+    const auto offCombMean = offCombSum / offCombCount;
+    const auto total = explainedMean + offCombMean;
+    return total > 0.f ? offCombMean / total : 0.f;
+}
 
 float saint::getMinFreq(Tuning tuning, int semitoneOffset) {
     // The switch yields the tuning's lowest open-string note; the search range is then this

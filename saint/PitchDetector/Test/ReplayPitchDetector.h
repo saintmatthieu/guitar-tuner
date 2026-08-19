@@ -20,8 +20,10 @@ class ReplayPitchDetector : public PitchDetector {
    public:
     // If `warning` is non-null and the file isn't a native app recording, it is set to an
     // explanatory message (the file is still loaded with a standard config; see `readWavFile`).
+    // `lowBand` configures below-range detection, which the recording does not carry.
     static std::unique_ptr<ReplayPitchDetector> fromFile(const std::filesystem::path&,
-                                                         std::string* warning = nullptr);
+                                                         std::string* warning = nullptr,
+                                                         LowBandConfig lowBand = {});
 
     /**
      * @brief Feeds the next stored block to the inner detector; `input` is
@@ -51,7 +53,7 @@ class ReplayPitchDetector : public PitchDetector {
     const float* peekBlock() const;
 
    private:
-    explicit ReplayPitchDetector(recording::RecordingData);
+    ReplayPitchDetector(recording::RecordingData, LowBandConfig);
 
     const recording::RecordingData _data;
     const std::unique_ptr<PitchDetector> _inner;

@@ -181,7 +181,6 @@ std::unique_ptr<saint::IssueReportingPitchDetector> createPitchDetector(
             cpuSummary);
     }
 #endif
-    (void)choice;
     return saint::PitchDetectorFactory::createInstance(
         sampleRate, saint::ChannelFormat::Mono, blockSize, saint::Tuning::Standard, cpuSummary);
 }
@@ -191,6 +190,9 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
     constexpr int kSampleRate = 44100;
     constexpr int kBlockSize = 512;
     constexpr int kIssueRecordingSeconds = 10;
+
+    // Built before the banner so the banner can state the range it tunes within.
+    auto pitchDetector = createPitchDetector(kSampleRate, kBlockSize, choice);
 
     std::cout << "╔══════════════════════════════════════════════════════════════════════════╗"
               << std::endl;
@@ -203,6 +205,12 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
               << " samples                          ║" << std::endl;
     std::cout << "║  Algorithm: " << std::left << std::setw(60) << choice.displayName() << " ║"
               << std::endl;
+    // The range the tuning covers - what a "too low"/"too high" verdict is relative to.
+    const auto searchRange = pitchDetector->pitchSearchRange();
+    std::ostringstream rangeLine;
+    rangeLine << std::fixed << std::setprecision(1) << "  Range: " << searchRange.first << " - "
+              << searchRange.second << " Hz";
+    std::cout << "║" << std::left << std::setw(74) << rangeLine.str() << "║" << std::endl;
     std::ostringstream reportLine;
     reportLine << "  Press 'r' to report an issue (records the next " << kIssueRecordingSeconds
                << " s for offline replay)";
@@ -212,8 +220,6 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
     std::cout << "╚══════════════════════════════════════════════════════════════════════════╝"
               << std::endl;
     std::cout << std::endl;
-
-    auto pitchDetector = createPitchDetector(kSampleRate, kBlockSize, choice);
 
     saint::TunerDisplay display;
     ConsoleRecordingListener recordingListener(display);
@@ -234,12 +240,12 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         }
 
         saint::DebugOutput debug;
-        const float frequency = pitchDetector->process(samples, &debug).pitch;
+        const auto result = pitchDetector->process(samples, &debug);
         const auto onsetIt = debug.find("isOnset");
         const bool onsetDetected = onsetIt != debug.end() && onsetIt->second != 0.f;
 
         saint::TunerDisplay::State state;
-        if (frequency == 0.f) {
+        if (!result.bucket.has_value()) {
             state = saint::TunerDisplay::State::NoPitch;
         } else {
             const auto holdIt = debug.find("hold");
@@ -251,7 +257,7 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         std::ostringstream status;
         status << "  CPU: " << std::setw(3) << pitchDetector->realtimePercentage() << "%"
                << recordingListener.status();
-        display.update(frequency, state, onsetDetected, status.str());
+        display.update(result, state, onsetDetected, status.str());
     });
 
     if (!success) {
@@ -266,7 +272,8 @@ int runLive(const std::string& device, const std::optional<std::filesystem::path
         std::cerr << "Available devices can be listed with: arecord -L" << std::endl;
 #endif
         std::cerr << "Usage: " << appName
-                  << " [device_name] [--out <recording.wav>] [--pesto] [--aubio <method>]"
+                  << " [device_name] [--out <recording.wav>] [--pesto] [--aubio "
+                     "<method>]"
                   << std::endl;
         return 1;
     }

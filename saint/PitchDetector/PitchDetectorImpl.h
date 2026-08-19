@@ -7,6 +7,7 @@
 #include "AutocorrEstimateDisambiguator.h"
 #include "AutocorrPitchDetector.h"
 #include "FrequencyDomainTransformer.h"
+#include "LowBandAnalyzer.h"
 #include "OnsetDetector.h"
 #include "PitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
@@ -17,8 +18,9 @@ class PitchDetectorImpl {
    public:
     PitchDetectorImpl(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
                       AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
+                      std::unique_ptr<LowBandAnalyzer> lowBandAnalyzer,
                       std::unique_ptr<PitchDetectorLoggerInterface> logger, int decimationFactor,
-                      OctaviationGateConfig gate = {});
+                      OctaviationGateConfig gate = {}, LowBandConfig lowBand = {});
 
     PitchDetectionResult process(const float*, DebugOutput*,
                                  std::vector<float>* debugOutputSignal = nullptr);
@@ -42,14 +44,24 @@ class PitchDetectorImpl {
     }
 
    private:
+    bool likelyLowBand(DebugOutput*, float disambiguatedEstimate, bool logging);
+    // Writes the below-range decision - the candidates weighed, the winning comb, the verdict
+    // and the thresholds it was held to - to the logger, for eval/showLowBandAnalysis.py.
+    void logLowBand(const LowBandAnalyzer::Verdict&, float inRangeEstimate) const;
+
     const std::unique_ptr<Preprocessor> _preprocessor;
     FrequencyDomainTransformer _frequencyDomainTransformer;
     AutocorrPitchDetector _autocorrPitchDetector;
     AutocorrEstimateDisambiguator _disambiguator;
     OnsetDetector _onsetDetector;
+    const std::unique_ptr<LowBandAnalyzer> _lowBandAnalyzer;
 
     const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
     std::optional<float> _estimateConstraint;
+    // Consecutive frames the below-range evidence has held (see LowBandConfig).
+    int _lowBandFrames = 0;
+    // Filled only on the frame the logger records; reused, so it stops allocating after that.
+    LowBandAnalyzer::Diagnostics _lowBandDiagnostics;
     // When false, the probNotOctaviated gate is bypassed so every frame emits its
     // estimate. Used to collect the full presence-score/error distribution for
     // re-fitting the gate's Bayesian model (see eval/fitAndShowErrorProbabilityModels.py).
@@ -62,6 +74,7 @@ class PitchDetectorImpl {
     const double _presenceThreshold;
     const float _harmonicityFloor;
     const double _presenceThresholdWithConstraint;
+    const LowBandConfig _lowBand;
     const int _decimationFactor;
 
     // Reused dB-power-spectrum buffer, so process() allocates nothing on the audio

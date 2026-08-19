@@ -4,6 +4,7 @@
 #include "AutocorrPitchDetector.h"
 #include "DummyPitchDetectorLogger.h"
 #include "FrequencyDomainTransformer.h"
+#include "LowBandAnalyzer.h"
 #include "OnsetDetector.h"
 #include "PitchDetectionHolder.h"
 #include "PitchDetectionSmoother.h"
@@ -69,9 +70,15 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     OnsetDetector onsetDetector(ctx.sampleRate, ctx.channelFormat, ctx.blockSize, minFreq,
                                 ctx.onset);
 
+    // The below-range analysis runs on the preprocessor's output, hence the decimated rate and
+    // block size.
+    auto lowBandAnalyzer = std::make_unique<LowBandAnalyzer>(
+        decimatedSampleRate, ctx.channelFormat, decimatedBlockSize, minFreq, *logger, ctx.lowBand);
+
     auto internalAlgorithm = std::make_unique<PitchDetectorImpl>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-        std::move(disambiguator), std::move(onsetDetector), std::move(logger), D, ctx.gate);
+        std::move(disambiguator), std::move(onsetDetector), std::move(lowBandAnalyzer),
+        std::move(logger), D, ctx.gate, ctx.lowBand);
 
     if (!ctx.withMedianFilter) {
         return std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));

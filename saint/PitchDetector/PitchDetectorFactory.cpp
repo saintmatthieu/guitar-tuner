@@ -3,6 +3,7 @@
 #include "AutocorrEstimateDisambiguator.h"
 #include "DummyPitchDetectorLogger.h"
 #include "FrequencyDomainTransformer.h"
+#include "LowBandAnalyzer.h"
 #include "OnsetDetector.h"
 #include "PitchDetectionHolder.h"
 #include "PitchDetectionSmoother.h"
@@ -16,7 +17,8 @@ namespace saint {
 
 namespace {
 std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelFormat channelFormat,
-                                                    int samplesPerBlockPerChannel, Tuning tuning) {
+                                                    int samplesPerBlockPerChannel, Tuning tuning,
+                                                    LowBandConfig lowBand) {
     auto logger = std::make_unique<DummyPitchDetectorLogger>();
 
     const auto minFreq = getMinFreq(tuning);
@@ -41,10 +43,15 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
     auto preprocessor = std::make_unique<Preprocessor>(
         sampleRate, channelFormat, samplesPerBlockPerChannel, defaultDecimationFactor);
 
+    // Below-range analysis (LowBandConfig): runs on the preprocessor's output, hence the
+    // decimated rate and block size. Null while the feature is off, which costs nothing.
+    auto lowBandAnalyzer = std::make_unique<LowBandAnalyzer>(
+        decimatedSampleRate, channelFormat, decimatedBlockSize, minFreq, *logger, lowBand);
+
     auto impl = std::make_unique<PitchDetectorImpl>(
         std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-        std::move(disambiguator), std::move(onsetDetector), std::move(logger),
-        defaultDecimationFactor);
+        std::move(disambiguator), std::move(onsetDetector), std::move(lowBandAnalyzer),
+        std::move(logger), defaultDecimationFactor, OctaviationGateConfig{}, lowBand);
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
         sampleRate, samplesPerBlockPerChannel, std::move(impl));
@@ -61,14 +68,14 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
 
 std::unique_ptr<IssueReportingPitchDetector> PitchDetectorFactory::createInstance(
     int sampleRate, ChannelFormat channelFormat, int samplesPerBlockPerChannel, Tuning tuning,
-    std::function<void(std::string logLine)> cpuSummaryCallback) {
+    std::function<void(std::string logLine)> cpuSummaryCallback, LowBandConfig lowBand) {
     const recording::PitchDetectorConfig config{sampleRate, channelFormat,
                                                 samplesPerBlockPerChannel, tuning};
     return std::make_unique<IssueReportingPitchDetector>(
         config,
-        [config] {
+        [config, lowBand] {
             return createImplementation(config.sampleRate, config.channelFormat,
-                                        config.samplesPerBlockPerChannel, config.tuning);
+                                        config.samplesPerBlockPerChannel, config.tuning, lowBand);
         },
         std::move(cpuSummaryCallback));
 }
