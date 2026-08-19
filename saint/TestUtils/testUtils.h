@@ -39,13 +39,19 @@ struct Sample {
 };
 
 struct ProcessEstimate {
-    ProcessEstimate(float truth, float score, float frequencyEstimate, float errorCents,
-                    float harmonicity = 0.f)
-        : t(truth), e(errorCents), s(score), f(frequencyEstimate), h(harmonicity) {}
+    ProcessEstimate(float truth, float score, float frequencyEstimate,
+                    std::optional<PitchBucket> bucket, float errorCents, float harmonicity = 0.f)
+        : t(truth),
+          e(errorCents),
+          s(score),
+          f(frequencyEstimate),
+          b(std::move(bucket)),
+          h(harmonicity) {}
     float t = 0.f;
     float e = 0.f;
     float s = 0.f;
     float f = 0.f;
+    std::optional<PitchBucket> b;
     float h = 0.f;  // harmonicity score (see AutocorrEstimateDisambiguator)
 };
 
@@ -104,7 +110,8 @@ struct Cents {
     float rms = 0.f;
     float avg = 0.f;
 };
-std::optional<Cents> getError(float truePitchHz, const std::vector<float>& estimates);
+std::optional<Cents> getError(float truePitchHz, const std::vector<float>& estimates,
+                              const std::vector<std::optional<PitchBucket>>& buckets);
 
 // Value comparison utility
 template <typename T>

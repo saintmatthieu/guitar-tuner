@@ -341,8 +341,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                         ? 1200.f * std::log2(finalEstimate.pitch / sample.truth.frequency)
                         : 0.f;
                 testFileEstimates.emplace_back(weight, debugOutput["presenceScore"],
-                                               finalEstimate.pitch, errorCents,
-                                               debugOutput["harmonicity"]);
+                                               finalEstimate.pitch, finalEstimate.bucket,
+                                               errorCents, debugOutput["harmonicity"]);
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
                 buckets.push_back(finalEstimate.bucket);
                 expectedBuckets.push_back(expectedBucket);
@@ -361,7 +361,7 @@ TEST(PitchDetectorImpl, benchmarking) {
             // apply to it).
             const std::optional<testUtils::Cents> cents =
                 expectedNoteBucket == PitchBucket::inRange
-                    ? testUtils::getError(sample.truth.frequency, frequencyEstimates)
+                    ? testUtils::getError(sample.truth.frequency, frequencyEstimates, buckets)
                     : std::nullopt;
 
             const fs::path cleanFile = testUtils::getFileShortName(sample.file);
