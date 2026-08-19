@@ -75,76 +75,28 @@ double probabilityNotOctaviated(double s) {
 }  // namespace
 
 namespace saint {
-InRangePitchDetector::InRangePitchDetector(
-    std::unique_ptr<Preprocessor> preprocessor, FrequencyDomainTransformer transformer,
-    AutocorrPitchDetector autocorrPitchDetector, AutocorrEstimateDisambiguator disambiguator,
-    OnsetDetector onsetDetector, std::unique_ptr<LowBandAnalyzer> lowBandAnalyzer,
-    std::unique_ptr<PitchDetectorLoggerInterface> logger, int decimationFactor,
-    OctaviationGateConfig gate, LowBandConfig lowBand)
-    : _preprocessor(std::move(preprocessor)),
-      _frequencyDomainTransformer(std::move(transformer)),
+InRangePitchDetector::InRangePitchDetector(FrequencyDomainTransformer transformer,
+                                           AutocorrPitchDetector autocorrPitchDetector,
+                                           AutocorrEstimateDisambiguator disambiguator,
+                                           PitchDetectorLoggerInterface& logger,
+                                           OctaviationGateConfig gate)
+    : _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
-      _onsetDetector(std::move(onsetDetector)),
-      _lowBandAnalyzer(std::move(lowBandAnalyzer)),
-      _logger(std::move(logger)),
+      _logger(logger),
       _applyOctaviationGate(gate.apply),
       _presenceThreshold(gate.presenceThreshold),
       _harmonicityFloor(gate.harmonicityFloor),
-      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint),
-      _lowBand(lowBand),
-      _decimationFactor(decimationFactor) {}
+      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint) {}
 
-void InRangePitchDetector::logLowBand(const LowBandAnalyzer::Verdict& verdict,
-                                      float inRangeEstimate) const {
-    const auto& d = _lowBandDiagnostics;
-    _logger->Log(inRangeEstimate, "lowBandInRangeHz");
-    _logger->Log(verdict.frequency, "lowBandVerdictHz");
-    _logger->Log(verdict.support, "lowBandVerdictSupport");
-    _logger->Log(_lowBand.harmonicSupportFloor, "lowBandSupportFloor");
-    _logger->Log(_lowBand.minConsecutiveFrames, "lowBandFramesNeeded");
-    _logger->Log(d.candidateHz.data(), d.candidateHz.size(), "lowBandCandidateHz");
-    _logger->Log(d.candidateSupport.data(), d.candidateSupport.size(), "lowBandCandidateSupport");
-    _logger->Log(d.candidateProminence.data(), d.candidateProminence.size(),
-                 "lowBandCandidateProminence");
-    _logger->Log(d.combHz.data(), d.combHz.size(), "lowBandCombHz");
-    _logger->Log(d.combProminence.data(), d.combProminence.size(), "lowBandCombProminence");
-    _logger->Log(d.combExplained.data(), d.combExplained.size(), "lowBandCombExplained");
+void InRangePitchDetector::onNewOnset() {
+    _estimateConstraint.reset();
+    _autocorrPitchDetector.reset();
 }
 
-PitchDetectionResult InRangePitchDetector::process(const float* audio, DebugOutput* debugOutput,
-                                                   std::vector<float>* debugOutputSignal) {
-    // True on the single frame the logger records (see PitchDetectorLogger): the below-range
-    // diagnostics are only assembled then.
-    const auto logging = _logger->StartNewEstimate();
-    utils::Finally finally{[this] { _logger->EndNewEstimate(nullptr, 0); }};
-
-    // Use the unprocessed, broadband audio for the onset detection.
-    const auto isOnset = _onsetDetector.process(audio, debugOutput);
-    if (debugOutput) {
-        (*debugOutput)["isOnset"] = isOnset ? 1.f : 0.f;
-    }
-    if (isOnset) {
-        // New attack is detected, likely a new note ; reset constraint and drop
-        // the cross-frame autocorrelation average so the new note doesn't blur
-        // into the previous one.
-        _estimateConstraint.reset();
-        _autocorrPitchDetector.reset();
-    }
-
-    const auto& processedAudio = _preprocessor->processBlock(audio);
-    if (_lowBandAnalyzer) {
-        // Its own buffering has to advance every block, whether or not this frame ends up
-        // asking it anything.
-        _lowBandAnalyzer->process(processedAudio);
-    }
-    if (debugOutputSignal) {
-        debugOutputSignal->insert(debugOutputSignal->end(), processedAudio.begin(),
-                                  processedAudio.end());
-    }
-
-    const std::vector<std::complex<float>>& freq =
-        _frequencyDomainTransformer.process(processedAudio);
+PitchDetectionResult InRangePitchDetector::process(const std::vector<float>& audio,
+                                                   DebugOutput* debugOutput) {
+    const std::vector<std::complex<float>>& freq = _frequencyDomainTransformer.process(audio);
 
     auto presenceScore = 0.f;
     const float xcorrEstimate =
@@ -179,7 +131,7 @@ PitchDetectionResult InRangePitchDetector::process(const float* audio, DebugOutp
     std::transform(_dbSpectrum.begin(), _dbSpectrum.end(), _dbSpectrum.begin(),
                    [](float power) { return utils::FastDb(power); });
     assert(utils::isSymmetric(_dbSpectrum));
-    _logger->Log(_dbSpectrum.data(), _dbSpectrum.size(), "dbSpectrum");
+    _logger.Log(_dbSpectrum.data(), _dbSpectrum.size(), "dbSpectrum");
 
     float harmonicity = 0.f;
     const auto disambiguatedEstimate =
@@ -201,27 +153,7 @@ PitchDetectionResult InRangePitchDetector::process(const float* audio, DebugOutp
         return {};
     }
 
-    // Below-range check: an in-range estimate this confident can still be a harmonic of a
-    // string sounding below the search range, which is what the low band settles (see
-    // LowBandConfig).
-    if (likelyLowBand(debugOutput, disambiguatedEstimate, logging)) {
-        return {};
-    }
-
     return {disambiguatedEstimate, PitchBucket::inRange};
 }
 
-bool InRangePitchDetector::likelyLowBand(DebugOutput* debugOutput, float disambiguatedEstimate,
-                                         bool logging) {
-    const auto lowBand =
-        _lowBandAnalyzer->below(disambiguatedEstimate, logging ? &_lowBandDiagnostics : nullptr);
-    if (debugOutput) {
-        (*debugOutput)["lowBandHz"] = lowBand.frequency;
-        (*debugOutput)["lowBandSupport"] = lowBand.support;
-    }
-    if (logging) {
-        logLowBand(lowBand, disambiguatedEstimate);
-    }
-    return lowBand.frequency > 0.f && lowBand.support >= _lowBand.harmonicSupportFloor;
-}
 }  // namespace saint

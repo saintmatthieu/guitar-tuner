@@ -76,12 +76,12 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
         decimatedSampleRate, ctx.channelFormat, decimatedBlockSize, minFreq, *logger, ctx.lowBand);
 
     auto internalAlgorithm = std::make_unique<InRangePitchDetector>(
-        std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-        std::move(disambiguator), std::move(onsetDetector), std::move(lowBandAnalyzer),
-        std::move(logger), D, ctx.gate, ctx.lowBand);
+        std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator), *logger,
+        ctx.gate);
 
-    auto outRangeDetector =
-        std::make_unique<OutRangePitchDetector>(std::move(internalAlgorithm), ctx.outRange);
+    auto outRangeDetector = std::make_unique<OutRangePitchDetector>(
+        std::move(preprocessor), std::move(onsetDetector), std::move(lowBandAnalyzer),
+        std::move(internalAlgorithm), std::move(logger), D, ctx.lowBand, ctx.outRange);
 
     if (!ctx.withMedianFilter) {
         return outRangeDetector;

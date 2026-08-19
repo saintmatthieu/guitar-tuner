@@ -53,7 +53,7 @@ topHz = max(combHz) * 1.1 if combHz else 700.0
 verdictHz = pdl.lowBandVerdictHz
 support = pdl.lowBandVerdictSupport
 floor = pdl.lowBandSupportFloor
-accepted = support >= floor and pdl.lowBandFramesHeld >= pdl.lowBandFramesNeeded
+accepted = support >= floor
 
 kEvidence = "#1b7f4b"  # comb members the in-range estimate does not explain: the evidence
 kExplained = "#9aa0a6"  # comb members that are its own harmonics anyway: no evidence either way
@@ -96,7 +96,6 @@ ax.set_title(
     f"Below-range analysis, {frameLabel}: fundamental {verdictHz:.1f} Hz, "
     f"support {support:.2f} vs floor {floor:.2f} → "
     + ("BELOW RANGE" if accepted else "not accepted")
-    + f"   (held {pdl.lowBandFramesHeld}/{pdl.lowBandFramesNeeded} frames)"
 )
 
 # ---- 2: the comb, harmonic by harmonic ------------------------------------------------

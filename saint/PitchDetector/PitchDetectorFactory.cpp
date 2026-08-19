@@ -50,11 +50,12 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
         decimatedSampleRate, channelFormat, decimatedBlockSize, minFreq, *logger, lowBand);
 
     auto inRangeDetector = std::make_unique<InRangePitchDetector>(
-        std::move(preprocessor), std::move(transformer), std::move(autocorrPitchDetector),
-        std::move(disambiguator), std::move(onsetDetector), std::move(lowBandAnalyzer),
-        std::move(logger), defaultDecimationFactor, OctaviationGateConfig{}, lowBand);
+        std::move(transformer), std::move(autocorrPitchDetector), std::move(disambiguator),
+        *logger);
 
-    auto outRangeDetector = std::make_unique<OutRangePitchDetector>(std::move(inRangeDetector));
+    auto outRangeDetector = std::make_unique<OutRangePitchDetector>(
+        std::move(preprocessor), std::move(onsetDetector), std::move(lowBandAnalyzer),
+        std::move(inRangeDetector), std::move(logger), defaultDecimationFactor, lowBand);
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
         sampleRate, samplesPerBlockPerChannel, std::move(outRangeDetector));
