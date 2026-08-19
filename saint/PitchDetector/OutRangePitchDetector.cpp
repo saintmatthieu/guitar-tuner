@@ -51,15 +51,8 @@ PitchDetectionResult OutRangePitchDetector::process(const float* input, DebugOut
         return inRange;
     }
 
-    // Nothing in range, so the question is only whether something is sounding at all - a much
-    // easier one than which pitch. Which side of the range it fell on is not decided yet; below
-    // is the case that brought us here.
-    const auto presenceIt = debugOutput->find("presenceScore");
-    const auto presence = presenceIt != debugOutput->end() ? presenceIt->second : 0.f;
-    if (presence < _presenceThreshold) {
-        return {};
-    }
-    return {0.f, PitchBucket::belowRange};
+    // TODO get low-band presence score and tune its threshold.
+    return {};
 }
 
 bool OutRangePitchDetector::likelyLowBand(DebugOutput* debugOutput, float inRangeEstimate,
