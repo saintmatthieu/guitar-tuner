@@ -82,6 +82,9 @@ LowBandAnalyzer::LowBandAnalyzer(int sampleRate, ChannelFormat channelFormat,
       _maxHarmonic(config.maxHarmonic),
       _floorBandEnd(std::min(_transformer.fftSize() / 2,
                              static_cast<int>(analysisTopFreq(minFreq) / _binFreq))),
+      _spectrumEnd(
+          std::min(_transformer.fftSize() / 2,
+                   static_cast<int>((subHarmonicCombSize + 0.5f) * minFreq / _binFreq) + 2)),
       _fft(_transformer.fftSize()),
       _acfLpWindow(static_cast<size_t>(_transformer.fftSize()) / 2, 1.f),
       _windowXcorr(getWindowXCorr(_fft, _transformer.window(), _acfLpWindow)),
@@ -115,13 +118,18 @@ void LowBandAnalyzer::process(const std::vector<float>& block) {
 
     const auto& freq = _transformer.process(_decimated);
 
+    // The spectrum is kept for presence(), which most frames never ask for: an in-range estimate
+    // that the comb test does not veto answers the question without it.
     std::copy(freq.begin(), freq.end(), _freqScratch.begin());
-    getXCorr(_fft, _xcorr, _freqScratch, _acfLpWindow);
-    _presence = findAutocorrPeak(_xcorr, _windowXcorr, _firstLag, _lastLag).presence;
+    _presenceStale = true;
 
-    utils::getPowerSpectrum(freq, _spectrum);
-    std::transform(_spectrum.begin(), _spectrum.end(), _spectrum.begin(),
-                   [](float power) { return utils::FastDb(power); });
+    // Only the bins the comb can reach, rather than the whole spectrum and its mirror image.
+    // Bin 0 carries DC alone: pffft packs Nyquist in its imaginary part.
+    _spectrum[0] = utils::FastDb(freq[0].real() * freq[0].real());
+    for (auto i = 1; i < _spectrumEnd; ++i) {
+        _spectrum[i] =
+            utils::FastDb(freq[i].real() * freq[i].real() + freq[i].imag() * freq[i].imag());
+    }
 
     // Put the noise floor at 0, which is what the comb support reads levels against. The
     // in-range path whitens with a cepstral envelope; here a single level per frame is enough,
@@ -131,18 +139,27 @@ void LowBandAnalyzer::process(const std::vector<float>& block) {
     const auto median = _floorScratch.begin() + _floorScratch.size() / 2;
     std::nth_element(_floorScratch.begin(), median, _floorScratch.end());
     const auto floor = *median + floorMarginDb;
-    std::transform(_spectrum.begin(), _spectrum.begin() + _spectrum.size() / 2 + 1,
-                   _spectrum.begin(), [floor](float db) { return db - floor; });
+    std::transform(_spectrum.begin(), _spectrum.begin() + _spectrumEnd, _spectrum.begin(),
+                   [floor](float db) { return db - floor; });
 
     // Own keys, so the in-range path's log (same names, different rate and FFT size) stays
     // intact; a no-op except on the one frame being recorded.
     _logger.Log(_rate, "lowBandRate");
     _logger.Log(_transformer.fftSize(), "lowBandFftSize");
     _logger.Log(floor, "lowBandFloorDb");
-    _logger.Log(_presence, "lowBandPresence");
-    _logger.Log(_xcorr.data(), _xcorr.size(), "lowBandXcorr");
-    _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "lowBandWindowXcorr");
     _logger.Log(_spectrum.data(), _spectrum.size(), "lowBandSpectrum");
+}
+
+float LowBandAnalyzer::presence() {
+    if (_presenceStale) {
+        getXCorr(_fft, _xcorr, _freqScratch, _acfLpWindow);
+        _presence = findAutocorrPeak(_xcorr, _windowXcorr, _firstLag, _lastLag).presence;
+        _presenceStale = false;
+        _logger.Log(_presence, "lowBandPresence");
+        _logger.Log(_xcorr.data(), _xcorr.size(), "lowBandXcorr");
+        _logger.Log(_windowXcorr.data(), _windowXcorr.size(), "lowBandWindowXcorr");
+    }
+    return _presence;
 }
 
 LowBandAnalyzer::Verdict LowBandAnalyzer::below(float inRangeEstimate,
@@ -153,7 +170,7 @@ LowBandAnalyzer::Verdict LowBandAnalyzer::below(float inRangeEstimate,
     if (inRangeEstimate <= 0.f) {
         return {};
     }
-    const auto lastIndex = static_cast<float>(_spectrum.size() / 2);
+    const auto lastIndex = static_cast<float>(_spectrumEnd);
     Verdict best;
     auto bestProminence = 0.f;
     auto bestHarmonicOrder = 0;  // the winning candidate's p, for the diagnostics below

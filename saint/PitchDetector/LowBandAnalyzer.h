@@ -65,9 +65,7 @@ class LowBandAnalyzer {
      * the below-range lags. Unlike the in-range one it is computed on a window long enough for
      * those periods. Left by the last @ref process call.
      */
-    float presence() const {
-        return _presence;
-    }
+    float presence();
 
     /**
      * @brief Everything @ref below weighed, for the one frame the logger records. Assembling it
@@ -133,6 +131,10 @@ class LowBandAnalyzer {
     const int _maxHarmonic;
     // Top of the band the noise floor is estimated over: as far up as the comb reaches.
     const int _floorBandEnd;
+    // Highest bin any comb read can touch, and so the only part of the spectrum worth
+    // converting: the comb reaches subHarmonicCombSize harmonics of a fundamental below the
+    // range floor, and prominence looks half a spacing past the last of them.
+    const int _spectrumEnd;
 
     // Autocorrelation of the band, for the presence score. The band is already limited by the
     // anti-alias filter, so the low-pass the autocorrelation takes is flat.
@@ -142,6 +144,7 @@ class LowBandAnalyzer {
     const int _firstLag;
     const int _lastLag;
     float _presence = 0.f;
+    bool _presenceStale = true;
 
     // Reused buffers, so process() allocates nothing on the audio thread.
     std::vector<float> _decimated;

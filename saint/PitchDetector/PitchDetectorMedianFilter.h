@@ -29,6 +29,8 @@ class PitchDetectorMedianFilter : public PitchDetector {
     DebugOutput _debugOutput;
     const int _minInRangeCount;
     std::vector<InnerResult> _buffer;
+    // Reused, so the per-block vote allocates nothing on the audio thread.
+    std::vector<InnerResult> _sortScratch;
     std::vector<float> _delayedScores;
     bool _allGoodOnce = false;
 };

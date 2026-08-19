@@ -1,6 +1,7 @@
 #include "PitchDetectorMedianFilter.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>  // ceil
 
 #include "PitchDetectorUtils.h"
@@ -97,18 +98,18 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
         return {};
     }
 
-    std::unordered_map<int, int> bucketCounts;
+    // Counted in place: the bucket is one of four values, so this needs no map.
+    std::array<int, 4> bucketCounts{};
     for (const auto& r : _buffer) {
-        ++bucketCounts[r.bucket];
+        ++bucketCounts[r.bucket + 1];
     }
-    if (std::max_element(bucketCounts.begin(), bucketCounts.end(),
-                         [](const auto& a, const auto& b) { return a.second < b.second; })
-            ->first == -1) {
+    if (std::max_element(bucketCounts.begin(), bucketCounts.end()) == bucketCounts.begin()) {
         // No pitch
         return {};
     }
 
-    auto sorted = _buffer;
+    auto& sorted = _sortScratch;
+    sorted.assign(_buffer.begin(), _buffer.end());
     sorted.erase(std::remove_if(sorted.begin(), sorted.end(),
                                 [](const InnerResult& r) { return r.bucket == -1; }),
                  sorted.end());
