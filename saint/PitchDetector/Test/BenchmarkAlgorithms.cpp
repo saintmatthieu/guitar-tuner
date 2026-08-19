@@ -7,6 +7,7 @@
 #include "InRangePitchDetector.h"
 #include "LowBandAnalyzer.h"
 #include "OnsetDetector.h"
+#include "OutRangePitchDetector.h"
 #include "PitchDetectionHolder.h"
 #include "PitchDetectionSmoother.h"
 #include "PitchDetectorImplTestWrapper.h"
@@ -81,7 +82,8 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
         std::move(logger), D, ctx.gate, ctx.lowBand);
 
     if (!ctx.withMedianFilter) {
-        return std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm));
+        return std::make_unique<OutRangePitchDetector>(
+            std::make_unique<PitchDetectorImplTestWrapper>(std::move(internalAlgorithm)));
     }
 
     auto medianFilter = std::make_unique<PitchDetectorMedianFilter>(
@@ -89,7 +91,9 @@ std::unique_ptr<PitchDetector> createImpl(const BenchmarkAlgorithmContext& ctx) 
     auto holder = std::make_unique<PitchDetectionHolder>(std::move(medianFilter), ctx.sampleRate,
                                                          ctx.blockSize, ctx.hold);
     const auto blocksPerSecond = ctx.sampleRate / ctx.blockSize;
-    return std::make_unique<PitchDetectionSmoother>(std::move(holder), blocksPerSecond);
+    auto inRangeDetector =
+        std::make_unique<PitchDetectionSmoother>(std::move(holder), blocksPerSecond);
+    return std::make_unique<OutRangePitchDetector>(std::move(inRangeDetector));
 }
 
 #ifdef SAINT_WITH_PESTO

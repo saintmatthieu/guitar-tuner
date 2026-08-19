@@ -6,6 +6,7 @@
 #include "InRangePitchDetector.h"
 #include "LowBandAnalyzer.h"
 #include "OnsetDetector.h"
+#include "OutRangePitchDetector.h"
 #include "PitchDetectionHolder.h"
 #include "PitchDetectionSmoother.h"
 #include "PitchDetectorMedianFilter.h"
@@ -61,8 +62,9 @@ std::unique_ptr<PitchDetector> createImplementation(int sampleRate, ChannelForma
     auto holder =
         std::make_unique<PitchDetectionSmoother>(std::move(medianFilter), blocksPerSecond);
 
-    return std::make_unique<PitchDetectionHolder>(std::move(holder), sampleRate,
-                                                  samplesPerBlockPerChannel);
+    auto inRangeDetector = std::make_unique<PitchDetectionHolder>(std::move(holder), sampleRate,
+                                                                  samplesPerBlockPerChannel);
+    return std::make_unique<OutRangePitchDetector>(std::move(inRangeDetector));
 }
 }  // namespace
 
