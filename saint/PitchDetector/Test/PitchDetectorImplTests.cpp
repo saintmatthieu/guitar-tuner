@@ -161,6 +161,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argOnsetK = getArgument<float>("onsetK");
     const auto argOnsetAbsFloor = getArgument<float>("onsetAbsFloor");
     const auto argMedianFilterDuration = getArgument<float>("medianFilterDuration");
+    const auto argMinInRangeCount = getArgument<int>("minInRangeCount");
     const auto argHoldDuration = getArgument<float>("holdDuration");
     // Below-range ("too low") detection knobs (see LowBandConfig).
     const auto argLowBandHarmonicSupportFloor = getArgument<float>("lowBandHarmonicSupportFloor");
@@ -244,6 +245,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                 context.onset.absFloor = *argOnsetAbsFloor;
             if (argMedianFilterDuration)
                 context.medianFilter.filterDuration = *argMedianFilterDuration;
+            if (argMinInRangeCount)
+                context.medianFilter.minInRangeCount = *argMinInRangeCount;
             if (argHoldDuration)
                 context.hold.holdDuration = *argHoldDuration;
             if (argMinFreqSemitoneOffset)

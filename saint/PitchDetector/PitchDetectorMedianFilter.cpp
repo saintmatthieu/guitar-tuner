@@ -22,6 +22,7 @@ PitchDetectorMedianFilter::PitchDetectorMedianFilter(int sampleRate, int blockSi
                                                      std::unique_ptr<OutRangePitchDetector> inner,
                                                      MedianFilterConfig config)
     : _blockSize(blockSize),
+      _minInRangeCount(config.minInRangeCount),
       _inner(std::move(inner)),
       _buffer(getFilterSize(sampleRate, blockSize, config.filterDuration)),
       _delayedScores((_buffer.size() - 1) / 2, 0.f) {}
@@ -126,6 +127,10 @@ PitchDetectionResult PitchDetectorMedianFilter::process(const float* input,
                                     return r.bucket != static_cast<int>(PitchBucket::inRange);
                                 }),
                  sorted.end());
+
+    if (static_cast<int>(sorted.size()) < _minInRangeCount) {
+        return {};
+    }
 
     // Now sort by pitch
     std::sort(sorted.begin(), sorted.end(),

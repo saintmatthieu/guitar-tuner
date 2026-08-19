@@ -27,6 +27,7 @@ class PitchDetectorMedianFilter : public PitchDetector {
     const int _blockSize = 0;
     const std::unique_ptr<OutRangePitchDetector> _inner;
     DebugOutput _debugOutput;
+    const int _minInRangeCount;
     std::vector<InnerResult> _buffer;
     std::vector<float> _delayedScores;
     bool _allGoodOnce = false;

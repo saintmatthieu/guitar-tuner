@@ -135,8 +135,12 @@ constexpr int defaultMinFreqSemitoneOffset = -3;
 
 // Median-filter configuration for PitchDetectorMedianFilter. Default is the production operating
 // point (the constant above).
+// In-range readings a window must hold before its median is emitted as a pitch.
+constexpr int defaultMinInRangeCount = 12;
+
 struct MedianFilterConfig {
     float filterDuration = defaultMedianFilterDuration;
+    int minInRangeCount = defaultMinInRangeCount;
 };
 
 // Hold configuration for PitchDetectionHolder. Default is the production operating point (the
