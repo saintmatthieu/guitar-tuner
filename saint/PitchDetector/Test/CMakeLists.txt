@@ -26,7 +26,6 @@ if(NOT NO_GTEST)
   add_executable(PitchDetectorImplTests
     BenchmarkAlgorithms.cpp
     PitchDetectorImplTests.cpp
-    PitchDetectorImplTestWrapper.cpp
   )
 
   target_compile_options(PitchDetectorImplTests PRIVATE ${SAINT_ANNOYING_WARNINGS})

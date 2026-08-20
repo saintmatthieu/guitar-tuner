@@ -212,14 +212,16 @@ void testUtils::writeLogMarks(const fs::path& filenameStem, int sampleRate, Mark
               << static_cast<double>(marking.endSample) / sampleRate << "\n";
 }
 
-std::optional<testUtils::Cents> testUtils::getError(float truePitchHz,
-                                                    const std::vector<float>& estimates) {
+std::optional<testUtils::Cents> testUtils::getError(
+    float truePitchHz, const std::vector<float>& estimates,
+    const std::vector<std::optional<PitchBucket>>& buckets) {
     float avg = 0.f;
     float rms = 0.f;
 
     auto count = 0;
+    auto i = 0;
     for (const auto& estimate : estimates) {
-        if (estimate > 0.) {
+        if (buckets[i++] == PitchBucket::inRange && estimate > 0.) {
             const auto e = 1200. * std::log2(estimate / truePitchHz);
             avg += e;
             rms += e * e;

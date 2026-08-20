@@ -8,19 +8,19 @@
 
 namespace saint {
 std::unique_ptr<ReplayPitchDetector> ReplayPitchDetector::fromFile(
-    const std::filesystem::path& path, std::string* warning) {
+    const std::filesystem::path& path, std::string* warning, LowBandConfig lowBand) {
     auto data = recording::readWavFile(path, warning);
     if (!data.has_value()) {
         return nullptr;
     }
-    return std::unique_ptr<ReplayPitchDetector>(new ReplayPitchDetector(std::move(*data)));
+    return std::unique_ptr<ReplayPitchDetector>(new ReplayPitchDetector(std::move(*data), lowBand));
 }
 
-ReplayPitchDetector::ReplayPitchDetector(recording::RecordingData data)
+ReplayPitchDetector::ReplayPitchDetector(recording::RecordingData data, LowBandConfig lowBand)
     : _data(std::move(data)),
       _inner(PitchDetectorFactory::createInstance(
           _data.config.sampleRate, _data.config.channelFormat,
-          _data.config.samplesPerBlockPerChannel, _data.config.tuning)),
+          _data.config.samplesPerBlockPerChannel, _data.config.tuning, {}, lowBand)),
       _samplesPerBlock(_data.config.samplesPerBlockPerChannel *
                        numChannels(_data.config.channelFormat)) {}
 

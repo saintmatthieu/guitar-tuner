@@ -1,16 +1,17 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 
-#include "PitchDetector.h"
-#include "PitchDetectorImpl.h"
+#include "OutRangePitchDetector.h"
 
 namespace saint {
 class PitchDetectorMedianFilter : public PitchDetector {
    public:
     PitchDetectorMedianFilter(int sampleRate, int blockSize,
-                              std::unique_ptr<PitchDetectorImpl> impl, MedianFilterConfig = {});
+                              std::unique_ptr<OutRangePitchDetector> inner,
+                              MedianFilterConfig = {});
 
     ~PitchDetectorMedianFilter() override = default;
 
@@ -19,10 +20,17 @@ class PitchDetectorMedianFilter : public PitchDetector {
     std::pair<float, float> pitchSearchRange() const override;
 
    private:
+    struct InnerResult {
+        float pitch = 0.f;
+        int bucket = -1;
+    };
     const int _blockSize = 0;
-    const std::unique_ptr<PitchDetectorImpl> _impl;
+    const std::unique_ptr<OutRangePitchDetector> _inner;
     DebugOutput _debugOutput;
-    std::vector<float> _buffer;
+    const int _minInRangeCount;
+    std::vector<InnerResult> _buffer;
+    // Reused, so the per-block vote allocates nothing on the audio thread.
+    std::vector<InnerResult> _sortScratch;
     std::vector<float> _delayedScores;
     bool _allGoodOnce = false;
 };

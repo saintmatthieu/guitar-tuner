@@ -6,15 +6,18 @@ target_sources(PitchDetector
   PUBLIC
     Cepstrum.cpp
     AutocorrEstimateDisambiguator.cpp
+    Autocorrelation.cpp
     AutocorrPitchDetector.cpp
     PitchDetectorFactory.cpp
-    PitchDetectorImpl.cpp
+    InRangePitchDetector.cpp
     PitchDetectorUtils.cpp
     PitchDetectorMedianFilter.cpp
     Preprocessor.cpp
     DummyPitchDetectorLogger.cpp
     FrequencyDomainTransformer.cpp
+    LowBandAnalyzer.cpp
     OnsetDetector.cpp
+    OutRangePitchDetector.cpp
     PitchDetectionHolder.cpp
     PitchDetectionSmoother.cpp
     Upsampler.cpp

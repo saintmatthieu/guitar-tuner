@@ -19,9 +19,10 @@ namespace PitchDetectorFactory {
  * occurred in live.
  * @param cpuSummaryCallback Forwarded to the `IssueReportingPitchDetector`, which invokes it on
  * destruction with a one-line CPU-load summary (see its destructor). Optional.
+ * @param lowBand Below-range ("too low") detection; see `LowBandConfig`.
  */
 std::unique_ptr<IssueReportingPitchDetector> createInstance(
     int sampleRate, ChannelFormat, int samplesPerBlockPerChannel, Tuning tuning = Tuning::Standard,
-    std::function<void(std::string logLine)> cpuSummaryCallback = {});
+    std::function<void(std::string logLine)> cpuSummaryCallback = {}, LowBandConfig lowBand = {});
 }  // namespace PitchDetectorFactory
 }  // namespace saint

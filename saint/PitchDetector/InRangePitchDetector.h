@@ -1,29 +1,31 @@
 #pragma once
 
-#include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "AutocorrEstimateDisambiguator.h"
 #include "AutocorrPitchDetector.h"
 #include "FrequencyDomainTransformer.h"
-#include "OnsetDetector.h"
 #include "PitchDetector.h"
 #include "PitchDetectorLoggerInterface.h"
-#include "Preprocessor.h"
 
 namespace saint {
-class PitchDetectorImpl {
+class InRangePitchDetector {
    public:
-    PitchDetectorImpl(std::unique_ptr<Preprocessor>, FrequencyDomainTransformer,
-                      AutocorrPitchDetector, AutocorrEstimateDisambiguator, OnsetDetector,
-                      std::unique_ptr<PitchDetectorLoggerInterface> logger, int decimationFactor,
-                      OctaviationGateConfig gate = {});
+    InRangePitchDetector(FrequencyDomainTransformer, AutocorrPitchDetector,
+                         AutocorrEstimateDisambiguator, PitchDetectorLoggerInterface& logger,
+                         OctaviationGateConfig gate = {});
 
-    PitchDetectionResult process(const float*, DebugOutput*,
-                                 std::vector<float>* debugOutputSignal = nullptr);
+    // `audio` is the preprocessor's output, so the rate is the decimated one.
+    PitchDetectionResult process(const std::vector<float>& audio, DebugOutput*);
+
+    // A new attack, likely a new note: drop the lock and the cross-frame autocorrelation
+    // average so the new note doesn't blur into the previous one.
+    void onNewOnset();
+
     int delaySamples() const {
-        return _decimationFactor * windowSizeSamples() / 2;
+        return windowSizeSamples() / 2;
     }
 
     std::pair<float, float> pitchSearchRange() const {
@@ -33,22 +35,16 @@ class PitchDetectorImpl {
     void setEstimateConstraint(float constraint) {
         _estimateConstraint = constraint;
     }
-    void clearEstimateConstraint() {
-        _estimateConstraint.reset();
-    }
 
     int windowSizeSamples() const {
         return _frequencyDomainTransformer.windowSizeSamples();
     }
 
    private:
-    const std::unique_ptr<Preprocessor> _preprocessor;
     FrequencyDomainTransformer _frequencyDomainTransformer;
     AutocorrPitchDetector _autocorrPitchDetector;
     AutocorrEstimateDisambiguator _disambiguator;
-    OnsetDetector _onsetDetector;
-
-    const std::unique_ptr<PitchDetectorLoggerInterface> _logger;
+    PitchDetectorLoggerInterface& _logger;
     std::optional<float> _estimateConstraint;
     // When false, the probNotOctaviated gate is bypassed so every frame emits its
     // estimate. Used to collect the full presence-score/error distribution for
@@ -62,7 +58,6 @@ class PitchDetectorImpl {
     const double _presenceThreshold;
     const float _harmonicityFloor;
     const double _presenceThresholdWithConstraint;
-    const int _decimationFactor;
 
     // Reused dB-power-spectrum buffer, so process() allocates nothing on the audio
     // thread. Sized on the first block, then reused in place.

@@ -30,8 +30,9 @@ bool wasOnset(const saint::DebugOutput& debug) {
 // Algorithm state for the pitch cursor: grey when there is no pitch, yellow ("Held") when the
 // detector is holding the last pitch through a presence dip ("hold" set), green ("Estimated")
 // otherwise. Mirrors the mapping in the live TestApp (main.cpp).
-saint::TunerDisplay::State pitchState(const saint::DebugOutput& debug, float frequency) {
-    if (frequency == 0.f) {
+saint::TunerDisplay::State pitchState(const saint::DebugOutput& debug,
+                                      const saint::PitchDetectionResult& result) {
+    if (!result.bucket.has_value()) {
         return saint::TunerDisplay::State::NoPitch;
     }
     const auto holdIt = debug.find("hold");
@@ -42,6 +43,7 @@ saint::TunerDisplay::State pitchState(const saint::DebugOutput& debug, float fre
 
 int main(int argc, char* argv[]) {
     auto fast = false;
+    saint::LowBandConfig lowBand;
     std::filesystem::path file;
     auto validArgs = true;
     for (auto i = 1; i < argc; ++i) {
@@ -70,7 +72,7 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     std::string warning;
-    const auto pitchDetector = saint::ReplayPitchDetector::fromFile(file, &warning);
+    const auto pitchDetector = saint::ReplayPitchDetector::fromFile(file, &warning, lowBand);
     if (!pitchDetector) {
         std::cerr << "Could not load recording: " << file << std::endl;
         return 1;
@@ -111,8 +113,8 @@ int main(int argc, char* argv[]) {
         if (playing) {
             const float* block = pitchDetector->peekBlock();
             saint::DebugOutput debug;
-            const float frequency = pitchDetector->process(nullptr, &debug).pitch;
-            display.update(frequency, pitchState(debug, frequency), wasOnset(debug));
+            const auto result = pitchDetector->process(nullptr, &debug);
+            display.update(result, pitchState(debug, result), wasOnset(debug));
             if (!player->write(block, framesPerBlock)) {
                 // Playback died mid-stream; fall back to timed pacing.
                 playing = false;
@@ -123,8 +125,8 @@ int main(int argc, char* argv[]) {
 #endif
         const auto blockStart = std::chrono::steady_clock::now();
         saint::DebugOutput debug;
-        const float frequency = pitchDetector->process(nullptr, &debug).pitch;
-        display.update(frequency, pitchState(debug, frequency), wasOnset(debug));
+        const auto result = pitchDetector->process(nullptr, &debug);
+        display.update(result, pitchState(debug, result), wasOnset(debug));
         if (!fast) {
             std::this_thread::sleep_until(blockStart + blockDuration);
         }

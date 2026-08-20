@@ -15,13 +15,22 @@ enum class PitchBucket {
 };
 
 /**
- * @brief Return value of @ref PitchDetector::process. `bucket == nullopt` if and only if `pitch ==
- * 0`.
+ * @brief Return value of @ref PitchDetector::process. `pitch == 0` whenever `bucket == nullopt`;
+ * the converse does not hold - an out-of-range verdict may carry no frequency.
  */
 struct PitchDetectionResult {
     float pitch = 0.f;
     std::optional<PitchBucket> bucket;
 };
+
+/**
+ * @brief Classifies `frequency` against a @ref PitchDetector::pitchSearchRange.
+ */
+inline PitchBucket getBucket(float frequency, const std::pair<float, float>& searchRange) {
+    return frequency < searchRange.first    ? PitchBucket::belowRange
+           : frequency > searchRange.second ? PitchBucket::aboveRange
+                                            : PitchBucket::inRange;
+}
 
 class PitchDetector {
    public:

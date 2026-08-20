@@ -161,7 +161,14 @@ TEST(PitchDetectorImpl, benchmarking) {
     const auto argOnsetK = getArgument<float>("onsetK");
     const auto argOnsetAbsFloor = getArgument<float>("onsetAbsFloor");
     const auto argMedianFilterDuration = getArgument<float>("medianFilterDuration");
+    const auto argMinInRangeCount = getArgument<int>("minInRangeCount");
     const auto argHoldDuration = getArgument<float>("holdDuration");
+    // Below-range ("too low") detection knobs (see LowBandConfig).
+    const auto argLowBandHarmonicSupportFloor = getArgument<float>("lowBandHarmonicSupportFloor");
+    const auto argLowBandMaxHarmonic = getArgument<int>("lowBandMaxHarmonic");
+    const auto argLowBandMinFreqRatio = getArgument<float>("lowBandMinFreqRatio");
+    const auto argLowBandMinFrames = getArgument<int>("lowBandMinFrames");
+    const auto argOutRangePresenceThreshold = getArgument<float>("outRangePresenceThreshold");
     const auto argAlgorithm = getArgument<std::string>("algorithm");
     const auto argDecimationFactor = getArgument<int>("decimationFactor");
     const auto argMinFreqSemitoneOffset = getArgument<int>("minFreqSemitoneOffset");
@@ -185,7 +192,7 @@ TEST(PitchDetectorImpl, benchmarking) {
     if (!argTestCaseId.has_value()) {
         const auto csvFilePath = testUtils::getOutDir() / ("benchmarking" + fileSuffix + ".csv");
         csvFile.emplace(csvFilePath);
-        *csvFile << "algorithm,AVG,RMS,FPR,FNR,mix,id\n";
+        *csvFile << "algorithm,AVG,RMS,FPR,FNR,bucketErrorRate,mix,id\n";
     }
 
     // Build all test cases upfront
@@ -238,18 +245,24 @@ TEST(PitchDetectorImpl, benchmarking) {
                 context.onset.absFloor = *argOnsetAbsFloor;
             if (argMedianFilterDuration)
                 context.medianFilter.filterDuration = *argMedianFilterDuration;
+            if (argMinInRangeCount)
+                context.medianFilter.minInRangeCount = *argMinInRangeCount;
             if (argHoldDuration)
                 context.hold.holdDuration = *argHoldDuration;
             if (argMinFreqSemitoneOffset)
                 context.minFreqSemitoneOffset = *argMinFreqSemitoneOffset;
+            if (argLowBandHarmonicSupportFloor)
+                context.lowBand.harmonicSupportFloor = *argLowBandHarmonicSupportFloor;
+            if (argLowBandMaxHarmonic)
+                context.lowBand.maxHarmonic = *argLowBandMaxHarmonic;
+            if (argLowBandMinFreqRatio)
+                context.lowBand.analysisMinFreqRatio = *argLowBandMinFreqRatio;
+            if (argLowBandMinFrames)
+                context.lowBand.minConsecutiveFrames = *argLowBandMinFrames;
+            if (argOutRangePresenceThreshold)
+                context.outRange.presenceThreshold = *argOutRangePresenceThreshold;
             const auto pitchDetector = createDetector(context);
             const std::pair<float, float> pitchSearchRange = pitchDetector->pitchSearchRange();
-
-            const auto expectedNoteBucket =
-                sample.truth.frequency < pitchSearchRange.first    ? PitchBucket::belowRange
-                : sample.truth.frequency > pitchSearchRange.second ? PitchBucket::aboveRange
-                                                                   : PitchBucket::inRange;
-            const auto truthInRange = expectedNoteBucket == PitchBucket::inRange;
 
             auto negativeCount = 0;
             auto falseNegativeWeight = 0.;
@@ -272,8 +285,15 @@ TEST(PitchDetectorImpl, benchmarking) {
             std::vector<std::optional<PitchBucket>> expectedBuckets;  // expected bucket, per block
             std::vector<float> xcorrEstimates;  // pre-gate period estimate (Hz)
             std::vector<float> probsNotOctaviated;
-            auto caseProcessCpuSeconds = 0.;  // Release only; 0 otherwise
+            std::vector<float> lowBandEstimates;  // below-range hypothesis (Hz), its low-band
+            std::vector<float> lowBandScores;     // periodicity contrast and its harmonic
+            std::vector<float> lowBandSupports;   // support in the spectrum
+            std::vector<float> lowBandPresences;  // and how periodic the band itself is
+            std::vector<float> rawBuckets;        // the verdict before the median filter
+            auto caseProcessCpuSeconds = 0.;      // Release only; 0 otherwise
             auto caseAudioSeconds = 0.;
+
+            const auto expectedNoteBucket = getBucket(sample.truth.frequency, pitchSearchRange);
 
             for (auto i = 0u; i + blockSize < numFrames; i += blockSize) {
                 DebugOutput debugOutput;
@@ -288,6 +308,12 @@ TEST(PitchDetectorImpl, benchmarking) {
 #endif
                 xcorrEstimates.push_back(debugOutput["xcorrEstimate"]);
                 probsNotOctaviated.push_back(debugOutput["probNotOctaviated"]);
+                lowBandEstimates.push_back(debugOutput["lowBandHz"]);
+                lowBandScores.push_back(debugOutput["lowBandScore"]);
+                lowBandSupports.push_back(debugOutput["lowBandSupport"]);
+                lowBandPresences.push_back(debugOutput["lowBandPresence"]);
+                rawBuckets.push_back(debugOutput.count("rawBucket") ? debugOutput["rawBucket"]
+                                                                    : -1.f);
                 const auto currentTime =
                     static_cast<double>(i + blockSize - pitchDetector->delaySamples()) /
                     noisy.sampleRate;
@@ -326,8 +352,8 @@ TEST(PitchDetectorImpl, benchmarking) {
                         ? 1200.f * std::log2(finalEstimate.pitch / sample.truth.frequency)
                         : 0.f;
                 testFileEstimates.emplace_back(weight, debugOutput["presenceScore"],
-                                               finalEstimate.pitch, errorCents,
-                                               debugOutput["harmonicity"]);
+                                               finalEstimate.pitch, finalEstimate.bucket,
+                                               errorCents, debugOutput["harmonicity"]);
                 onsets.push_back(debugOutput["isOnset"] == 1.f);
                 buckets.push_back(finalEstimate.bucket);
                 expectedBuckets.push_back(expectedBucket);
@@ -345,8 +371,9 @@ TEST(PitchDetectorImpl, benchmarking) {
             // sample the pitch-error stats (FNR/FPR and the bucket error rate still
             // apply to it).
             const std::optional<testUtils::Cents> cents =
-                truthInRange ? testUtils::getError(sample.truth.frequency, frequencyEstimates)
-                             : std::nullopt;
+                expectedNoteBucket == PitchBucket::inRange
+                    ? testUtils::getError(sample.truth.frequency, frequencyEstimates, buckets)
+                    : std::nullopt;
 
             const fs::path cleanFile = testUtils::getFileShortName(sample.file);
             const auto filename = cleanFile.string() + "_with_" +
@@ -357,9 +384,11 @@ TEST(PitchDetectorImpl, benchmarking) {
             const auto displayCents = cents.value_or(testUtils::Cents{0.f, 0.f});
             const auto evalDir = testUtils::getEvalDir();
             std::stringstream csvLine;
+            const auto bucketErrorRate =
+                bucketTotalWeight > 0. ? bucketErrorWeight / bucketTotalWeight : 0.;
             csvLine << algorithmId << "," << displayCents.avg << "," << displayCents.rms << ","
-                    << FPR << "," << FNR << "," << fs::relative(outWavName, evalDir) << ","
-                    << testCase.id << "\n";
+                    << FPR << "," << FNR << "," << bucketErrorRate << ","
+                    << fs::relative(outWavName, evalDir) << "," << testCase.id << "\n";
 
             if (argTestCaseId.has_value()) {
                 std::cout << csvLine.str();
@@ -369,18 +398,38 @@ TEST(PitchDetectorImpl, benchmarking) {
                 // winning ACF peak or merely raised the gate score on an existing one.
                 std::ofstream frameDump(testUtils::getOutDir() /
                                         ("frameDump" + fileSuffix + ".csv"));
-                frameDump << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
-                             "finalHz,truthHz,errorCents,bucket,expectedBucket\n";
+                frameDump
+                    << "frame,isOnset,presenceScore,probNotOctaviated,xcorrEstimateHz,"
+                       "lowBandHz,lowBandScore,lowBandSupport,lowBandPresence,rawBucket,finalHz,"
+                       "truthHz,errorCents,"
+                       "bucket,"
+                       "expectedBucket\n";
                 for (size_t f = 0; f < testFileEstimates.size(); ++f) {
                     const auto& e = testFileEstimates[f];
                     frameDump << f << "," << (onsets[f] ? 1 : 0) << "," << e.s << ","
-                              << probsNotOctaviated[f] << "," << xcorrEstimates[f] << "," << e.f
-                              << "," << sample.truth.frequency << "," << e.e << ","
+                              << probsNotOctaviated[f] << "," << xcorrEstimates[f] << ","
+                              << lowBandEstimates[f] << "," << lowBandScores[f] << ","
+                              << lowBandSupports[f] << "," << lowBandPresences[f] << ","
+                              << rawBuckets[f] << "," << e.f << "," << sample.truth.frequency << ","
+                              << e.e << ","
                               << static_cast<int>(buckets[f].value_or(static_cast<PitchBucket>(-1)))
                               << ","
                               << static_cast<int>(
                                      expectedBuckets[f].value_or(static_cast<PitchBucket>(-1)))
                               << "\n";
+                }
+
+                if (argIndexOfProcessToLog.has_value()) {
+                    // The logger closed PitchDetectorLog.py at the end of the frame it recorded;
+                    // append what only the harness knows, so a plot of that log can place the
+                    // frame in the case and judge the estimate against the truth (see
+                    // eval/showLowBandAnalysis.py).
+                    std::ofstream log(testUtils::getOutDir() / "PitchDetectorLog.py",
+                                      std::ios::app);
+                    log << "loggedFrame = " << *argIndexOfProcessToLog << "\n";
+                    log << "truthHz = " << sample.truth.frequency << "\n";
+                    log << "searchRangeHz = [" << pitchSearchRange.first << ", "
+                        << pitchSearchRange.second << "]\n";
                 }
 
                 std::ofstream frequencyEstimatesFile(testUtils::getOutDir() /

@@ -4,30 +4,11 @@
 #include <cassert>
 #include <cmath>
 
-#include "AutocorrPitchDetector.h"
+#include "Autocorrelation.h"
 #include "PitchDetectorLoggerInterface.h"
 
 namespace saint {
 namespace {
-void getXCorr(RealFft& fft, std::vector<float>& time, std::vector<std::complex<float>>& freq,
-              const std::vector<float>& lpWindow) {
-    auto timeData = time.data();
-
-    for (auto i = 0u; i < lpWindow.size(); ++i) {
-        auto& X = freq[i];
-        X *= lpWindow[i] * std::complex<float>{X.real(), -X.imag()};
-    }
-    std::fill(freq.data() + lpWindow.size(), freq.data() + fft.size / 2, 0.f);
-    fft.inverse(freq.data(), timeData);
-    if (timeData[0] < 1e-6f) {
-        return;
-    }
-    const auto normalizer = 1.f / timeData[0];
-    for (auto i = 0; i < fft.size; ++i) {
-        timeData[i] *= normalizer;
-    }
-}
-
 std::vector<float> getLpWindow(int sampleRate, int fftSize) {
     std::vector<float> window(fftSize / 2);
     const int cutoffBin = std::min(fftSize / 2, fftSize * autocorrCutoffFreqHz / sampleRate);
@@ -40,25 +21,6 @@ std::vector<float> getLpWindow(int sampleRate, int fftSize) {
     return window;
 }
 
-std::vector<std::complex<float>> getSpectrum(RealFft& fft, const float* timeData) {
-    Aligned<std::vector<std::complex<float>>> freqAligned;
-    auto& freq = freqAligned.value;
-    freq.resize(fft.size / 2);
-    fft.forward(timeData, freq.data());
-    return freqAligned.value;
-}
-
-std::vector<float> getWindowXCorr(RealFft& fft, const std::vector<float>& window,
-                                  const std::vector<float>& lpWindow) {
-    Aligned<std::vector<float>> xcorrAligned;
-    auto& xcorr = xcorrAligned.value;
-    xcorr.resize(fft.size);
-    std::copy(window.begin(), window.end(), xcorr.begin());
-    std::fill(xcorr.begin() + window.size(), xcorr.end(), 0.f);
-    std::vector<std::complex<float>> freq = getSpectrum(fft, xcorr.data());
-    getXCorr(fft, xcorr, freq, lpWindow);
-    return xcorr;
-}
 }  // namespace
 
 AutocorrPitchDetector::AutocorrPitchDetector(int sampleRate, int fftSize,
@@ -143,29 +105,16 @@ float AutocorrPitchDetector::process(const std::vector<std::complex<float>>& fre
         lastSearchIndex = std::min(_lastSearchIndex, static_cast<int>(_sampleRate / minFreq) + 1);
     }
 
-    auto maxIndex = 0;
-    auto wentNegative = false;
-    auto maximum = 0.f;
-    for (auto i = 0; i < lastSearchIndex; ++i) {
-        wentNegative |= acf[i] < 0;
-        if (wentNegative && i >= firstSearchIndex && acf[i] > maximum) {
-            maximum = acf[i];
-            maxIndex = i;
-        }
-    }
-
-    maximum /= _windowXcorr[maxIndex];
+    const auto peak = findAutocorrPeak(acf, _windowXcorr, firstSearchIndex, lastSearchIndex);
     if (presenceScore) {
-        *presenceScore = maximum;
+        *presenceScore = peak.presence;
     }
 
-    if (maxIndex == 0) {
+    if (peak.lag == 0) {
         return 0.f;
     }
 
-    const auto fracIndex = utils::quadFit(&acf[maxIndex - 1]);
-    const auto refinedIndex = maxIndex + fracIndex;
-
-    return maxIndex == 0 ? 0.f : static_cast<float>(_sampleRate) / refinedIndex;
+    const auto fracIndex = utils::quadFit(&acf[peak.lag - 1]);
+    return static_cast<float>(_sampleRate) / (peak.lag + fracIndex);
 }
 }  // namespace saint

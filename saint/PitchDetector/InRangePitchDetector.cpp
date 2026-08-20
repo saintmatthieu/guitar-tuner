@@ -1,4 +1,4 @@
-#include "PitchDetectorImpl.h"
+#include "InRangePitchDetector.h"
 
 #include <cmath>
 
@@ -75,51 +75,28 @@ double probabilityNotOctaviated(double s) {
 }  // namespace
 
 namespace saint {
-PitchDetectorImpl::PitchDetectorImpl(std::unique_ptr<Preprocessor> preprocessor,
-                                     FrequencyDomainTransformer transformer,
-                                     AutocorrPitchDetector autocorrPitchDetector,
-                                     AutocorrEstimateDisambiguator disambiguator,
-                                     OnsetDetector onsetDetector,
-                                     std::unique_ptr<PitchDetectorLoggerInterface> logger,
-                                     int decimationFactor, OctaviationGateConfig gate)
-    : _preprocessor(std::move(preprocessor)),
-      _frequencyDomainTransformer(std::move(transformer)),
+InRangePitchDetector::InRangePitchDetector(FrequencyDomainTransformer transformer,
+                                           AutocorrPitchDetector autocorrPitchDetector,
+                                           AutocorrEstimateDisambiguator disambiguator,
+                                           PitchDetectorLoggerInterface& logger,
+                                           OctaviationGateConfig gate)
+    : _frequencyDomainTransformer(std::move(transformer)),
       _autocorrPitchDetector(std::move(autocorrPitchDetector)),
       _disambiguator(std::move(disambiguator)),
-      _onsetDetector(std::move(onsetDetector)),
-      _logger(std::move(logger)),
+      _logger(logger),
       _applyOctaviationGate(gate.apply),
       _presenceThreshold(gate.presenceThreshold),
       _harmonicityFloor(gate.harmonicityFloor),
-      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint),
-      _decimationFactor(decimationFactor) {}
+      _presenceThresholdWithConstraint(gate.presenceThresholdWithConstraint) {}
 
-PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput* debugOutput,
-                                                std::vector<float>* debugOutputSignal) {
-    _logger->StartNewEstimate();
-    utils::Finally finally{[this] { _logger->EndNewEstimate(nullptr, 0); }};
+void InRangePitchDetector::onNewOnset() {
+    _estimateConstraint.reset();
+    _autocorrPitchDetector.reset();
+}
 
-    // Use the unprocessed, broadband audio for the onset detection.
-    const auto isOnset = _onsetDetector.process(audio, debugOutput);
-    if (debugOutput) {
-        (*debugOutput)["isOnset"] = isOnset ? 1.f : 0.f;
-    }
-    if (isOnset) {
-        // New attack is detected, likely a new note ; reset constraint and drop
-        // the cross-frame autocorrelation average so the new note doesn't blur
-        // into the previous one.
-        _estimateConstraint.reset();
-        _autocorrPitchDetector.reset();
-    }
-
-    const auto& processedAudio = _preprocessor->processBlock(audio);
-    if (debugOutputSignal) {
-        debugOutputSignal->insert(debugOutputSignal->end(), processedAudio.begin(),
-                                  processedAudio.end());
-    }
-
-    const std::vector<std::complex<float>>& freq =
-        _frequencyDomainTransformer.process(processedAudio);
+PitchDetectionResult InRangePitchDetector::process(const std::vector<float>& audio,
+                                                   DebugOutput* debugOutput) {
+    const std::vector<std::complex<float>>& freq = _frequencyDomainTransformer.process(audio);
 
     auto presenceScore = 0.f;
     const float xcorrEstimate =
@@ -154,7 +131,7 @@ PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput*
     std::transform(_dbSpectrum.begin(), _dbSpectrum.end(), _dbSpectrum.begin(),
                    [](float power) { return utils::FastDb(power); });
     assert(utils::isSymmetric(_dbSpectrum));
-    _logger->Log(_dbSpectrum.data(), _dbSpectrum.size(), "dbSpectrum");
+    _logger.Log(_dbSpectrum.data(), _dbSpectrum.size(), "dbSpectrum");
 
     float harmonicity = 0.f;
     const auto disambiguatedEstimate =
@@ -170,11 +147,13 @@ PitchDetectionResult PitchDetectorImpl::process(const float* audio, DebugOutput*
     // harmonicityFloor=0 disables the harmonic criterion.
     const auto threshold =
         _estimateConstraint.has_value() ? _presenceThresholdWithConstraint : _presenceThreshold;
-    if (_applyOctaviationGate &&
-        (probNotOctaviated < threshold || harmonicity < _harmonicityFloor)) {
+    const auto gateRejects =
+        _applyOctaviationGate && (probNotOctaviated < threshold || harmonicity < _harmonicityFloor);
+    if (gateRejects) {
         return {};
     }
 
     return {disambiguatedEstimate, PitchBucket::inRange};
 }
+
 }  // namespace saint

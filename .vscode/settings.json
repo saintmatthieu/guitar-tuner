@@ -18,5 +18,8 @@
   },
   "[c]": {
     "editor.defaultFormatter": "xaver.clang-format"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   }
 }
