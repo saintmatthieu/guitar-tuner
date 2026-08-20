@@ -23,3 +23,4 @@ and not reproducible, so it is recorded here for comparison rather than gated.
 | 2026-08-19 | too-low | bc8dd82 | Don't rely on in-range presence score | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.72 |
 | 2026-08-19 | too-low | 34784b1 | Median filter: require enough in-range readings before emitting a pitch | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.70 |
 | 2026-08-20 | too-low | 88935de | Trim the per-block cost of the below-range path | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.75 |
+| 2026-08-20 | master | 9024a25 | remove unmaintained cmake project version | impl | 12th Gen Intel(R) Core(TM) i7-12800HX (24 threads) | 0.72 |

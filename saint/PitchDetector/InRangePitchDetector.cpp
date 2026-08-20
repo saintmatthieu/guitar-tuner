@@ -135,7 +135,10 @@ PitchDetectionResult InRangePitchDetector::process(const std::vector<float>& aud
 
     float harmonicity = 0.f;
     const auto disambiguatedEstimate =
-        _disambiguator.process(xcorrEstimate, _dbSpectrum, _estimateConstraint, &harmonicity);
+        _disambiguator.process(xcorrEstimate, _dbSpectrum, _estimateConstraint,
+                               // Don't rely on harmonicity once we've locked: it'll be low once the
+                               // high-order partials have decayed and then it'll be useless.
+                               _estimateConstraint.has_value() ? nullptr : &harmonicity);
     if (debugOutput) {
         (*debugOutput)["harmonicity"] = harmonicity;
     }
@@ -147,8 +150,15 @@ PitchDetectionResult InRangePitchDetector::process(const std::vector<float>& aud
     // harmonicityFloor=0 disables the harmonic criterion.
     const auto threshold =
         _estimateConstraint.has_value() ? _presenceThresholdWithConstraint : _presenceThreshold;
+
+    auto harmonicityReject = false;
+    if (!_estimateConstraint.has_value()) {
+        harmonicityReject = harmonicity < _harmonicityFloor;
+    }
+
     const auto gateRejects =
-        _applyOctaviationGate && (probNotOctaviated < threshold || harmonicity < _harmonicityFloor);
+        _applyOctaviationGate && (probNotOctaviated < threshold || harmonicityReject);
+
     if (gateRejects) {
         return {};
     }
