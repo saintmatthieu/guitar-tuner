@@ -6,7 +6,7 @@ set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
 set(GUITAR_TUNER_ROOT ${CMAKE_CURRENT_LIST_DIR})
 
-project(guitar-tuner VERSION 0.0.1)
+project(guitar-tuner)
 
 option(NO_GTEST "Disable building/including GoogleTest (gtest/gmock)" OFF)
 
