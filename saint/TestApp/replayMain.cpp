@@ -39,16 +39,47 @@ saint::TunerDisplay::State pitchState(const saint::DebugOutput& debug,
     return holdIt != debug.end() && holdIt->second != 0.f ? saint::TunerDisplay::State::Hold
                                                           : saint::TunerDisplay::State::Estimate;
 }
+const char* kCsvKeys[] = {"rawBucket",      "hold",          "isOnset",
+                          "presenceScore",  "harmonicity",   "probNotOctaviated",
+                          "xcorrEstimate",  "lowBandHz",     "lowBandPresence",
+                          "lowBandSupport", "onsetStrength", "onsetThreshold"};
+
+void csvHeader() {
+    std::cout << "block,seconds,pitch,bucket";
+    for (const auto* key : kCsvKeys) {
+        std::cout << "," << key;
+    }
+    std::cout << "\n";
+}
+
+void csvRow(int block, double seconds, const saint::PitchDetectionResult& result,
+            const saint::DebugOutput& debug) {
+    std::cout << block << "," << seconds << "," << result.pitch << ","
+              << (result.bucket.has_value() ? std::to_string(static_cast<int>(*result.bucket))
+                                            : std::string("-1"));
+    for (const auto* key : kCsvKeys) {
+        const auto it = debug.find(key);
+        std::cout << ",";
+        if (it != debug.end()) {
+            std::cout << it->second;
+        }
+    }
+    std::cout << "\n";
+}
 }  // namespace
 
 int main(int argc, char* argv[]) {
     auto fast = false;
+    auto csv = false;
     saint::LowBandConfig lowBand;
     std::filesystem::path file;
     auto validArgs = true;
     for (auto i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--fast") {
+            fast = true;
+        } else if (arg == "--csv") {
+            csv = true;
             fast = true;
         } else if (file.empty()) {
             file = arg;
@@ -87,6 +118,9 @@ int main(int argc, char* argv[]) {
               << " blocks). Press Ctrl+C to exit." << std::endl;
     std::cout << std::endl;
 
+    if (csv) {
+        csvHeader();
+    }
     saint::TunerDisplay display;
     const auto blockDuration =
         std::chrono::microseconds(1000000LL * config.samplesPerBlockPerChannel / config.sampleRate);
@@ -97,7 +131,7 @@ int main(int argc, char* argv[]) {
     const auto framesPerBlock = config.samplesPerBlockPerChannel;
     std::optional<saint::AlsaAudioOutput> player;
     bool playing = false;
-    if (!fast) {
+    if (!fast && !csv) {
         player.emplace(config.sampleRate, numChannels(config.channelFormat), framesPerBlock);
         if (player->open()) {
             playing = true;
@@ -125,7 +159,13 @@ int main(int argc, char* argv[]) {
 #endif
         const auto blockStart = std::chrono::steady_clock::now();
         saint::DebugOutput debug;
+        const auto block = pitchDetector->numBlocks() - pitchDetector->numBlocksLeft();
         const auto result = pitchDetector->process(nullptr, &debug);
+        if (csv) {
+            csvRow(block, 1. * block * config.samplesPerBlockPerChannel / config.sampleRate, result,
+                   debug);
+            continue;
+        }
         display.update(result, pitchState(debug, result), wasOnset(debug));
         if (!fast) {
             std::this_thread::sleep_until(blockStart + blockDuration);
